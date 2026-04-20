@@ -1,5 +1,6 @@
-import { type, color, ui } from '../styles'
+import { color, ui } from '../styles'
 import { SYSTEMS, EXTERNAL_SYSTEMS } from '../constants'
+import { useA11yType } from '../hooks/useA11yType'
 
 const systemNames = {
   s5: 'System 5',
@@ -10,6 +11,7 @@ const systemNames = {
 }
 
 export function SystemPage({ nodeId, systemKey, onBack }) {
+  const t = useA11yType()
   const sys = SYSTEMS[systemKey] || EXTERNAL_SYSTEMS[systemKey]
   const name = systemNames[systemKey]
 
@@ -27,8 +29,8 @@ export function SystemPage({ nodeId, systemKey, onBack }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 12, height: 12, background: sys.color, border: `2px solid ${sys.strokeColor}`, borderRadius: 2 }} />
-          <span style={type.h3}>{name}</span>
-          <span style={type.mono}>Unit {nodeId?.slice(0, 5)}</span>
+          <span style={t.h3}>{name}</span>
+          <span style={t.mono}>Unit {nodeId?.slice(0, 5)}</span>
         </div>
         <button
           onClick={onBack}
@@ -47,25 +49,25 @@ export function SystemPage({ nodeId, systemKey, onBack }) {
           width: 240, borderRight: `1px solid ${color.border}`,
           padding: '24px',
         }}>
-          <p style={{ ...type.label, margin: '0 0 12px' }}>CONFIGURATION</p>
+          <p style={{ ...t.label, margin: '0 0 12px' }}>CONFIGURATION</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <p style={{ ...type.mono, color: color.primary, margin: 0 }}>Parameters</p>
-            <p style={{ ...type.mono, margin: 0 }}>Connections</p>
-            <p style={{ ...type.mono, margin: 0 }}>Constraints</p>
-            <p style={{ ...type.mono, margin: 0 }}>History</p>
+            <p style={{ ...t.mono, color: color.primary, margin: 0 }}>Parameters</p>
+            <p style={{ ...t.mono, margin: 0 }}>Connections</p>
+            <p style={{ ...t.mono, margin: 0 }}>Constraints</p>
+            <p style={{ ...t.mono, margin: 0 }}>History</p>
           </div>
 
-          <p style={{ ...type.label, margin: '24px 0 12px' }}>DIAGNOSTICS</p>
+          <p style={{ ...t.label, margin: '24px 0 12px' }}>DIAGNOSTICS</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <p style={{ ...type.mono, margin: 0 }}>State</p>
-            <p style={{ ...type.mono, margin: 0 }}>Logs</p>
-            <p style={{ ...type.mono, margin: 0 }}>Metrics</p>
+            <p style={{ ...t.mono, margin: 0 }}>State</p>
+            <p style={{ ...t.mono, margin: 0 }}>Logs</p>
+            <p style={{ ...t.mono, margin: 0 }}>Metrics</p>
           </div>
         </div>
 
         {/* Main content */}
         <div style={{ flex: 1, padding: '24px' }}>
-          <p style={{ ...type.label, margin: '0 0 8px' }}>PARAMETERS</p>
+          <p style={{ ...t.label, margin: '0 0 8px' }}>PARAMETERS</p>
 
           <div style={{ borderTop: `1px solid ${color.border}` }}>
             {[
@@ -80,8 +82,8 @@ export function SystemPage({ nodeId, systemKey, onBack }) {
                 padding: '8px 0',
                 borderBottom: `1px solid ${color.borderLight}`,
               }}>
-                <span style={{ ...type.mono, color: color.primary }}>{param.key}</span>
-                <span style={type.mono}>{param.value}</span>
+                <span style={{ ...t.mono, color: color.primary }}>{param.key}</span>
+                <span style={t.mono}>{param.value}</span>
               </div>
             ))}
           </div>

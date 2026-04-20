@@ -15,12 +15,12 @@ export function createModel(rootType = 'management') {
   }
 }
 
-// Get entity by id
+// Get entity by id (used by future server/query layer)
 export function getEntity(model, id) {
   return model.entities[id] || null
 }
 
-// Get children ids
+// Get children ids (used by future server/query layer)
 export function getChildren(model, id) {
   return model.children[id] || []
 }

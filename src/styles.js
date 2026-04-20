@@ -1,6 +1,7 @@
 // --- Fonts ---
 export const FONT_PRIMARY = "'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif"
 export const FONT_MONO = "'JetBrains Mono', 'IBM Plex Mono', monospace"
+export const FONT_DYSLEXIA = "'Lexend', 'Verdana', sans-serif"
 
 // --- Colors ---
 export const color = {

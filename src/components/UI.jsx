@@ -35,16 +35,3 @@ export function ContextMenu({ x, y, onAddChild, onAddOperation, onClose, accentC
     </div>
   )
 }
-
-export function BackButton({ onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{ position: 'fixed', top: 20, right: 20, zIndex: Z_INDEX.menu, ...ui.button }}
-      onMouseEnter={(e) => { e.target.style.color = color.secondary; e.target.style.borderLeftColor = color.muted }}
-      onMouseLeave={(e) => { e.target.style.color = color.primary; e.target.style.borderLeftColor = color.primary }}
-    >
-      Back
-    </button>
-  )
-}

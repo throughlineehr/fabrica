@@ -2,9 +2,11 @@ import { useEffect, useRef } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { CAMERA_INITIAL, CAMERA_LOOK_INITIAL, CAMERA_LERP_SPEED, CAMERA_SNAP_THRESHOLD } from '../constants'
+import { useAccessibility } from '../accessibility'
 
 export function CameraController({ target, controlsRef }) {
   const { camera } = useThree()
+  const { epilepsy } = useAccessibility()
   const posRef = useRef(new THREE.Vector3(...CAMERA_INITIAL))
   const lookRef = useRef(new THREE.Vector3(...CAMERA_LOOK_INITIAL))
   const upRef = useRef(new THREE.Vector3(0, 1, 0))
@@ -16,7 +18,7 @@ export function CameraController({ target, controlsRef }) {
       lookRef.current.copy(new THREE.Vector3(...target.lookAt))
       upRef.current.copy(new THREE.Vector3(...(target.up || [0, 1, 0])))
 
-      if (target.instant) {
+      if (target.instant || epilepsy) {
         camera.position.copy(posRef.current)
         camera.up.copy(upRef.current).normalize()
         if (controlsRef.current) {
@@ -28,7 +30,7 @@ export function CameraController({ target, controlsRef }) {
         animating.current = true
       }
     }
-  }, [target, camera])
+  }, [target, camera, epilepsy])
 
   useEffect(() => {
     const cancel = () => { animating.current = false }

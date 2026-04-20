@@ -4,7 +4,7 @@ import { IsoEllipse } from './IsoEllipse'
 
 const s1 = EXTERNAL_SYSTEMS.s1
 
-export function OperationNode({ x = 0, layer = 0, nodeId, onDoubleClick, onSystemClick, onHover, dimmed, isPaneView = false }) {
+export function OperationNode({ x = 0, layer = 0, nodeId, onDoubleClick, onSystemClick, onHover, dimmed, highlighted, isPaneView = false }) {
   const handleDoubleClick = useCallback((e) => {
     e.stopPropagation()
     onDoubleClick(nodeId)
@@ -34,6 +34,7 @@ export function OperationNode({ x = 0, layer = 0, nodeId, onDoubleClick, onSyste
       onPointerOver={dimmed ? undefined : handlePointerOver}
       onPointerOut={dimmed ? undefined : handlePointerOut}
       dimmed={dimmed}
+      highlighted={highlighted}
     />
   )
 }

@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
-import { ELLIPSE_RADIUS, OPACITY, toWorld } from '../constants'
+import { ELLIPSE_RADIUS, toWorld } from '../constants'
+import { useNodeOpacity } from '../hooks/useNodeOpacity'
 
 const SEGMENTS = 32
 
@@ -14,8 +15,9 @@ function ellipsePoints(r, segments) {
   return pts
 }
 
-export function IsoEllipse({ color, strokeColor, coords, onContextMenu, onDoubleClick, onClick, onPointerOver, onPointerOut, dimmed }) {
+export function IsoEllipse({ color, strokeColor, coords, onContextMenu, onDoubleClick, onClick, onPointerOver, onPointerOut, dimmed, highlighted }) {
   const pos = toWorld(...coords)
+  const [fillOp, strokeOp] = useNodeOpacity(dimmed, highlighted)
 
   const geometry = useMemo(() => {
     const shape = new THREE.Shape()
@@ -34,14 +36,14 @@ export function IsoEllipse({ color, strokeColor, coords, onContextMenu, onDouble
   return (
     <group position={pos} rotation={[-Math.PI / 2, 0, 0]}>
       <mesh geometry={geometry} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onClick={onClick} onPointerOver={onPointerOver} onPointerOut={onPointerOut}>
-        <meshBasicMaterial color={color} transparent opacity={dimmed ? OPACITY.fillDimmed : OPACITY.fillNormal} side={2} />
+        <meshBasicMaterial color={color} transparent opacity={fillOp} side={2} />
       </mesh>
       <Line
         points={outlinePoints}
         color={strokeColor}
         lineWidth={3}
         transparent
-        opacity={dimmed ? OPACITY.strokeDimmed : OPACITY.strokeNormal}
+        opacity={strokeOp}
       />
     </group>
   )

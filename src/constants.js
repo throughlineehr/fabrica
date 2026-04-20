@@ -41,8 +41,10 @@ export const CAMERA_SNAP_THRESHOLD = 0.05
 export const OPACITY = {
   fillNormal: 0.45,
   fillDimmed: 0.08,
+  fillHighlighted: 0.7,
   strokeNormal: 1,
   strokeDimmed: 0.15,
+  strokeHighlighted: 1,
   outlineDimmed: 0.1,
   connectionDimmed: 0.1,
 }
@@ -55,11 +57,19 @@ export const TRANSITION = {
   cssDuration: '0.4s',
 }
 
+// --- Tree ---
+export const MAX_TREE_DEPTH = 20
+
 // --- Geometry ---
 export const ELLIPSE_RADIUS = SQUARE_SIZE * 0.4
+export const TRIANGLE_SIZE_RATIO = 0.55
 export const ROUNDED_RECT_RADIUS = 0.2
 export const ROUNDED_RECT_STROKE = 0.06
 export const CONNECTION_DOT_RADIUS = 0.03
+
+// --- Accessibility Scaling ---
+export const FONT_VISIBILITY_SCALE = 0.4
+export const FONT_VISIBILITY_WEIGHT_BOOST = 200
 
 // --- Z-Index ---
 export const Z_INDEX = {

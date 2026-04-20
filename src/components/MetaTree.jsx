@@ -1,5 +1,6 @@
 import { SYSTEMS, EXTERNAL_SYSTEMS, S2_Y_OFFSET } from '../constants'
 import { containsNode, nodeHasS2 } from '../tree'
+import { useAccessibility } from '../accessibility'
 import { MetaUnit } from './MetaUnit'
 import { OperationNode } from './OperationNode'
 import { Connection } from './Connection'
@@ -8,10 +9,12 @@ export function MetaTree({ node, onContextMenu, onDoubleClick, onSystemClick, on
   const isPane = paneId != null
   const isPaneTarget = paneId === node.id
   const onPanePath = isPane && containsNode(node, paneId)
-  const dimmed = !isPane && highlightId != null && highlightId !== node.id
+  const { epilepsy } = useAccessibility()
+  const dimmed = !epilepsy && !isPane && highlightId != null && highlightId !== node.id
   const isOperation = node.type === 'operation'
   const directOperation = node.children.find(c => c.type === 'operation')
   const hasS2 = !isOperation && nodeHasS2(node)
+  const highlighted = highlightId != null && highlightId === node.id
 
   // Children that have their own S2s (management with S2s, NOT direct operations — those share parent's S2)
   const s2Children = node.children.filter(c => c.type !== 'operation' && nodeHasS2(c))
@@ -23,8 +26,8 @@ export function MetaTree({ node, onContextMenu, onDoubleClick, onSystemClick, on
     <group>
       {(!isPane || isPaneTarget) && (
         isOperation
-          ? <OperationNode x={node.x} layer={node.layer} nodeId={node.id} onDoubleClick={onDoubleClick} onSystemClick={isPaneTarget ? onSystemClick : undefined} onHover={onHover} dimmed={dimmed} isPaneView={isPaneTarget} />
-          : <MetaUnit x={node.x} layer={node.layer} nodeId={node.id} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onSystemClick={isPaneTarget ? onSystemClick : undefined} onHover={onHover} dimmed={dimmed} hasS2={hasS2} isPaneView={isPaneTarget} />
+          ? <OperationNode x={node.x} layer={node.layer} nodeId={node.id} onDoubleClick={onDoubleClick} onSystemClick={isPaneTarget ? onSystemClick : undefined} onHover={onHover} dimmed={dimmed} highlighted={highlighted} isPaneView={isPaneTarget} />
+          : <MetaUnit x={node.x} layer={node.layer} nodeId={node.id} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onSystemClick={isPaneTarget ? onSystemClick : undefined} onHover={onHover} dimmed={dimmed} highlighted={highlighted} hasS2={hasS2} isPaneView={isPaneTarget} />
       )}
 
       {/* Operation connects up to its management's S2 */}

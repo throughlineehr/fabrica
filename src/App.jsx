@@ -9,11 +9,14 @@ import {
 import { createModel, addNode, canAddManagement, canAddOperation, findNode, buildRenderTree, getTreeBounds } from './tree'
 import { CameraController } from './components/CameraController'
 import { MetaTree } from './components/MetaTree'
-import { ContextMenu, BackButton } from './components/UI'
+import { ContextMenu } from './components/UI'
 import { HUD } from './components/HUD'
 import { SystemPage } from './components/SystemPage'
+import { TabSystem } from './components/TabSystem'
+import { useAccessibility } from './accessibility'
 
 function App() {
+  const { epilepsy } = useAccessibility()
   const [model, setModel] = useState(() => createModel('management'))
   const [menu, setMenu] = useState(null)
   const [focusedId, setFocusedId] = useState(null)
@@ -92,18 +95,23 @@ function App() {
       lookAt: pos, up: [0, 0, -1],
     })
 
-    setTransitioning(true)
     setSystemView({ nodeId, systemKey })
-    setSystemPageOpacity(0)
 
-    setTimeout(() => {
+    if (epilepsy) {
       setCanvasOpacity(0)
       setSystemPageOpacity(1)
-    }, TRANSITION.zoomIn)
-    setTimeout(() => {
-      setTransitioning(false)
-    }, TRANSITION.fadeComplete)
-  }, [tree, transitioning])
+    } else {
+      setTransitioning(true)
+      setSystemPageOpacity(0)
+      setTimeout(() => {
+        setCanvasOpacity(0)
+        setSystemPageOpacity(1)
+      }, TRANSITION.zoomIn)
+      setTimeout(() => {
+        setTransitioning(false)
+      }, TRANSITION.fadeComplete)
+    }
+  }, [tree, transitioning, epilepsy])
 
   const handleSystemBack = useCallback(() => {
     const { nodeId, systemKey } = systemView
@@ -116,23 +124,34 @@ function App() {
       lookAt: pos, up: [0, 0, -1], instant: true,
     })
 
-    setTransitioning(true)
-    setCanvasOpacity(1)
-
-    requestAnimationFrame(() => {
+    if (epilepsy) {
+      setCanvasOpacity(1)
       setSystemPageOpacity(0)
+      setSystemView(null)
+      const center = toWorld(node.x, getNodeCenterY(node), node.layer)
+      setCameraTarget({
+        position: [center[0], center[1] + PANE_DISTANCE, center[2]],
+        lookAt: center, up: [0, 0, -1], instant: true,
+      })
+    } else {
+      setTransitioning(true)
+      setCanvasOpacity(1)
 
-      setTimeout(() => {
-        setSystemView(null)
-        const center = toWorld(node.x, getNodeCenterY(node), node.layer)
-        setCameraTarget({
-          position: [center[0], center[1] + PANE_DISTANCE, center[2]],
-          lookAt: center, up: [0, 0, -1],
-        })
-        setTimeout(() => setTransitioning(false), TRANSITION.fadeBack)
-      }, TRANSITION.fadeBack)
-    })
-  }, [systemView, tree])
+      requestAnimationFrame(() => {
+        setSystemPageOpacity(0)
+
+        setTimeout(() => {
+          setSystemView(null)
+          const center = toWorld(node.x, getNodeCenterY(node), node.layer)
+          setCameraTarget({
+            position: [center[0], center[1] + PANE_DISTANCE, center[2]],
+            lookAt: center, up: [0, 0, -1],
+          })
+          setTimeout(() => setTransitioning(false), TRANSITION.fadeBack)
+        }, TRANSITION.fadeBack)
+      })
+    }
+  }, [systemView, tree, epilepsy])
 
   const handleBack = useCallback(() => {
     if (paneId != null) {
@@ -167,7 +186,9 @@ function App() {
         opacity: canvasOpacity,
         transition: `opacity ${TRANSITION.cssDuration} ease`,
       }}>
-        <Canvas camera={{ fov: CAMERA_FOV, near: CAMERA_NEAR, far: CAMERA_FAR, position: CAMERA_INITIAL }}>
+        <Canvas camera={{ fov: CAMERA_FOV, near: CAMERA_NEAR, far: CAMERA_FAR, position: CAMERA_INITIAL }} onPointerMissed={(e) => {
+          if (e.detail === 2 && (focusedId != null || paneId != null)) handleBack()
+        }}>
           <CameraController target={cameraTarget} controlsRef={controlsRef} />
           <OrbitControls ref={controlsRef} target={CAMERA_LOOK_INITIAL} enabled={!transitioning && focusedId == null && paneId == null} />
           <ambientLight intensity={0.5} />
@@ -187,10 +208,11 @@ function App() {
         </div>
       )}
 
+      <TabSystem visible={!transitioning && !systemView} />
+
       {!transitioning && !systemView && (
         <>
-          <HUD node={activeNode} mode={hudMode} />
-          {(focusedId != null || paneId != null) && <BackButton onClick={handleBack} />}
+          <HUD node={activeNode} mode={hudMode} onBack={handleBack} />
           {menu && (
             <ContextMenu
               x={menu.x} y={menu.y}

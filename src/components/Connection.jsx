@@ -2,12 +2,21 @@ import { useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { OPACITY, CONNECTION_DOT_RADIUS, toWorld } from '../constants'
+import { useAccessibility } from '../accessibility'
+
+function useConnectionOpacity(dimmed) {
+  const { epilepsy } = useAccessibility()
+  if (epilepsy) return 1
+  return dimmed ? OPACITY.connectionDimmed : 1
+}
 
 function StraightConnection({ start, end, color, dimmed }) {
-  return <Line points={[start, end]} color={color} lineWidth={1.5} transparent opacity={dimmed ? OPACITY.connectionDimmed : 1} />
+  const op = useConnectionOpacity(dimmed)
+  return <Line points={[start, end]} color={color} lineWidth={1.5} transparent opacity={op} />
 }
 
 function CurvedConnection({ start, end, color, dimmed }) {
+  const op = useConnectionOpacity(dimmed)
   const points = useMemo(() => {
     const midY = (start[1] + end[1]) / 2
     const curve = new THREE.CubicBezierCurve3(
@@ -18,14 +27,16 @@ function CurvedConnection({ start, end, color, dimmed }) {
     )
     return curve.getPoints(24).map(p => [p.x, p.y, p.z])
   }, [start, end])
-  return <Line points={points} color={color} lineWidth={1.5} transparent opacity={dimmed ? OPACITY.connectionDimmed : 1} />
+  return <Line points={points} color={color} lineWidth={1.5} transparent opacity={op} />
 }
 
 function DashedConnection({ start, end, color, dimmed }) {
-  return <Line points={[start, end]} color={color} lineWidth={1} transparent opacity={dimmed ? OPACITY.connectionDimmed : 0.6} dashed dashSize={0.08} gapSize={0.06} />
+  const op = useConnectionOpacity(dimmed)
+  return <Line points={[start, end]} color={color} lineWidth={1} transparent opacity={Math.min(op, 0.6)} dashed dashSize={0.08} gapSize={0.06} />
 }
 
 function ElbowConnection({ start, end, color: c, dimmed }) {
+  const op = useConnectionOpacity(dimmed)
   const midY = (start[1] + end[1]) / 2
   const points = [
     start,
@@ -33,7 +44,6 @@ function ElbowConnection({ start, end, color: c, dimmed }) {
     [end[0], midY, end[2]],
     end,
   ]
-  const op = dimmed ? OPACITY.connectionDimmed : 1
   return (
     <group>
       <Line points={points} color={c} lineWidth={1.5} transparent opacity={op} />
@@ -90,7 +100,7 @@ function zigzagBetween(a, b, perpX, perpY, perpZ) {
 
 // Elbow routing with zigzag attenuator on the horizontal segment
 function AttenuatorConnection({ start, end, color: c, dimmed }) {
-  const op = dimmed ? OPACITY.connectionDimmed : 1
+  const op = useConnectionOpacity(dimmed)
   const points = useMemo(() => {
     const midY = (start[1] + end[1]) / 2
     const corner1 = [start[0], midY, start[2]]

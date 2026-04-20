@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
 import { OPACITY, ROUNDED_RECT_STROKE } from '../constants'
+import { useAccessibility } from '../accessibility'
 
 function roundedRectShape(w, h, r) {
   const shape = new THREE.Shape()
@@ -32,6 +33,7 @@ export function RoundedRectFill({ width, height, radius, color = '#fff', dimmed 
 }
 
 export function RoundedRectOutline({ width, height, radius, color = '#666', dimmed, strokeWidth = ROUNDED_RECT_STROKE }) {
+  const { epilepsy } = useAccessibility()
   const geometry = useMemo(() => {
     const outer = roundedRectShape(width, height, radius)
     const inner = roundedRectShape(width - strokeWidth * 2, height - strokeWidth * 2, Math.max(0, radius - strokeWidth))
@@ -39,9 +41,11 @@ export function RoundedRectOutline({ width, height, radius, color = '#666', dimm
     return new THREE.ShapeGeometry(outer, 32)
   }, [width, height, radius, strokeWidth])
 
+  const opacity = epilepsy ? OPACITY.strokeNormal : (dimmed ? OPACITY.outlineDimmed : OPACITY.strokeNormal)
+
   return (
     <mesh geometry={geometry}>
-      <meshBasicMaterial color={color} transparent opacity={dimmed ? OPACITY.outlineDimmed : OPACITY.strokeNormal} side={2} depthWrite={false} />
+      <meshBasicMaterial color={color} transparent opacity={opacity} side={2} depthWrite={false} />
     </mesh>
   )
 }
