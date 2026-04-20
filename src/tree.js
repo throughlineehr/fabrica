@@ -179,6 +179,62 @@ export function nodeHasS2(node) {
   return node.children.some(c => nodeHasS2(c))
 }
 
+// --- Navigation helpers (for keyboard traversal) ---
+
+// Find the parent of a node in the render tree
+export function findParent(root, targetId) {
+  if (root.id === targetId) return null
+  for (const child of root.children) {
+    if (child.id === targetId) return root
+    const found = findParent(child, targetId)
+    if (found) return found
+  }
+  return null
+}
+
+// Get siblings of a node (returns array including the node itself)
+export function getSiblings(root, nodeId) {
+  const parent = findParent(root, nodeId)
+  return parent ? parent.children : [root]
+}
+
+// Get the index of a node among its siblings
+export function getSiblingIndex(root, nodeId) {
+  const siblings = getSiblings(root, nodeId)
+  return siblings.findIndex(s => s.id === nodeId)
+}
+
+// Navigate: returns the id of the next node in the given direction
+// up/down = prev/next sibling, left = parent, right = first child
+export function navigateTree(root, currentId, direction) {
+  if (!currentId) return root.id
+
+  const siblings = getSiblings(root, currentId)
+  const idx = siblings.findIndex(s => s.id === currentId)
+  const current = findNode(root, currentId)
+
+  switch (direction) {
+    case 'up': // previous sibling
+      return idx > 0 ? siblings[idx - 1].id : currentId
+    case 'down': // next sibling
+      return idx < siblings.length - 1 ? siblings[idx + 1].id : currentId
+    case 'left': { // parent
+      const parent = findParent(root, currentId)
+      return parent ? parent.id : currentId
+    }
+    case 'right': // first child
+      return current && current.children.length > 0 ? current.children[0].id : currentId
+    default:
+      return currentId
+  }
+}
+
+// Get the last node in the tree (deepest rightmost)
+export function getLastNode(node) {
+  if (node.children.length === 0) return node
+  return getLastNode(node.children[node.children.length - 1])
+}
+
 export function getTreeBounds(node) {
   const pos = toWorld(node.x, 1, node.layer)
   let minX = pos[0], maxX = pos[0], minY = pos[1], maxY = pos[1], minZ = pos[2], maxZ = pos[2]

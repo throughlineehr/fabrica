@@ -6,7 +6,7 @@ import {
   CAMERA_INITIAL, CAMERA_LOOK_INITIAL, CAMERA_FOV, CAMERA_NEAR, CAMERA_FAR,
   TRANSITION, Z_INDEX, getNodeCenterY, getSystemPanePosition,
 } from './constants'
-import { createModel, addNode, canAddManagement, canAddOperation, findNode, buildRenderTree, getTreeBounds } from './tree'
+import { createModel, addNode, canAddManagement, canAddOperation, findNode, buildRenderTree, getTreeBounds, navigateTree, getLastNode } from './tree'
 import { CameraController } from './components/CameraController'
 import { MetaTree } from './components/MetaTree'
 import { ContextMenu } from './components/UI'
@@ -22,6 +22,7 @@ function App() {
   const [focusedId, setFocusedId] = useState(null)
   const [paneId, setPaneId] = useState(null)
   const [hoveredId, setHoveredId] = useState(null)
+  const [keySelectedId, setKeySelectedId] = useState(null)
   const [cameraTarget, setCameraTarget] = useState(null)
   const controlsRef = useRef()
 
@@ -34,8 +35,8 @@ function App() {
   // Derive render tree from model
   const tree = useMemo(() => buildRenderTree(model), [model])
 
-  const highlightId = focusedId ?? hoveredId
-  const activeId = hoveredId ?? focusedId
+  const highlightId = focusedId ?? keySelectedId ?? hoveredId
+  const activeId = keySelectedId ?? hoveredId ?? focusedId
   const activeNode = activeId != null ? findNode(tree, activeId) : null
   const hudMode = paneId != null ? 'pane' : focusedId != null ? 'focused' : hoveredId != null ? 'hovered' : 'default'
 
@@ -179,13 +180,72 @@ function App() {
     }
   }, [tree, paneId])
 
+  const handleCanvasKeyDown = useCallback((e) => {
+    if (transitioning || systemView) return
+
+    const dirMap = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' }
+    const dir = dirMap[e.key]
+
+    if (dir) {
+      e.preventDefault()
+      const currentId = keySelectedId ?? focusedId ?? tree.id
+      const nextId = navigateTree(tree, currentId, dir)
+      if (nextId !== currentId) {
+        setKeySelectedId(nextId)
+      }
+      return
+    }
+
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      const targetId = keySelectedId ?? focusedId
+      if (targetId) {
+        handleDoubleClick(targetId)
+        setKeySelectedId(null)
+      }
+      return
+    }
+
+    if (e.key === 'Home') {
+      e.preventDefault()
+      setKeySelectedId(tree.id)
+      return
+    }
+
+    if (e.key === 'End') {
+      e.preventDefault()
+      setKeySelectedId(getLastNode(tree).id)
+      return
+    }
+
+    if (e.key === 'Escape') {
+      if (keySelectedId) {
+        setKeySelectedId(null)
+        return
+      }
+      // Back navigation handled by HUD's escape handler
+      return
+    }
+
+    if (e.key === '?') {
+      // TODO: keyboard shortcuts overlay
+      return
+    }
+  }, [tree, keySelectedId, focusedId, transitioning, systemView, handleDoubleClick])
+
+  // Clear keyboard selection when mouse takes over
+  const handleMouseMove = useCallback(() => {
+    if (keySelectedId) setKeySelectedId(null)
+  }, [keySelectedId])
+
   return (
-    <div style={{ width: '100vw', height: '100vh' }} onContextMenu={(e) => e.preventDefault()}>
+    <div style={{ width: '100vw', height: '100vh' }} onContextMenu={(e) => e.preventDefault()} onMouseMove={handleMouseMove}>
       <div
         role="application"
         aria-label="3D viable system model"
         aria-describedby="canvas-instructions"
         tabIndex={0}
+        onKeyDown={handleCanvasKeyDown}
         style={{
           position: 'absolute', inset: 0,
           opacity: canvasOpacity,
@@ -193,8 +253,10 @@ function App() {
         }}
       >
         <p id="canvas-instructions" className="sr-only">
-          Interactive 3D knowledge graph. Double-click a unit to focus it.
-          Right-click for actions. Double-click empty space to go back.
+          Interactive 3D viable system model. Use arrow keys to navigate between nodes.
+          Enter or Space to activate the selected node. Escape to clear selection or go back.
+          Home to jump to root, End to jump to last node.
+          Double-click a unit to focus, right-click for actions.
           A tree view of the same content is available in the Explorer panel (press E).
         </p>
         <div role="status" aria-live="polite" className="sr-only">

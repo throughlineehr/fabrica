@@ -34,6 +34,9 @@ export default {
     rightClickActions: 'Right-click for actions',
     doubleClickDetail: 'Double-click for detail view',
     doubleClickEmpty: 'Double-click empty to go back',
+    arrowKeysNavigate: 'Arrow keys to navigate',
+    enterToActivate: 'Enter to activate',
+    homeForRoot: 'Home for root node',
     doubleClickSystem: 'Double-click system to open',
   },
   menu: {
