@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Eye, EyeOff, Filter, FolderTree, Wrench, Settings, X } from 'lucide-react'
+import { Eye, EyeOff, Filter, FolderTree, Wrench, Settings, X, ChevronRight, ChevronDown } from 'lucide-react'
 import { color } from '../styles'
 import { Z_INDEX } from '../constants'
 import { useAccessibility } from '../accessibility'
 import { useA11yType } from '../hooks/useA11yType'
+import { getPatternDataUrl } from '../hooks/usePatternTexture'
+import { useTranslation, LANGUAGES } from '../i18n/index.jsx'
 
 const MIN_WIDTH = 240
 const DEFAULT_WIDTH = 300
@@ -12,9 +14,9 @@ const ICON_SIZE = 16
 const ICON_STROKE = 1.5
 
 const SIDE_TABS = [
-  { key: 'S', label: 'Settings', icon: Settings },
-  { key: 'E', label: 'Explorer', icon: FolderTree },
-  { key: 'T', label: 'Tools', icon: Wrench },
+  { key: 'S', labelKey: 'tabs.settings', icon: Settings },
+  { key: 'E', labelKey: 'tabs.explorer', icon: FolderTree },
+  { key: 'T', labelKey: 'tabs.tools', icon: Wrench },
 ]
 
 function KeyLabel({ children }) {
@@ -28,7 +30,8 @@ function KeyLabel({ children }) {
   )
 }
 
-function FilterBar({ open, onClose, t }) {
+function FilterBar({ open, onClose, t, tr }) {
+  const { colorBlind } = useAccessibility()
   if (!open) return null
   return (
     <div style={{
@@ -45,22 +48,26 @@ function FilterBar({ open, onClose, t }) {
     }}>
       <Filter size={ICON_SIZE} strokeWidth={ICON_STROKE} color={color.primary} style={{ marginRight: 4 }} />
       {[
-        { label: 'S5', color: color.s5.fill },
-        { label: 'S4', color: color.s4.fill },
-        { label: 'S3', color: color.s3.fill },
-        { label: 'S2', color: color.s2.fill },
-        { label: 'S1', color: color.s1.fill },
+        { key: 's5', label: 'S5', c: color.s5.fill },
+        { key: 's4', label: 'S4', c: color.s4.fill },
+        { key: 's3', label: 'S3', c: color.s3.fill },
+        { key: 's2', label: 'S2', c: color.s2.fill },
+        { key: 's1', label: 'S1', c: color.s1.fill },
       ].map((sys) => (
         <label key={sys.label} style={{
           display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
           ...t.mono, color: color.primary,
         }}>
           <span style={{
-            width: 14, height: 14,
-            border: `2px solid ${sys.color}`,
+            width: colorBlind ? 22 : 14,
+            height: colorBlind ? 22 : 14,
+            border: `2px solid ${sys.c}`,
             borderRadius: 2,
-            background: sys.color,
-            opacity: 0.6,
+            background: colorBlind
+              ? `url(${getPatternDataUrl(sys.key, sys.c)})`
+              : sys.c,
+            backgroundSize: colorBlind ? '8px 8px' : undefined,
+            opacity: 0.8,
           }} />
           {sys.label}
         </label>
@@ -80,16 +87,20 @@ function FilterBar({ open, onClose, t }) {
 function Toggle({ label, value, onChange, t }) {
   return (
     <button
+      role="switch"
+      aria-checked={value}
+      aria-label={label}
       onClick={onChange}
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         width: '100%', padding: '8px 0',
+        minHeight: 44,
         background: 'none', border: 'none', cursor: 'pointer',
         textAlign: 'left',
       }}
     >
       <span style={{ ...t.mono, color: color.primary }}>{label}</span>
-      <span style={{
+      <span aria-hidden="true" style={{
         width: 32, height: 16, borderRadius: 8,
         background: value ? color.primary : color.border,
         position: 'relative',
@@ -106,15 +117,19 @@ function Toggle({ label, value, onChange, t }) {
   )
 }
 
+let _sliderId = 0
 function Slider({ label, value, onChange, min = 0, max = 1, step = 0.1, t }) {
+  const id = useState(() => `slider-${_sliderId++}`)[0]
   return (
-    <div style={{ padding: '8px 0' }}>
+    <div style={{ padding: '8px 0', minHeight: 44 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-        <span style={{ ...t.mono, color: color.primary }}>{label}</span>
-        <span style={{ ...t.mono, color: color.muted }}>{Math.round(value * 100)}%</span>
+        <label htmlFor={id} style={{ ...t.mono, color: color.primary }}>{label}</label>
+        <span aria-hidden="true" style={{ ...t.mono, color: color.muted }}>{Math.round(value * 100)}%</span>
       </div>
       <input
+        id={id}
         type="range" min={min} max={max} step={step} value={value}
+        aria-valuetext={`${Math.round(value * 100)}%`}
         onChange={(e) => onChange(parseFloat(e.target.value))}
         style={{ width: '100%', accentColor: color.primary }}
       />
@@ -122,59 +137,115 @@ function Slider({ label, value, onChange, min = 0, max = 1, step = 0.1, t }) {
   )
 }
 
-function SettingsContent({ t }) {
-  const { epilepsy, toggleEpilepsy, fontVisibility, setFontVisibility, dyslexia, toggleDyslexia } = useAccessibility()
+let _accordionId = 0
+function AccordionSection({ label, children, t, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen)
+  const ids = useState(() => { const n = _accordionId++; return { btn: `acc-btn-${n}`, panel: `acc-panel-${n}` } })[0]
+  const Icon = open ? ChevronDown : ChevronRight
   return (
-    <div style={{ padding: '16px' }}>
-      <div style={{ marginBottom: 20 }}>
-        <p style={{ ...t.label, margin: '0 0 8px' }}>ACCESSIBILITY</p>
-        <Toggle label="Epilepsy mode" value={epilepsy} onChange={toggleEpilepsy} t={t} />
-        <div style={{ borderTop: `1px solid ${color.borderLight}` }}>
-          <Slider label="Font visibility" value={fontVisibility} onChange={setFontVisibility} t={t} />
-        </div>
-        <div style={{ borderTop: `1px solid ${color.borderLight}` }}>
-          <Toggle label="Dyslexia font" value={dyslexia} onChange={toggleDyslexia} t={t} />
-        </div>
-        <div style={{ borderTop: `1px solid ${color.borderLight}` }}>
-          <Toggle label="Screen reader mode" value={false} onChange={() => {}} t={t} />
-        </div>
-      </div>
-      <div style={{ marginBottom: 20 }}>
-        <p style={{ ...t.label, margin: '0 0 8px' }}>DISPLAY</p>
-        <p style={{ ...t.mono, color: color.muted, margin: 0 }}>Not yet implemented</p>
-      </div>
-      <div>
-        <p style={{ ...t.label, margin: '0 0 8px' }}>ACCOUNT</p>
-        <p style={{ ...t.mono, color: color.muted, margin: 0 }}>Not yet implemented</p>
-      </div>
+    <div style={{ marginBottom: 4 }}>
+      <button
+        id={ids.btn}
+        aria-expanded={open}
+        aria-controls={ids.panel}
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6, width: '100%',
+          ...t.label, padding: '8px 0',
+          minHeight: 44,
+          background: 'none', border: 'none', borderBottom: `1px solid ${color.borderLight}`,
+          cursor: 'pointer', textAlign: 'start',
+        }}
+      >
+        <Icon size={12} strokeWidth={1.5} aria-hidden="true" />
+        {label}
+      </button>
+      {open && <div id={ids.panel} role="region" aria-labelledby={ids.btn} style={{ padding: '8px 0 12px' }}>{children}</div>}
     </div>
   )
 }
 
-function StubContent({ sections, t }) {
+function SettingsContent({ t, tr }) {
+  const { epilepsy, toggleEpilepsy, fontVisibility, setFontVisibility, dyslexia, toggleDyslexia, colorBlind, toggleColorBlind } = useAccessibility()
+  const { lang, setLang } = useTranslation()
+  return (
+    <div style={{ padding: '16px' }}>
+      <AccordionSection label={tr('settings.language')} t={t} defaultOpen={false}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {LANGUAGES.map((l) => (
+            <button
+              key={l.code}
+              onClick={() => setLang(l.code)}
+              style={{
+                ...t.mono,
+                color: lang === l.code ? color.primary : color.muted,
+                fontWeight: lang === l.code ? 500 : 400,
+                background: 'none', border: 'none',
+                borderLeft: `2px solid ${lang === l.code ? color.primary : 'transparent'}`,
+                paddingLeft: 8, paddingBlock: 4,
+                cursor: 'pointer', textAlign: 'start',
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              <span style={{ fontSize: 14 }}>{l.flag}</span>
+              {l.label}
+            </button>
+          ))}
+        </div>
+      </AccordionSection>
+
+      <AccordionSection label={tr('settings.accessibility')} t={t} defaultOpen={false}>
+        <Toggle label={tr('settings.epilepsyMode')} value={epilepsy} onChange={toggleEpilepsy} t={t} />
+        <div style={{ borderTop: `1px solid ${color.borderLight}` }}>
+          <Slider label={tr('settings.fontVisibility')} value={fontVisibility} onChange={setFontVisibility} t={t} />
+        </div>
+        <div style={{ borderTop: `1px solid ${color.borderLight}` }}>
+          <Toggle label={tr('settings.dyslexiaFont')} value={dyslexia} onChange={toggleDyslexia} t={t} />
+        </div>
+        <div style={{ borderTop: `1px solid ${color.borderLight}` }}>
+          <Toggle label={tr('settings.colorBlindMode')} value={colorBlind} onChange={toggleColorBlind} t={t} />
+        </div>
+        <div style={{ borderTop: `1px solid ${color.borderLight}` }}>
+          <Toggle label={tr('settings.screenReader')} value={false} onChange={() => {}} t={t} />
+        </div>
+      </AccordionSection>
+
+      <AccordionSection label={tr('settings.display')} t={t}>
+        <p style={{ ...t.mono, color: color.muted, margin: 0 }}>{tr('settings.notImplemented')}</p>
+      </AccordionSection>
+
+      <AccordionSection label={tr('settings.account')} t={t}>
+        <p style={{ ...t.mono, color: color.muted, margin: 0 }}>{tr('settings.notImplemented')}</p>
+      </AccordionSection>
+    </div>
+  )
+}
+
+function StubContent({ sections, t, tr }) {
   return (
     <div style={{ padding: '16px' }}>
       {sections.map((s, i) => (
         <div key={i} style={{ marginBottom: 20 }}>
           <p style={{ ...t.label, margin: '0 0 8px' }}>{s.toUpperCase()}</p>
-          <p style={{ ...t.mono, color: color.muted, margin: 0 }}>Not yet implemented</p>
+          <p style={{ ...t.mono, color: color.muted, margin: 0 }}>{tr('settings.notImplemented')}</p>
         </div>
       ))}
     </div>
   )
 }
 
-function PanelContent({ tabKey, t }) {
-  if (tabKey === 'S') return <SettingsContent t={t} />
+function PanelContent({ tabKey, t, tr }) {
+  if (tabKey === 'S') return <SettingsContent t={t} tr={tr} />
   const stubs = {
     E: ['Tree'],
     T: ['Node', 'Listen', 'Users'],
   }
-  return <StubContent sections={stubs[tabKey] || []} t={t} />
+  return <StubContent sections={stubs[tabKey] || []} t={t} tr={tr} />
 }
 
 export function TabSystem({ visible = true, onPanelWidthChange }) {
   const t = useA11yType()
+  const { t: tr } = useTranslation()
   const [activeTab, setActiveTab] = useState(null)
   const [filterOpen, setFilterOpen] = useState(false)
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH)
@@ -279,10 +350,10 @@ export function TabSystem({ visible = true, onPanelWidthChange }) {
               onMouseLeave={(e) => e.currentTarget.style.opacity = 0.5}
             >
               <Filter size={ICON_SIZE} strokeWidth={ICON_STROKE} />
-              <span style={t.monoBold}><KeyLabel>Filter</KeyLabel></span>
+              <span style={t.monoBold}><KeyLabel>{tr('tabs.filter')}</KeyLabel></span>
             </button>
           )}
-          <FilterBar open={filterOpen} onClose={() => setFilterOpen(false)} t={t} />
+          <FilterBar open={filterOpen} onClose={() => setFilterOpen(false)} t={t} tr={tr} />
         </>
       )}
 
@@ -302,6 +373,8 @@ export function TabSystem({ visible = true, onPanelWidthChange }) {
             return (
               <button
                 key={tab.key}
+                aria-pressed={isActive}
+                aria-label={tr(tab.labelKey)}
                 onClick={() => toggleSide(tab.key)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6,
@@ -311,6 +384,7 @@ export function TabSystem({ visible = true, onPanelWidthChange }) {
                   border: 'none',
                   borderLeft: `2px solid ${isActive ? color.primary : 'transparent'}`,
                   padding: '8px 12px',
+                  minHeight: 44,
                   cursor: 'pointer',
                   textAlign: 'left',
                   transition: 'color 0.15s',
@@ -320,7 +394,7 @@ export function TabSystem({ visible = true, onPanelWidthChange }) {
                 onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = isActive ? color.primary : color.muted }}
               >
                 <Icon size={ICON_SIZE} strokeWidth={ICON_STROKE} />
-                <KeyLabel>{tab.label}</KeyLabel>
+                <KeyLabel>{tr(tab.labelKey)}</KeyLabel>
               </button>
             )
           })}
@@ -354,7 +428,7 @@ export function TabSystem({ visible = true, onPanelWidthChange }) {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {(() => { const Icon = SIDE_TABS.find(s => s.key === activeTab)?.icon; return Icon ? <Icon size={ICON_SIZE} strokeWidth={ICON_STROKE} /> : null })()}
-              <span style={t.h3}>{SIDE_TABS.find(s => s.key === activeTab)?.label}</span>
+              <span style={t.h3}>{tr(SIDE_TABS.find(s => s.key === activeTab)?.labelKey)}</span>
             </div>
             <button
               onClick={() => toggleSide(activeTab)}
@@ -366,7 +440,7 @@ export function TabSystem({ visible = true, onPanelWidthChange }) {
             ><X size={14} strokeWidth={ICON_STROKE} /></button>
           </div>
           <div style={{ flex: 1, overflow: 'auto' }}>
-            <PanelContent tabKey={activeTab} t={t} />
+            <PanelContent tabKey={activeTab} t={t} tr={tr} />
           </div>
         </div>
       )}

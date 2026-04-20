@@ -181,11 +181,27 @@ function App() {
 
   return (
     <div style={{ width: '100vw', height: '100vh' }} onContextMenu={(e) => e.preventDefault()}>
-      <div style={{
-        position: 'absolute', inset: 0,
-        opacity: canvasOpacity,
-        transition: `opacity ${TRANSITION.cssDuration} ease`,
-      }}>
+      <div
+        role="application"
+        aria-label="3D viable system model"
+        aria-describedby="canvas-instructions"
+        tabIndex={0}
+        style={{
+          position: 'absolute', inset: 0,
+          opacity: canvasOpacity,
+          transition: `opacity ${TRANSITION.cssDuration} ease`,
+        }}
+      >
+        <p id="canvas-instructions" className="sr-only">
+          Interactive 3D knowledge graph. Double-click a unit to focus it.
+          Right-click for actions. Double-click empty space to go back.
+          A tree view of the same content is available in the Explorer panel (press E).
+        </p>
+        <div role="status" aria-live="polite" className="sr-only">
+          {activeNode
+            ? `${activeNode.type === 'operation' ? 'Operation' : 'Unit'} ${activeNode.id?.slice(0, 5)}, layer ${activeNode.layer}, ${activeNode.children.length} children`
+            : ''}
+        </div>
         <Canvas camera={{ fov: CAMERA_FOV, near: CAMERA_NEAR, far: CAMERA_FAR, position: CAMERA_INITIAL }} onPointerMissed={(e) => {
           if (e.detail === 2 && (focusedId != null || paneId != null)) handleBack()
         }}>

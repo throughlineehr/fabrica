@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect } from 'react'
 
 const AccessibilityContext = createContext({
   epilepsy: false,
@@ -7,20 +7,43 @@ const AccessibilityContext = createContext({
   setFontVisibility: () => {},
   dyslexia: false,
   toggleDyslexia: () => {},
+  colorBlind: false,
+  toggleColorBlind: () => {},
 })
 
 export function AccessibilityProvider({ children }) {
-  const [epilepsy, setEpilepsy] = useState(false)
-  const [fontVisibility, setFontVisibility] = useState(0) // 0 = normal, 1 = max
+  // Default epilepsy mode from OS preference
+  const [userEpilepsyChoice, setUserEpilepsyChoice] = useState(null) // null = no explicit choice
+  const [osReducedMotion, setOsReducedMotion] = useState(false)
+  const [fontVisibility, setFontVisibility] = useState(0)
   const [dyslexia, setDyslexia] = useState(false)
-  const toggleEpilepsy = useCallback(() => setEpilepsy(p => !p), [])
+  const [colorBlind, setColorBlind] = useState(false)
+
+  // Listen to OS prefers-reduced-motion
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    setOsReducedMotion(mq.matches)
+    const handler = (e) => setOsReducedMotion(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  // User choice overrides OS preference
+  const epilepsy = userEpilepsyChoice !== null ? userEpilepsyChoice : osReducedMotion
+  const toggleEpilepsy = useCallback(() => setUserEpilepsyChoice(p => {
+    const current = p !== null ? p : osReducedMotion
+    return !current
+  }), [osReducedMotion])
+
   const toggleDyslexia = useCallback(() => setDyslexia(p => !p), [])
+  const toggleColorBlind = useCallback(() => setColorBlind(p => !p), [])
 
   return (
     <AccessibilityContext.Provider value={{
       epilepsy, toggleEpilepsy,
       fontVisibility, setFontVisibility,
       dyslexia, toggleDyslexia,
+      colorBlind, toggleColorBlind,
     }}>
       {children}
     </AccessibilityContext.Provider>

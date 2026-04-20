@@ -1,8 +1,11 @@
 import { useEffect } from 'react'
 import { ui, color } from '../styles'
 import { Z_INDEX } from '../constants'
+import { useTranslation } from '../i18n/index.jsx'
 
 export function ContextMenu({ x, y, onAddChild, onAddOperation, onClose, accentColor = color.metaUnit }) {
+  const { t: tr } = useTranslation()
+
   useEffect(() => {
     const handler = () => onClose()
     window.addEventListener('click', handler)
@@ -10,8 +13,8 @@ export function ContextMenu({ x, y, onAddChild, onAddOperation, onClose, accentC
   }, [onClose])
 
   const items = [
-    onAddChild && { label: 'Add management', action: onAddChild },
-    onAddOperation && { label: 'Add operation', action: onAddOperation },
+    onAddChild && { label: tr('menu.addManagement'), action: onAddChild },
+    onAddOperation && { label: tr('menu.addOperation'), action: onAddOperation },
   ].filter(Boolean)
 
   return (
@@ -20,7 +23,7 @@ export function ContextMenu({ x, y, onAddChild, onAddOperation, onClose, accentC
       ...ui.contextMenu.container,
       borderLeftColor: accentColor,
     }}>
-      <div style={ui.contextMenu.header}>Actions</div>
+      <div style={ui.contextMenu.header}>{tr('menu.actions')}</div>
       {items.map((item, i) => (
         <button
           key={i}

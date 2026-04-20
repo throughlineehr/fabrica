@@ -52,6 +52,7 @@ export function MetaUnit({ x = 0, layer = 0, nodeId, onContextMenu, onDoubleClic
           <IsoSquare
             key={sys.yOffset}
             coords={[x, sys.yOffset, layer]}
+            systemKey={key}
             color={sys.color}
             strokeColor={sys.strokeColor}
             onContextMenu={dimmed ? undefined : handleContextMenu}

@@ -1,19 +1,13 @@
 import { color, ui } from '../styles'
 import { SYSTEMS, EXTERNAL_SYSTEMS } from '../constants'
 import { useA11yType } from '../hooks/useA11yType'
-
-const systemNames = {
-  s5: 'System 5',
-  s4: 'System 4',
-  s3: 'System 3',
-  s2: 'System 2',
-  s1: 'System 1',
-}
+import { useTranslation } from '../i18n/index.jsx'
 
 export function SystemPage({ nodeId, systemKey, onBack }) {
   const t = useA11yType()
+  const { t: tr } = useTranslation()
   const sys = SYSTEMS[systemKey] || EXTERNAL_SYSTEMS[systemKey]
-  const name = systemNames[systemKey]
+  const name = tr(`systems.${systemKey}`)
 
   return (
     <div style={{
@@ -21,7 +15,6 @@ export function SystemPage({ nodeId, systemKey, onBack }) {
       background: color.white,
       display: 'flex', flexDirection: 'column',
     }}>
-      {/* Top bar */}
       <div style={{
         padding: '16px 24px',
         borderBottom: `1px solid ${color.border}`,
@@ -30,7 +23,7 @@ export function SystemPage({ nodeId, systemKey, onBack }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 12, height: 12, background: sys.color, border: `2px solid ${sys.strokeColor}`, borderRadius: 2 }} />
           <span style={t.h3}>{name}</span>
-          <span style={t.mono}>Unit {nodeId?.slice(0, 5)}</span>
+          <span style={t.mono}>{tr('nav.unit')} {nodeId?.slice(0, 5)}</span>
         </div>
         <button
           onClick={onBack}
@@ -38,44 +31,41 @@ export function SystemPage({ nodeId, systemKey, onBack }) {
           onMouseEnter={(e) => { e.target.style.color = color.secondary; e.target.style.borderLeftColor = color.muted }}
           onMouseLeave={(e) => { e.target.style.color = color.primary; e.target.style.borderLeftColor = color.primary }}
         >
-          Back
+          {tr('nav.esc')}
         </button>
       </div>
 
-      {/* Content area */}
       <div style={{ flex: 1, display: 'flex' }}>
-        {/* Left sidebar */}
         <div style={{
           width: 240, borderRight: `1px solid ${color.border}`,
           padding: '24px',
         }}>
-          <p style={{ ...t.label, margin: '0 0 12px' }}>CONFIGURATION</p>
+          <p style={{ ...t.label, margin: '0 0 12px' }}>{tr('systemPage.configuration')}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <p style={{ ...t.mono, color: color.primary, margin: 0 }}>Parameters</p>
-            <p style={{ ...t.mono, margin: 0 }}>Connections</p>
-            <p style={{ ...t.mono, margin: 0 }}>Constraints</p>
-            <p style={{ ...t.mono, margin: 0 }}>History</p>
+            <p style={{ ...t.mono, color: color.primary, margin: 0 }}>{tr('systemPage.parameters')}</p>
+            <p style={{ ...t.mono, margin: 0 }}>{tr('systemPage.connections')}</p>
+            <p style={{ ...t.mono, margin: 0 }}>{tr('systemPage.constraints')}</p>
+            <p style={{ ...t.mono, margin: 0 }}>{tr('systemPage.history')}</p>
           </div>
 
-          <p style={{ ...t.label, margin: '24px 0 12px' }}>DIAGNOSTICS</p>
+          <p style={{ ...t.label, margin: '24px 0 12px' }}>{tr('systemPage.diagnostics')}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <p style={{ ...t.mono, margin: 0 }}>State</p>
-            <p style={{ ...t.mono, margin: 0 }}>Logs</p>
-            <p style={{ ...t.mono, margin: 0 }}>Metrics</p>
+            <p style={{ ...t.mono, margin: 0 }}>{tr('systemPage.statePage')}</p>
+            <p style={{ ...t.mono, margin: 0 }}>{tr('systemPage.logs')}</p>
+            <p style={{ ...t.mono, margin: 0 }}>{tr('systemPage.metrics')}</p>
           </div>
         </div>
 
-        {/* Main content */}
         <div style={{ flex: 1, padding: '24px' }}>
-          <p style={{ ...t.label, margin: '0 0 8px' }}>PARAMETERS</p>
+          <p style={{ ...t.label, margin: '0 0 8px' }}>{tr('systemPage.parameters')}</p>
 
           <div style={{ borderTop: `1px solid ${color.border}` }}>
             {[
-              { key: 'threshold', value: '0.85', unit: '' },
-              { key: 'max_iterations', value: '1000', unit: '' },
-              { key: 'learning_rate', value: '0.001', unit: '' },
-              { key: 'batch_size', value: '32', unit: '' },
-              { key: 'dropout', value: '0.2', unit: '' },
+              { key: 'threshold', value: '0.85' },
+              { key: 'max_iterations', value: '1000' },
+              { key: 'learning_rate', value: '0.001' },
+              { key: 'batch_size', value: '32' },
+              { key: 'dropout', value: '0.2' },
             ].map((param) => (
               <div key={param.key} style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',

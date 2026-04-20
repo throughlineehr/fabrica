@@ -1,8 +1,10 @@
-import { useMemo } from 'react'
+import { useMemo, useRef, useEffect } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { ELLIPSE_RADIUS, toWorld } from '../constants'
 import { useNodeOpacity } from '../hooks/useNodeOpacity'
+import { usePatternTexture } from '../hooks/usePatternTexture'
+import { useAccessibility } from '../accessibility'
 
 const SEGMENTS = 32
 
@@ -15,9 +17,24 @@ function ellipsePoints(r, segments) {
   return pts
 }
 
-export function IsoEllipse({ color, strokeColor, coords, onContextMenu, onDoubleClick, onClick, onPointerOver, onPointerOut, dimmed, highlighted }) {
+export function IsoEllipse({ color, strokeColor, coords, systemKey = 's1', onContextMenu, onDoubleClick, onClick, onPointerOver, onPointerOut, dimmed, highlighted }) {
   const pos = toWorld(...coords)
   const [fillOp, strokeOp] = useNodeOpacity(dimmed, highlighted)
+  const { colorBlind } = useAccessibility()
+  const patternTex = usePatternTexture(systemKey, color, strokeColor, colorBlind)
+  const matRef = useRef()
+
+  useEffect(() => {
+    if (!matRef.current) return
+    if (patternTex) {
+      matRef.current.map = patternTex
+      matRef.current.color.set(0xffffff)
+    } else {
+      matRef.current.map = null
+      matRef.current.color.set(color)
+    }
+    matRef.current.needsUpdate = true
+  }, [patternTex, color])
 
   const geometry = useMemo(() => {
     const shape = new THREE.Shape()
@@ -36,7 +53,7 @@ export function IsoEllipse({ color, strokeColor, coords, onContextMenu, onDouble
   return (
     <group position={pos} rotation={[-Math.PI / 2, 0, 0]}>
       <mesh geometry={geometry} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onClick={onClick} onPointerOver={onPointerOver} onPointerOut={onPointerOut}>
-        <meshBasicMaterial color={color} transparent opacity={fillOp} side={2} />
+        <meshBasicMaterial ref={matRef} transparent opacity={fillOp} side={2} />
       </mesh>
       <Line
         points={outlinePoints}
