@@ -159,9 +159,12 @@ export function AgentPanel({ agentAPI }) {
     // Build system prompt with current model state
     const modelYaml = agentAPI ? agentAPI.read().yaml : ''
     const stateInfo = agentAPI ? JSON.stringify(agentAPI.getState()) : '{}'
+    const nodeList = agentAPI ? agentAPI.listNodes() : { nodes: [] }
+    const nodeTable = nodeList.nodes?.map(n => `${n.id} (${n.fullId}) ${n.type} children:${n.children}`).join('\n') || 'empty'
+    const rootFullId = nodeList.nodes?.find(n => n.id === nodeList.rootId)?.fullId || ''
     const voiceNote = speakEnabled ? '\n\nVOICE IS ON. Keep responses under 2 sentences. Be extremely concise. No lists. No code blocks. Just do it and confirm briefly.' : ''
 
-    const systemPrompt = `${AGENT_DSL}\n\nCURRENT MODEL STATE:\n${modelYaml}\n\nCURRENT VIEW STATE:\n${stateInfo}${voiceNote}\n\nEXECUTING COMMANDS: To execute a command, use this exact syntax on its own line:
+    const systemPrompt = `${AGENT_DSL}\n\nROOT NODE ID: ${rootFullId}\n\nALL NODES (use the FULL ID in parentheses for commands):\n${nodeTable}\n\nCURRENT VIEW STATE:\n${stateInfo}${voiceNote}\n\nCRITICAL: You MUST use the full UUID from the parentheses above, NOT short IDs or made-up names like "root" or "node-2". Example: if the root is listed as "a3f2b1c8 (a3f2b1c8-xxxx-xxxx-xxxx) management", use the full ID in the parentheses.\n\nEXECUTING COMMANDS: To execute a command, use this exact syntax on its own line:
 
 >>>addManagement("parentId")<<<
 >>>addOperation("parentId")<<<
@@ -237,20 +240,27 @@ The >>> and <<< delimiters are REQUIRED. Never use them for anything else. Use a
       try {
         const response = await callAI(userMsg)
         conversationRef.current.push({ role: 'user', content: userMsg })
-        conversationRef.current.push({ role: 'assistant', content: response })
 
         // Execute any commands in the response
         const cmdResults = executeAICommands(response)
 
-        // Show the response, and append command results if any
+        // Build result summary
         let displayText = response
+        let resultSummary = ''
         if (cmdResults.length > 0) {
-          const resultLines = cmdResults.map(r => `  ${r.cmd} → ${r.ok ? '✓' : '✗ ' + r.error}`)
-          displayText += '\n\n' + resultLines.join('\n')
+          const resultLines = cmdResults.map(r => {
+            const extra = r.nodeId ? ` (new: ${r.nodeId.slice(0, 8)})` : ''
+            return `  ${r.cmd} → ${r.ok ? '✓' + extra : '✗ ' + r.error}`
+          })
+          resultSummary = resultLines.join('\n')
+          displayText += '\n\n' + resultSummary
         }
 
+        // Feed results back into conversation so AI can use new IDs next turn
+        const assistantContent = response + (resultSummary ? '\n\n[Command results]\n' + resultSummary : '')
+        conversationRef.current.push({ role: 'assistant', content: assistantContent })
+
         setMessages(prev => [...prev, { role: 'agent', text: displayText }])
-        // Strip command syntax from voice output
         const stripCmd = new RegExp('>>>[^<]+' + '<<<', 'g')
         speak(response.replace(stripCmd, '').trim())
       } catch (err) {
