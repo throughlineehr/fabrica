@@ -19,7 +19,7 @@ const SIDE_TABS = [
 ]
 
 function KeyLabel({ children, shortcut }) {
-  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{children} <Keycap>{shortcut}</Keycap></span>
+  return <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}><span style={{ flex: 1 }}>{children}</span><Keycap>{shortcut}</Keycap></span>
 }
 
 function StubContent({ sections, t, tr }) {
@@ -35,17 +35,16 @@ function StubContent({ sections, t, tr }) {
   )
 }
 
-function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, canAddManagement, canAddOperation, onAddNode, onBack }) {
+function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onBack, onAnnounce }) {
   if (tabKey === 'S') return <SettingsPanel t={t} tr={tr} />
   if (tabKey === 'E' && tree) return (
     <ExplorerTree tree={tree} selectedId={selectedId} paneId={paneId} focusedId={focusedId}
-      onSelect={onNodeSelect} onActivate={onNodeActivate}
-      canAddManagement={canAddManagement} canAddOperation={canAddOperation} onAddNode={onAddNode} onBack={onBack} />
+      onSelect={onNodeSelect} onActivate={onNodeActivate} onAddNode={onAddNode} onBack={onBack} onAnnounce={onAnnounce} />
   )
   return <StubContent sections={tabKey === 'T' ? ['Node', 'Listen', 'Users'] : []} t={t} tr={tr} />
 }
 
-export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, canAddManagement, canAddOperation, onAddNode, onBack, requestOpenExplorer = false }) {
+export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onBack, onAnnounce, onExplorerClose, visibleSystems, onToggleSystem, requestOpenExplorer = false }) {
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const [activeTab, setActiveTab] = useState(null)
@@ -69,9 +68,10 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
     setActiveTab(prev => {
       const next = prev === key ? null : key
       onPanelWidthChange?.(next ? panelWidth : 0)
+      if (prev === 'E' && next !== 'E') onExplorerClose?.()
       return next
     })
-  }, [panelWidth, onPanelWidthChange])
+  }, [panelWidth, onPanelWidthChange, onExplorerClose])
 
   // Global keyboard shortcuts (capture phase)
   useEffect(() => {
@@ -164,7 +164,7 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
               <span style={t.monoBold}><KeyLabel shortcut="F">{tr('tabs.filter')}</KeyLabel></span>
             </button>
           )}
-          <FilterBar open={filterOpen} onClose={() => setFilterOpen(false)} t={t} tr={tr} />
+          <FilterBar open={filterOpen} onClose={() => setFilterOpen(false)} t={t} tr={tr} visibleSystems={visibleSystems} onToggleSystem={onToggleSystem} />
         </>
       )}
 
@@ -195,6 +195,7 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
                   border: 'none',
                   borderLeft: `2px solid ${isActive ? color.primary : 'transparent'}`,
                   padding: '8px 12px', minHeight: sizes.targetDefault,
+                  width: '100%',
                   cursor: 'pointer', textAlign: 'left',
                   transition: 'color 0.15s', whiteSpace: 'nowrap',
                 }}
@@ -242,7 +243,7 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
             <PanelContent tabKey={activeTab} t={t} tr={tr} tree={tree} selectedId={selectedId}
               paneId={paneId} focusedId={focusedId}
               onNodeSelect={onNodeSelect} onNodeActivate={onNodeActivate}
-              canAddManagement={canAddManagement} canAddOperation={canAddOperation} onAddNode={onAddNode} onBack={onBack} />
+              onAddNode={onAddNode} onBack={onBack} onAnnounce={onAnnounce} />
           </div>
         </div>
       )}

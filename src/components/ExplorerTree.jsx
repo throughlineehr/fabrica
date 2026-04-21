@@ -1,6 +1,5 @@
 import { useCallback, useState, useEffect, useRef } from 'react'
-import { ChevronRight, ChevronDown, Circle, SquarePlus, CirclePlus } from 'lucide-react'
-import { Keycap } from './Keycap'
+import { ChevronRight, ChevronDown, Circle, SquarePlus, CirclePlus, MoreHorizontal } from 'lucide-react'
 import { color, sizes } from '../styles'
 import { useA11yType } from '../hooks/useA11yType'
 import { useTranslation } from '../i18n/index.jsx'
@@ -14,26 +13,46 @@ const SYSTEM_COLORS = {
   s5: color.s5, s4: color.s4, s3: color.s3, s2: color.s2, s1: color.s1,
 }
 
-function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onActivate, onAdd, shiftHeld, commandIdx, canAddMgmt, canAddOp, t, tr, paneId }) {
+function findNodeInTree(root, id) {
+  if (root.id === id) return root
+  for (const child of root.children) {
+    const found = findNodeInTree(child, id)
+    if (found) return found
+  }
+  return null
+}
+
+function findParentInTree(root, targetId) {
+  for (const child of root.children) {
+    if (child.id === targetId) return root
+    const found = findParentInTree(child, targetId)
+    if (found) return found
+  }
+  return null
+}
+
+function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onActivate, onAdd, t, tr, paneId }) {
   const isSelected = selectedId === node.id
   const hasChildren = node.children.length > 0
   const isExpanded = expanded[node.id]
   const isOperation = node.type === 'operation'
   const isSystem = node.type === 'system'
-  const isManagement = !isOperation && !isSystem
-  const canAdd = isManagement && (canAddMgmt || canAddOp)
+  const isActionsGroup = node.type === 'actions-group'
+  const isAction = node.type === 'action'
 
-  let label, sysColor
-  if (isSystem) {
+  let label, icon
+  if (isActionsGroup) {
+    label = tr('menu.actions')
+  } else if (isAction) {
+    label = node.actionType === 'management' ? tr('menu.addManagement') : tr('menu.addOperation')
+  } else if (isSystem) {
     label = tr(`systems.${node.systemKey}`)
-    sysColor = SYSTEM_COLORS[node.systemKey]?.fill || color.muted
   } else if (isOperation) {
     label = `${tr('nav.op')} ${shortId(node.id)}`
-    sysColor = color.s1.fill
   } else {
     label = `${tr('nav.unit')} ${shortId(node.id)}`
-    sysColor = color.s3.fill
   }
+
   const btnRef = useRef()
 
   useEffect(() => {
@@ -43,111 +62,86 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onAct
     }
   }, [isSelected])
 
-  const showCommandMode = shiftHeld && isSelected && canAdd
+  const handleClick = () => {
+    if (isAction) {
+      onAdd(node.parentNodeId, node.actionType)
+    } else {
+      onSelect(node.id)
+    }
+  }
+
+  const handleDoubleClick = () => {
+    if (!isAction && !isActionsGroup) onActivate(node.id)
+  }
+
+  // Determine icon
+  let iconElement
+  if (isActionsGroup) {
+    iconElement = <MoreHorizontal size={8} strokeWidth={2} />
+  } else if (isAction) {
+    iconElement = node.actionType === 'management'
+      ? <SquarePlus size={8} strokeWidth={2} />
+      : <CirclePlus size={8} strokeWidth={2} />
+  } else if (isSystem) {
+    iconElement = (
+      <span aria-hidden="true" style={{
+        width: 8, height: 8,
+        background: SYSTEM_COLORS[node.systemKey]?.fill || color.muted,
+        borderRadius: node.systemKey === 's1' ? '50%' : node.systemKey === 's2' ? 0 : 1,
+        border: `1px solid ${SYSTEM_COLORS[node.systemKey]?.stroke || color.muted}`,
+        transform: node.systemKey === 's2' ? 'rotate(45deg) scale(0.8)' : undefined,
+      }} />
+    )
+  } else if (isOperation) {
+    iconElement = <Circle size={8} fill={color.s1.fill} stroke={color.s1.stroke} strokeWidth={2} aria-hidden="true" />
+  } else {
+    iconElement = <span aria-hidden="true" style={{ width: 8, height: 8, background: color.s3.fill, border: `1px solid ${color.s3.stroke}`, borderRadius: 1 }} />
+  }
+
+  const isMuted = isActionsGroup || isAction
 
   return (
     <li role="treeitem" aria-expanded={hasChildren ? isExpanded : undefined} aria-selected={isSelected}>
-      <div style={{
-        display: 'flex', alignItems: 'center',
-        background: isSelected ? color.hoverBg : 'none',
-        borderLeft: isSelected ? `2px solid ${color.focus}` : '2px solid transparent',
-      }}>
-        <button
-          ref={btnRef}
-          data-node-id={node.id}
-          onClick={() => onSelect(node.id)}
-          onDoubleClick={() => onActivate(node.id)}
-          tabIndex={isSelected ? 0 : -1}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            flex: 1,
-            paddingLeft: depth * INDENT + 4,
-            paddingTop: 4, paddingBottom: 4, paddingRight: 8,
-            minHeight: 28,
-            background: 'none', border: 'none',
-            cursor: 'pointer', textAlign: 'left',
-            ...(isSelected ? t.monoActive : t.mono),
-          }}
-        >
-          {hasChildren ? (
-            <span
-              onClick={(e) => { e.stopPropagation(); onToggle(node.id) }}
-              role="button"
-              aria-label={isExpanded ? tr('nav.collapse') || 'Collapse' : tr('nav.expand') || 'Expand'}
-              tabIndex={-1}
-              style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-            >
-              {isExpanded
-                ? <ChevronDown size={ICON_SIZE} strokeWidth={1.5} />
-                : <ChevronRight size={ICON_SIZE} strokeWidth={1.5} />
-              }
-            </span>
-          ) : (
-            <span style={{ width: ICON_SIZE }} aria-hidden="true" />
-          )}
-          {isSystem ? (
-            <span aria-hidden="true" style={{
-              width: 8, height: 8,
-              background: sysColor,
-              borderRadius: node.systemKey === 's1' ? '50%' : node.systemKey === 's2' ? 0 : 1,
-              border: `1px solid ${SYSTEM_COLORS[node.systemKey]?.stroke || color.muted}`,
-              transform: node.systemKey === 's2' ? 'rotate(45deg) scale(0.8)' : undefined,
-            }} />
-          ) : isOperation ? (
-            <Circle size={8} fill={sysColor} stroke={color.s1.stroke} strokeWidth={2} aria-hidden="true" />
-          ) : (
-            <span aria-hidden="true" style={{ width: 8, height: 8, background: sysColor, border: `1px solid ${color.s3.stroke}`, borderRadius: 1 }} />
-          )}
-          {label}
-          {isSelected && canAdd && !shiftHeld && (
-            <span style={{ marginLeft: 6, flexShrink: 0 }}><Keycap>SHIFT</Keycap></span>
-          )}
-        </button>
-
-      </div>
-
-      {/* Command mode: replace children with action items */}
-      {showCommandMode && (() => {
-        const cmds = []
-        if (canAddMgmt) cmds.push({ type: 'management', label: 'Management', hotkey: 'M', Icon: SquarePlus })
-        if (canAddOp) cmds.push({ type: 'operation', label: 'Operation', hotkey: 'O', Icon: CirclePlus })
-        return (
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {cmds.map((cmd, i) => {
-              const focused = commandIdx === i
-              return (
-                <li key={cmd.type}>
-                  <button
-                    onClick={() => onAdd(node.id, cmd.type)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      width: '100%',
-                      paddingLeft: (depth + 1) * INDENT + 4,
-                      paddingTop: 4, paddingBottom: 4, paddingRight: 8,
-                      minHeight: 28,
-                      background: focused ? color.hoverBg : 'none',
-                      border: 'none',
-                      borderLeft: focused ? `2px solid ${color.focus}` : '2px solid transparent',
-                      cursor: 'pointer', textAlign: 'left',
-                      ...t.monoMuted,
-                    }}
-                  >
-                    {/* Spacer matching chevron width */}
-                    <span style={{ width: ICON_SIZE }} />
-                    {/* Icon in the square's position */}
-                    <cmd.Icon size={8} strokeWidth={2} />
-                    {cmd.label}
-                    <Keycap>{cmd.hotkey}</Keycap>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        )
-      })()}
-
-      {/* Normal children (hidden in command mode) */}
-      {!showCommandMode && hasChildren && isExpanded && (
+      <button
+        ref={btnRef}
+        data-node-id={node.id}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+        tabIndex={isSelected ? 0 : -1}
+        aria-label={label}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          width: '100%',
+          paddingLeft: depth * INDENT + 4,
+          paddingTop: 4, paddingBottom: 4, paddingRight: 8,
+          minHeight: 28,
+          background: isSelected ? color.hoverBg : 'none',
+          border: 'none',
+          borderLeft: isSelected ? `2px solid ${color.focus}` : '2px solid transparent',
+          cursor: 'pointer', textAlign: 'left',
+          ...(isMuted ? t.monoMuted : (isSelected ? t.monoActive : t.mono)),
+        }}
+      >
+        {hasChildren ? (
+          <span
+            onClick={(e) => { e.stopPropagation(); onToggle(node.id) }}
+            role="button"
+            aria-label={isExpanded ? tr('nav.collapse') || 'Collapse' : tr('nav.expand') || 'Expand'}
+            tabIndex={-1}
+            style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+          >
+            {isExpanded
+              ? <ChevronDown size={ICON_SIZE} strokeWidth={1.5} />
+              : <ChevronRight size={ICON_SIZE} strokeWidth={1.5} />
+            }
+          </span>
+        ) : (
+          <span style={{ width: ICON_SIZE }} aria-hidden="true" />
+        )}
+        {iconElement}
+        {label}
+      </button>
+      {hasChildren && isExpanded && (
         <ul role="group" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {node.children.map(child => (
             <TreeNode
@@ -160,10 +154,6 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onAct
               onSelect={onSelect}
               onActivate={onActivate}
               onAdd={onAdd}
-              shiftHeld={shiftHeld}
-              commandIdx={commandIdx}
-              canAddMgmt={canAddMgmt}
-              canAddOp={canAddOp}
               paneId={paneId}
               t={t}
               tr={tr}
@@ -175,33 +165,12 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onAct
   )
 }
 
-export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focusedId, onSelect, onActivate, canAddManagement, canAddOperation, onAddNode, onBack }) {
+export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focusedId, onSelect, onActivate, onAddNode, onBack, onAnnounce }) {
   const selectedId = selectedIdProp ?? tree.id
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const treeRef = useRef()
   const mounted = useRef(false)
-  const [shiftHeld, setShiftHeld] = useState(false)
-  const [commandIdx, setCommandIdx] = useState(-1)
-
-  // Reset command index when shift released or selection changes
-  useEffect(() => { if (!shiftHeld) setCommandIdx(-1) }, [shiftHeld])
-  useEffect(() => { setCommandIdx(-1) }, [selectedId])
-
-  // Track Shift key state
-  useEffect(() => {
-    const down = (e) => { if (e.key === 'Shift') setShiftHeld(true) }
-    const up = (e) => { if (e.key === 'Shift') setShiftHeld(false) }
-    const blur = () => setShiftHeld(false)
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
-    window.addEventListener('blur', blur)
-    return () => {
-      window.removeEventListener('keydown', down)
-      window.removeEventListener('keyup', up)
-      window.removeEventListener('blur', blur)
-    }
-  }, [])
 
   useEffect(() => {
     if (!mounted.current) {
@@ -245,93 +214,68 @@ export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focused
     if (onAddNode) {
       onAddNode(nodeId, type)
       setExpanded(prev => ({ ...prev, [nodeId]: true }))
+      onAnnounce?.(`${type === 'management' ? 'Management unit' : 'Operation'} added`)
     }
-  }, [onAddNode])
+  }, [onAddNode, onAnnounce])
 
-  const getVisibleNodes = useCallback(() => {
-    const result = []
-    const walk = (node) => {
-      result.push(node)
-      if (node.children.length > 0 && expanded[node.id]) {
-        node.children.forEach(walk)
-      }
-    }
-    walk(tree)
-    return result
-  }, [tree, expanded])
-
+  // Keyboard: use DOM order of all buttons in the tree
   const handleKeyDown = useCallback((e) => {
-    if (e.key === 'Shift') return // Don't process shift itself
+    if (e.key === 'Shift') return
 
-    const flat = getVisibleNodes()
-    const idx = flat.findIndex(n => n.id === selectedId)
-
-    // Build command list for the selected node
-    const selectedNode = flat[idx]
-    const cmds = []
-    if (selectedNode && selectedNode.type !== 'operation' && selectedNode.type !== 'system') {
-      if (canAddManagement?.(selectedNode.id)) cmds.push('management')
-      if (canAddOperation?.(selectedNode.id)) cmds.push('operation')
-    }
-    const inCommandMode = e.shiftKey && cmds.length > 0
+    const buttons = Array.from(treeRef.current?.querySelectorAll('button[data-node-id]') || [])
+    const currentIdx = buttons.indexOf(document.activeElement)
 
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      if (inCommandMode) {
-        setCommandIdx(prev => Math.min(prev + 1, cmds.length - 1))
-      } else {
-        if (idx < flat.length - 1) onSelect(flat[idx + 1].id)
+      if (currentIdx < buttons.length - 1) {
+        const next = buttons[currentIdx + 1]
+        next.focus()
+        // Only update 3D selection for real nodes, not actions
+        const id = next.dataset.nodeId
+        if (id && !id.includes(':actions') && !id.includes(':add-')) onSelect(id)
       }
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      if (inCommandMode) {
-        setCommandIdx(prev => Math.max(prev - 1, -1))
-      } else {
-        if (idx > 0) onSelect(flat[idx - 1].id)
+      if (currentIdx > 0) {
+        const prev = buttons[currentIdx - 1]
+        prev.focus()
+        const id = prev.dataset.nodeId
+        if (id && !id.includes(':actions') && !id.includes(':add-')) onSelect(id)
       }
     } else if (e.key === 'ArrowRight') {
       e.preventDefault()
-      const node = flat[idx]
-      if (node?.children.length > 0 && !expanded[node.id]) handleToggle(node.id)
-      else if (node?.children.length > 0 && expanded[node.id]) onSelect(node.children[0].id)
+      const id = document.activeElement?.dataset?.nodeId
+      if (id) {
+        const node = findNodeInTree(tree, id)
+        if (node?.children.length > 0 && !expanded[id]) {
+          handleToggle(id)
+        } else if (currentIdx < buttons.length - 1) {
+          const next = buttons[currentIdx + 1]
+          next.focus()
+          if (next.dataset.nodeId && !next.dataset.nodeId.includes(':actions') && !next.dataset.nodeId.includes(':add-')) onSelect(next.dataset.nodeId)
+        }
+      }
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault()
-      const node = flat[idx]
-      if (node?.children.length > 0 && expanded[node.id]) {
-        handleToggle(node.id)
-      } else {
-        const findParent = (root, targetId) => {
-          for (const child of root.children) {
-            if (child.id === targetId) return root
-            const found = findParent(child, targetId)
-            if (found) return found
+      const id = document.activeElement?.dataset?.nodeId
+      if (id) {
+        const node = findNodeInTree(tree, id)
+        if (node?.children.length > 0 && expanded[id]) {
+          handleToggle(id)
+        } else {
+          const parent = findParentInTree(tree, id)
+          if (parent) {
+            const parentBtn = treeRef.current.querySelector(`button[data-node-id="${parent.id}"]`)
+            if (parentBtn) {
+              parentBtn.focus()
+              if (!parent.id.includes(':')) onSelect(parent.id)
+            }
           }
-          return null
         }
-        const parent = findParent(tree, selectedId)
-        if (parent) onSelect(parent.id)
       }
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
-      if (inCommandMode && commandIdx >= 0 && commandIdx < cmds.length) {
-        handleAdd(selectedNode.id, cmds[commandIdx])
-        return
-      }
-      if (selectedId) onActivate(selectedId)
-    } else if (e.key === 'M' && e.shiftKey) {
-      // Shift+M = add management (shift is held, so shiftHeld is true, command mode visible)
-      const node = flat[idx]
-      if (node && node.type !== 'operation' && node.type !== 'system' && canAddManagement?.(node.id)) {
-        e.preventDefault()
-        handleAdd(node.id, 'management')
-      }
-    } else if (e.key === 'O' && e.shiftKey) {
-      // Shift+O = add operation
-      const node = flat[idx]
-      if (node && node.type !== 'operation' && node.type !== 'system' && canAddOperation?.(node.id)) {
-        e.preventDefault()
-        handleAdd(node.id, 'operation')
-      }
+      document.activeElement?.click()
     } else if (e.key === 'Escape') {
       if (paneId != null || focusedId != null) {
         e.preventDefault()
@@ -341,12 +285,13 @@ export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focused
       }
     } else if (e.key === 'Home') {
       e.preventDefault()
-      onSelect(tree.id)
+      if (buttons[0]) { buttons[0].focus(); if (buttons[0].dataset.nodeId) onSelect(buttons[0].dataset.nodeId) }
     } else if (e.key === 'End') {
       e.preventDefault()
-      if (flat.length > 0) onSelect(flat[flat.length - 1].id)
+      const last = buttons[buttons.length - 1]
+      if (last) { last.focus(); if (last.dataset.nodeId && !last.dataset.nodeId.includes(':')) onSelect(last.dataset.nodeId) }
     }
-  }, [tree, selectedId, expanded, commandIdx, onSelect, onActivate, onBack, paneId, focusedId, handleToggle, handleAdd, getVisibleNodes, canAddManagement, canAddOperation])
+  }, [tree, expanded, onSelect, onBack, paneId, focusedId, handleToggle])
 
   useEffect(() => {
     const handler = (e) => {
@@ -356,9 +301,6 @@ export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focused
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)
   }, [handleKeyDown])
-
-  const selectedNodeCanAddMgmt = canAddManagement?.(selectedId) ?? false
-  const selectedNodeCanAddOp = canAddOperation?.(selectedId) ?? false
 
   return (
     <ul
@@ -376,10 +318,6 @@ export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focused
         onSelect={onSelect}
         onActivate={onActivate}
         onAdd={handleAdd}
-        shiftHeld={shiftHeld}
-        commandIdx={commandIdx}
-        canAddMgmt={selectedNodeCanAddMgmt}
-        canAddOp={selectedNodeCanAddOp}
         paneId={paneId}
         t={t}
         tr={tr}

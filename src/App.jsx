@@ -26,7 +26,9 @@ function App() {
   const [keySelectedId, setKeySelectedId] = useState(null)
   const [keySelectedSystem, setKeySelectedSystem] = useState(null)
   const [explorerRequested, setExplorerRequested] = useState(false)
+  const [visibleSystems, setVisibleSystems] = useState({ s5: true, s4: true, s3: true, s2: true, s1: true, frame: true })
   const [cameraTarget, setCameraTarget] = useState(null)
+  const [announcement, setAnnouncement] = useState('')
   const controlsRef = useRef()
 
   // System page state
@@ -42,7 +44,7 @@ function App() {
   const explorerTree = useMemo(() => {
     function enrich(node) {
       const isOp = node.type === 'operation'
-      const systemChildren = isOp
+      const allSystems = isOp
         ? [{ id: `${node.id}:s1`, type: 'system', systemKey: 's1', parentNodeId: node.id, children: [] }]
         : [
             { id: `${node.id}:s5`, type: 'system', systemKey: 's5', parentNodeId: node.id, children: [] },
@@ -50,13 +52,33 @@ function App() {
             { id: `${node.id}:s3`, type: 'system', systemKey: 's3', parentNodeId: node.id, children: [] },
             ...(nodeHasS2(node) ? [{ id: `${node.id}:s2`, type: 'system', systemKey: 's2', parentNodeId: node.id, children: [] }] : []),
           ]
+      const systemChildren = allSystems.filter(s => visibleSystems[s.systemKey] !== false)
+
+      // Build action children for management nodes
+      const actionChildren = []
+      if (!isOp) {
+        const mgmtOk = canAddManagement(model, node.id)
+        const opOk = canAddOperation(model, node.id)
+        if (mgmtOk || opOk) {
+          const actionItems = []
+          if (mgmtOk) actionItems.push({ id: `${node.id}:add-management`, type: 'action', actionType: 'management', parentNodeId: node.id, children: [] })
+          if (opOk) actionItems.push({ id: `${node.id}:add-operation`, type: 'action', actionType: 'operation', parentNodeId: node.id, children: [] })
+          actionChildren.push({
+            id: `${node.id}:actions`,
+            type: 'actions-group',
+            parentNodeId: node.id,
+            children: actionItems,
+          })
+        }
+      }
+
       return {
         ...node,
-        children: [...systemChildren, ...node.children.map(enrich)],
+        children: [...actionChildren, ...systemChildren, ...node.children.map(enrich)],
       }
     }
     return enrich(tree)
-  }, [tree])
+  }, [tree, model, visibleSystems])
 
   // Unified selection for explorer sync
   const explorerSelectedId = useMemo(() => {
@@ -86,7 +108,7 @@ function App() {
     setMenu(null)
     setHoveredId(parentId)
     setKeySelectedId(parentId)
-    // Refocus the Explorer tree after menu closes
+    setAnnouncement(`${nodeType === 'management' ? 'Management unit' : 'Operation'} added`)
     requestAnimationFrame(() => {
       const btn = document.querySelector(`[role="tree"] button[data-node-id="${parentId}"]`)
       btn?.focus()
@@ -114,12 +136,15 @@ function App() {
     if (!node) return
     const center = toWorld(node.x, getNodeCenterY(node), node.layer)
 
+    const label = node.type === 'operation' ? 'Operation' : 'Unit'
+    const short = node.id.slice(0, 5)
     if (focusedId === nodeId && paneId == null) {
       setCameraTarget({
         position: [center[0], center[1] + PANE_DISTANCE, center[2]],
         lookAt: center, up: [0, 0, -1],
       })
       setPaneId(nodeId)
+      setAnnouncement(`Detail view: ${label} ${short}. Enter on a system to open it.`)
     } else {
       setCameraTarget({
         position: [center[0] + FOCUS_DISTANCE, center[1] + FOCUS_DISTANCE, center[2] + FOCUS_DISTANCE],
@@ -127,6 +152,7 @@ function App() {
       })
       setFocusedId(nodeId)
       setPaneId(null)
+      setAnnouncement(`Focused: ${label} ${short}`)
     }
   }, [tree, focusedId, paneId])
 
@@ -139,10 +165,12 @@ function App() {
       position: [center[0], center[1] + PANE_DISTANCE, center[2]],
       lookAt: center, up: [0, 0, -1],
     })
+    const label = node.type === 'operation' ? 'Operation' : 'Unit'
     setFocusedId(nodeId)
     setPaneId(nodeId)
     setKeySelectedId(null)
     setKeySelectedSystem(null)
+    setAnnouncement(`Detail view: ${label} ${node.id.slice(0, 5)}`)
   }, [tree])
 
   const handleSystemClick = useCallback((nodeId, systemKey) => {
@@ -157,6 +185,7 @@ function App() {
     })
 
     setSystemView({ nodeId, systemKey })
+    setAnnouncement(`Opened ${systemKey.toUpperCase()} configuration`)
 
     if (epilepsy) {
       setCanvasOpacity(0)
@@ -242,8 +271,10 @@ function App() {
         })
       }
       setPaneId(null)
+      setAnnouncement('Returned to focus view')
     } else {
       setFocusedId(null)
+      setAnnouncement('Returned to overview')
       const bounds = getTreeBounds(tree)
       const cx = (bounds.minX + bounds.maxX) / 2
       const cy = (bounds.minY + bounds.maxY) / 2
@@ -300,16 +331,10 @@ function App() {
         }}
       >
         <p id="canvas-instructions" className="sr-only">
-          Interactive 3D viable system model.
-          Press any arrow key to open the Explorer tree panel for keyboard navigation.
-          In the Explorer: arrow keys navigate, Enter activates, M opens context menu.
-          Double-click a unit to focus, right-click for actions, double-click empty to go back.
-          S: Settings. E: Explorer. T: Tools. F: Filter. Escape: close panel.
+          Fabrica viable system model. Press E to open the Explorer tree for keyboard navigation.
         </p>
-        <div role="status" aria-live="polite" className="sr-only">
-          {activeNode
-            ? `${activeNode.type === 'operation' ? 'Operation' : 'Unit'} ${activeNode.id?.slice(0, 5)}, layer ${activeNode.layer}, ${activeNode.children.length} children. ${focusedId != null ? 'Focused.' : ''} ${paneId != null ? 'Detail view. Use arrows to select system, Enter to open.' : ''}`
-            : ''}
+        <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+          {announcement}
         </div>
         <Canvas camera={{ fov: CAMERA_FOV, near: CAMERA_NEAR, far: CAMERA_FAR, position: CAMERA_INITIAL }} onPointerMissed={(e) => {
           if (e.detail === 2 && (focusedId != null || paneId != null)) handleBack()
@@ -318,7 +343,7 @@ function App() {
           <OrbitControls ref={controlsRef} target={CAMERA_LOOK_INITIAL} enabled={!transitioning && focusedId == null && paneId == null} />
           <ambientLight intensity={0.5} />
           <directionalLight position={[2, 3, 4]} />
-          <MetaTree node={tree} onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} onSystemClick={handleSystemClick} onHover={menu ? () => {} : setHoveredId} highlightId={highlightId} keySelectedId={keySelectedId} keySelectedSystem={keySelectedSystem} paneId={paneId} connectionStyle="elbow" />
+          <MetaTree node={tree} onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} onSystemClick={handleSystemClick} onHover={menu ? () => {} : setHoveredId} highlightId={highlightId} keySelectedId={keySelectedId} keySelectedSystem={keySelectedSystem} paneId={paneId} connectionStyle="elbow" visibleSystems={visibleSystems} />
         </Canvas>
       </div>
 
@@ -340,6 +365,10 @@ function App() {
         paneId={paneId}
         focusedId={focusedId}
         onBack={handleBack}
+        onAnnounce={setAnnouncement}
+        visibleSystems={visibleSystems}
+        onToggleSystem={(key) => setVisibleSystems(prev => ({ ...prev, [key]: !prev[key] }))}
+        onExplorerClose={() => { setKeySelectedId(null); setHoveredId(null) }}
         requestOpenExplorer={explorerRequested}
         onNodeSelect={(id) => {
           if (id.includes(':')) {
@@ -361,30 +390,65 @@ function App() {
             setKeySelectedSystem(sysKey)
             setHoveredId(nodeId)
           } else {
-            // Node selected — enter focus mode
+            // Node selected — enter focus mode, exit pane if we were in it
             const node = findNode(tree, id)
             if (!node) return
             const center = toWorld(node.x, getNodeCenterY(node), node.layer)
-            // If we were in pane mode on a different node, exit it
-            if (paneId != null && paneId !== id) setPaneId(null)
-            if (focusedId !== id) {
+            if (paneId != null) {
+              setPaneId(null)
               setCameraTarget({
                 position: [center[0] + FOCUS_DISTANCE, center[1] + FOCUS_DISTANCE, center[2] + FOCUS_DISTANCE],
                 lookAt: center, up: [0, 1, 0],
               })
-              setFocusedId(id)
+              setAnnouncement('Returned to focus view')
+            } else if (focusedId !== id) {
+              setCameraTarget({
+                position: [center[0] + FOCUS_DISTANCE, center[1] + FOCUS_DISTANCE, center[2] + FOCUS_DISTANCE],
+                lookAt: center, up: [0, 1, 0],
+              })
             }
+            setFocusedId(id)
             setKeySelectedId(id)
             setKeySelectedSystem(null)
             setHoveredId(id)
           }
         }}
-        canAddManagement={(id) => canAddManagement(model, id)}
-        canAddOperation={(id) => canAddOperation(model, id)}
         onAddNode={(nodeId, nodeType) => {
-          setModel((prev) => addNode(prev, nodeId, nodeType))
-          setKeySelectedId(nodeId)
-          setHoveredId(nodeId)
+          setModel((prev) => {
+            const next = addNode(prev, nodeId, nodeType)
+            // Check if same action is still valid after adding
+            const actionId = `${nodeId}:add-${nodeType}`
+            const stillValid = nodeType === 'management'
+              ? canAddManagement(next, nodeId)
+              : canAddOperation(next, nodeId)
+
+            // Stay in focus mode so tree is visible
+            const node = findNode(tree, nodeId)
+            if (node) {
+              const center = toWorld(node.x, getNodeCenterY(node), node.layer)
+              setCameraTarget({
+                position: [center[0] + FOCUS_DISTANCE, center[1] + FOCUS_DISTANCE, center[2] + FOCUS_DISTANCE],
+                lookAt: center, up: [0, 1, 0],
+              })
+              setFocusedId(nodeId)
+              setPaneId(null)
+            }
+            setKeySelectedId(nodeId)
+            setHoveredId(nodeId)
+            setAnnouncement(`${nodeType === 'management' ? 'Management unit' : 'Operation'} added`)
+
+            // Refocus: stay on action if still valid, otherwise go to parent
+            requestAnimationFrame(() => {
+              if (stillValid) {
+                const actionBtn = document.querySelector(`[role="tree"] button[data-node-id="${actionId}"]`)
+                if (actionBtn) { actionBtn.focus(); return }
+              }
+              const parentBtn = document.querySelector(`[role="tree"] button[data-node-id="${nodeId}"]`)
+              parentBtn?.focus()
+            })
+
+            return next
+          })
         }}
         onNodeActivate={(id) => {
           if (id.includes(':')) {

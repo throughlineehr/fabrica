@@ -8,7 +8,7 @@ const s1 = EXTERNAL_SYSTEMS.s1
 const FOCUS_RING_RADIUS = ELLIPSE_RADIUS + 0.06
 const FOCUS_SEGMENTS = 32
 
-export function OperationNode({ x = 0, layer = 0, nodeId, onDoubleClick, onSystemClick, onHover, dimmed, highlighted, keySelected, keySelectedSystem, isPaneView = false }) {
+export function OperationNode({ x = 0, layer = 0, nodeId, onDoubleClick, onSystemClick, onHover, dimmed, highlighted, keySelected, keySelectedSystem, isPaneView = false, visibleSystems = {} }) {
   const handleDoubleClick = useCallback((e) => {
     e.stopPropagation()
     onDoubleClick(nodeId)
@@ -42,17 +42,19 @@ export function OperationNode({ x = 0, layer = 0, nodeId, onDoubleClick, onSyste
 
   return (
     <group>
-      <IsoEllipse
-        coords={[x, SYSTEMS.s3.yOffset, layer]}
-        color={s1.color}
-        strokeColor={s1.strokeColor}
-        onDoubleClick={dimmed ? undefined : handleS1DoubleClick}
-        onPointerOver={dimmed ? undefined : handlePointerOver}
-        onPointerOut={dimmed ? undefined : handlePointerOut}
-        dimmed={dimmed}
-        highlighted={highlighted}
-      />
-      {(keySelected || keySelectedSystem === 's1') && (
+      {visibleSystems.s1 !== false && (
+        <IsoEllipse
+          coords={[x, SYSTEMS.s3.yOffset, layer]}
+          color={s1.color}
+          strokeColor={s1.strokeColor}
+          onDoubleClick={dimmed ? undefined : handleS1DoubleClick}
+          onPointerOver={dimmed ? undefined : handlePointerOver}
+          onPointerOut={dimmed ? undefined : handlePointerOut}
+          dimmed={dimmed}
+          highlighted={highlighted}
+        />
+      )}
+      {(keySelected || keySelectedSystem === 's1') && visibleSystems.s1 !== false && (
         <group position={pos} rotation={[-Math.PI / 2, 0, 0]}>
           <Line points={focusRingPoints} color={styleColor.focus} lineWidth={2} />
         </group>

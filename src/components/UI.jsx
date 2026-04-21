@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { ui, color } from '../styles'
 import { Z_INDEX } from '../constants'
 import { useTranslation } from '../i18n/index.jsx'
+import { Keycap } from './Keycap'
 
 export function ContextMenu({ x, y, onAddChild, onAddOperation, onClose, accentColor = color.metaUnit }) {
   const { t: tr } = useTranslation()
@@ -23,8 +24,8 @@ export function ContextMenu({ x, y, onAddChild, onAddOperation, onClose, accentC
   }, [])
 
   const items = [
-    onAddChild && { label: tr('menu.addManagement'), action: onAddChild },
-    onAddOperation && { label: tr('menu.addOperation'), action: onAddOperation },
+    onAddChild && { label: tr('menu.addManagement'), action: onAddChild, key: 'M' },
+    onAddOperation && { label: tr('menu.addOperation'), action: onAddOperation, key: 'O' },
   ].filter(Boolean)
 
   const handleKeyDown = (e) => {
@@ -66,11 +67,12 @@ export function ContextMenu({ x, y, onAddChild, onAddOperation, onClose, accentC
           role="menuitem"
           data-menu-item
           onClick={item.action}
-          style={ui.contextMenu.item}
-          onMouseEnter={(e) => e.target.style.background = color.hoverBg}
-          onMouseLeave={(e) => e.target.style.background = 'none'}
+          style={{ ...ui.contextMenu.item, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}
+          onMouseEnter={(e) => e.currentTarget.style.background = color.hoverBg}
+          onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
         >
-          {item.label}
+          <span>{item.label}</span>
+          <Keycap>{item.key}</Keycap>
         </button>
       ))}
     </div>

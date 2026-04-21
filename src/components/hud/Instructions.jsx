@@ -5,21 +5,21 @@ export function Instructions({ mode, t, tr }) {
       tr('instructions.hoverToInspect'),
       tr('instructions.arrowKeysNavigate'),
       tr('instructions.enterToActivate'),
-      tr('instructions.mForMenu'),
+
       tr('instructions.scrollToZoom'),
       tr('instructions.dragToOrbit'),
     ],
     hovered: [
       tr('instructions.doubleClickFocus'),
       tr('instructions.arrowKeysNavigate'),
-      tr('instructions.mForMenu'),
+
       tr('instructions.rightClickActions'),
     ],
     focused: [
       tr('instructions.doubleClickDetail'),
       tr('instructions.doubleClickEmpty'),
       tr('instructions.arrowKeysNavigate'),
-      tr('instructions.mForMenu'),
+
       tr('instructions.rightClickActions'),
     ],
     pane: [

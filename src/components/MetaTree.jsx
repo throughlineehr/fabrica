@@ -5,7 +5,7 @@ import { MetaUnit } from './MetaUnit'
 import { OperationNode } from './OperationNode'
 import { Connection } from './Connection'
 
-export function MetaTree({ node, onContextMenu, onDoubleClick, onSystemClick, onHover, highlightId, keySelectedId, keySelectedSystem, paneId, connectionStyle = 'straight' }) {
+export function MetaTree({ node, onContextMenu, onDoubleClick, onSystemClick, onHover, highlightId, keySelectedId, keySelectedSystem, paneId, connectionStyle = 'straight', visibleSystems = {} }) {
   const isPane = paneId != null
   const isPaneTarget = paneId === node.id
   const onPanePath = isPane && containsNode(node, paneId)
@@ -27,12 +27,12 @@ export function MetaTree({ node, onContextMenu, onDoubleClick, onSystemClick, on
     <group>
       {(!isPane || isPaneTarget) && (
         isOperation
-          ? <OperationNode x={node.x} layer={node.layer} nodeId={node.id} onDoubleClick={onDoubleClick} onSystemClick={isPaneTarget ? onSystemClick : undefined} onHover={onHover} dimmed={dimmed} highlighted={highlighted} keySelected={keySelected} keySelectedSystem={isPaneTarget ? keySelectedSystem : null} isPaneView={isPaneTarget} />
-          : <MetaUnit x={node.x} layer={node.layer} nodeId={node.id} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onSystemClick={isPaneTarget ? onSystemClick : undefined} onHover={onHover} dimmed={dimmed} highlighted={highlighted} keySelected={keySelected} keySelectedSystem={isPaneTarget ? keySelectedSystem : null} hasS2={hasS2} isPaneView={isPaneTarget} />
+          ? <OperationNode x={node.x} layer={node.layer} nodeId={node.id} onDoubleClick={onDoubleClick} onSystemClick={isPaneTarget ? onSystemClick : undefined} onHover={onHover} dimmed={dimmed} highlighted={highlighted} keySelected={keySelected} keySelectedSystem={isPaneTarget ? keySelectedSystem : null} isPaneView={isPaneTarget} visibleSystems={visibleSystems} />
+          : <MetaUnit x={node.x} layer={node.layer} nodeId={node.id} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onSystemClick={isPaneTarget ? onSystemClick : undefined} onHover={onHover} dimmed={dimmed} highlighted={highlighted} keySelected={keySelected} keySelectedSystem={isPaneTarget ? keySelectedSystem : null} hasS2={hasS2} isPaneView={isPaneTarget} visibleSystems={visibleSystems} />
       )}
 
       {/* Operation connects up to its management's S2 */}
-      {!isPane && directOperation && (
+      {!isPane && directOperation && visibleSystems.s2 !== false && (
         <Connection
           from={[directOperation.x, SYSTEMS.s3.yOffset, directOperation.layer]}
           to={[node.x, S2_Y_OFFSET, node.layer]}
@@ -43,7 +43,7 @@ export function MetaTree({ node, onContextMenu, onDoubleClick, onSystemClick, on
       )}
 
       {/* Connect rightmost S2 child up to this node's S2 */}
-      {!isPane && hasS2 && rightmostS2Child && (
+      {!isPane && hasS2 && rightmostS2Child && visibleSystems.s2 !== false && (
         <Connection
           from={[rightmostS2Child.x, S2_Y_OFFSET, rightmostS2Child.layer]}
           to={[node.x, S2_Y_OFFSET, node.layer]}
@@ -54,7 +54,7 @@ export function MetaTree({ node, onContextMenu, onDoubleClick, onSystemClick, on
       )}
 
       {/* Chain S2s of siblings that have S2s */}
-      {!isPane && s2Children.length > 1 && s2Children.slice(0, -1).map((child, i) => {
+      {!isPane && visibleSystems.s2 !== false && s2Children.length > 1 && s2Children.slice(0, -1).map((child, i) => {
         const next = s2Children[i + 1]
         return (
           <Connection
@@ -74,15 +74,15 @@ export function MetaTree({ node, onContextMenu, onDoubleClick, onSystemClick, on
           <group key={child.id}>
             {!isPane && (
               childIsOperation
-                ? <Connection
+                ? (visibleSystems.s1 !== false && <Connection
                     from={[node.x, SYSTEMS.s3.yOffset, node.layer]}
                     to={[child.x, SYSTEMS.s3.yOffset, child.layer]}
                     color={EXTERNAL_SYSTEMS.s1.strokeColor}
                     dimmed={highlightId != null}
                     style={connectionStyle}
-                  />
-                : Object.values(SYSTEMS).map((sys) => (
-                    <Connection
+                  />)
+                : Object.entries(SYSTEMS).map(([key, sys]) => (
+                    visibleSystems[key] !== false && <Connection
                       key={sys.yOffset}
                       from={[node.x, sys.yOffset, node.layer]}
                       to={[child.x, sys.yOffset, child.layer]}
@@ -92,7 +92,7 @@ export function MetaTree({ node, onContextMenu, onDoubleClick, onSystemClick, on
                     />
                   ))
             )}
-            <MetaTree node={child} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onSystemClick={onSystemClick} onHover={onHover} highlightId={highlightId} keySelectedId={keySelectedId} keySelectedSystem={keySelectedSystem} paneId={paneId} connectionStyle={connectionStyle} />
+            <MetaTree node={child} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onSystemClick={onSystemClick} onHover={onHover} highlightId={highlightId} keySelectedId={keySelectedId} keySelectedSystem={keySelectedSystem} paneId={paneId} connectionStyle={connectionStyle} visibleSystems={visibleSystems} />
           </group>
         )
       })}

@@ -12,7 +12,7 @@ const SYSTEM_COUNT = SYSTEM_KEYS.length
 const s2 = EXTERNAL_SYSTEMS.s2
 const S2_PANE_OFFSET_Y = -SQUARE_SIZE / (2 * S2_PANE_SCALE) - TRI_BOTTOM
 
-export function MetaUnit({ x = 0, layer = 0, nodeId, onContextMenu, onDoubleClick, onSystemClick, onHover, dimmed, highlighted, keySelected, keySelectedSystem, hasS2 = false, isPaneView = false }) {
+export function MetaUnit({ x = 0, layer = 0, nodeId, onContextMenu, onDoubleClick, onSystemClick, onHover, dimmed, highlighted, keySelected, keySelectedSystem, hasS2 = false, isPaneView = false, visibleSystems = {} }) {
   const centerY = ((SYSTEM_COUNT - 1) / 2) * CELL
   const rectWidth = SQUARE_SIZE + MARGIN * 2
   const rectHeight = SYSTEM_COUNT * CELL - MARGIN + MARGIN * 2
@@ -44,6 +44,7 @@ export function MetaUnit({ x = 0, layer = 0, nodeId, onContextMenu, onDoubleClic
   return (
     <group>
       {SYSTEM_KEYS.map((key) => {
+        if (visibleSystems[key] === false) return null
         const sys = SYSTEMS[key]
         const handleSystemDoubleClick = onSystemClick ? (e) => {
           e.stopPropagation()
@@ -87,12 +88,14 @@ export function MetaUnit({ x = 0, layer = 0, nodeId, onContextMenu, onDoubleClic
       })()}
 
       <group position={[x * CELL, layer * LAYER_SPACING, centerY]} rotation={[-Math.PI / 2, 0, 0]}>
-        <RoundedRectOutline width={rectWidth} height={rectHeight} radius={ROUNDED_RECT_RADIUS} color={color.metaUnit} dimmed={dimmed} />
+        {visibleSystems.frame !== false && (
+          <RoundedRectOutline width={rectWidth} height={rectHeight} radius={ROUNDED_RECT_RADIUS} color={color.metaUnit} dimmed={dimmed} />
+        )}
         {keySelected && (
           <RoundedRectOutline width={rectWidth + 0.12} height={rectHeight + 0.12} radius={ROUNDED_RECT_RADIUS + 0.02} color={color.focus} dimmed={false} strokeWidth={0.04} />
         )}
       </group>
-      {hasS2 && (
+      {hasS2 && visibleSystems.s2 !== false && (
         <group>
           <IsoTriangle
             coords={s2Coords}
