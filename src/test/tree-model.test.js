@@ -109,10 +109,11 @@ describe('validation', () => {
     expect(canAddManagement(m, m.rootId)).toBe(true)
   })
 
-  it('addNode respects validation (returns same model on invalid)', () => {
+  it('addNode allows mixed types in draft mode', () => {
     let m = createModel('management')
     m = addNode(m, m.rootId, 'operation')
     const m2 = addNode(m, m.rootId, 'management')
-    expect(m2).toBe(m)
+    // Draft mode allows this — validateModel() catches it
+    expect(m2.children[m.rootId]).toHaveLength(2)
   })
 })

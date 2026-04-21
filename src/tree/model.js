@@ -30,11 +30,12 @@ export function canAddManagement(model, parentId) {
 }
 
 // --- Commands ---
+// Draft mode: structural operations succeed as long as data integrity is maintained.
+// VSM-specific rules (mixed types, leaf operations) are checked by validateModel() separately.
 
 export function addNode(model, parentId, nodeType) {
   if (!model.entities[parentId]) return model
-  if (nodeType === 'operation' && !canAddOperation(model, parentId)) return model
-  if (nodeType === 'management' && !canAddManagement(model, parentId)) return model
+  if (model.entities[parentId].type === 'operation') return model // can't add children to operations
   const id = crypto.randomUUID()
   return {
     ...model,
@@ -88,14 +89,8 @@ export function moveNode(model, nodeId, newParentId) {
     return false
   }
   if (isDescendant(nodeId, newParentId)) return model
-  // Target must be management
-  if (model.entities[newParentId].type !== 'management') return model
-  // Check structure validity: if target has an operation, can't add management there
-  const nodeType = model.entities[nodeId].type
-  const targetKids = model.children[newParentId] || []
-  if (nodeType === 'management' && targetKids.some(id => model.entities[id]?.type === 'operation')) return model
-  if (nodeType === 'operation' && targetKids.some(id => model.entities[id]?.type === 'management')) return model
-  if (nodeType === 'operation' && targetKids.some(id => model.entities[id]?.type === 'operation')) return model
+  // Can't move into an operation (operations are leaves)
+  if (model.entities[newParentId].type === 'operation') return model
 
   const oldParentId = model.parents[nodeId]
   return {
@@ -152,13 +147,6 @@ export function flattenNode(model, nodeId) {
   if (!parentId) return model
 
   const nodeChildren = model.children[nodeId] || []
-  // Check: parent can't have mixed management+operation after flattening
-  const parentKids = model.children[parentId].filter(id => id !== nodeId)
-  const allKids = [...parentKids, ...nodeChildren]
-  const hasMgmt = allKids.some(id => model.entities[id]?.type === 'management')
-  const hasOp = allKids.some(id => model.entities[id]?.type === 'operation')
-  if (hasMgmt && hasOp) return model // would create invalid structure
-
   const entities = { ...model.entities }
   const children = { ...model.children }
   const parents = { ...model.parents }
@@ -186,7 +174,7 @@ export function flattenNode(model, nodeId) {
 // Deep copies all nodes with new IDs. Names are preserved.
 export function duplicateSubtree(model, nodeId, targetParentId) {
   if (!model.entities[nodeId] || !model.entities[targetParentId]) return model
-  if (model.entities[targetParentId].type !== 'management') return model
+  if (model.entities[targetParentId].type === 'operation') return model // can't add under operations
 
   const entities = { ...model.entities }
   const children = { ...model.children }
@@ -206,6 +194,71 @@ export function duplicateSubtree(model, nodeId, targetParentId) {
 
   const newRootId = copyNode(nodeId, targetParentId)
   return { ...model, entities, children, parents }
+}
+
+// Create a standalone node not attached to any parent.
+// Used for bottom-up building — attach it later with moveNode.
+export function createOrphan(model, nodeType, name = '') {
+  const id = crypto.randomUUID()
+  return {
+    model: {
+      ...model,
+      entities: { ...model.entities, [id]: { type: nodeType, name } },
+      children: { ...model.children, [id]: [] },
+      parents: { ...model.parents, [id]: null },
+    },
+    nodeId: id,
+  }
+}
+
+// --- Validation ---
+// Returns a list of issues. Empty list = valid for publishing.
+
+export function validateModel(model) {
+  const issues = []
+
+  for (const [id, entity] of Object.entries(model.entities)) {
+    const childIds = model.children[id] || []
+    const parentId = model.parents[id]
+
+    // Orphan check (non-root without parent)
+    if (id !== model.rootId && !parentId) {
+      issues.push({ nodeId: id, type: 'orphan', message: `${entity.name || id.slice(0, 8)} is not connected to the tree` })
+    }
+
+    // Unnamed node
+    if (!entity.name) {
+      issues.push({ nodeId: id, type: 'unnamed', message: `${entity.type} ${id.slice(0, 8)} has no name` })
+    }
+
+    // Operation with children
+    if (entity.type === 'operation' && childIds.length > 0) {
+      issues.push({ nodeId: id, type: 'operation-has-children', message: `Operation ${entity.name || id.slice(0, 8)} should not have children` })
+    }
+
+    // Management with mixed types
+    if (entity.type === 'management' && childIds.length > 0) {
+      const types = new Set(childIds.map(cid => model.entities[cid]?.type))
+      if (types.has('management') && types.has('operation')) {
+        issues.push({ nodeId: id, type: 'mixed-children', message: `${entity.name || id.slice(0, 8)} has both management and operation children` })
+      }
+    }
+
+    // Management with multiple operations
+    if (entity.type === 'management') {
+      const opCount = childIds.filter(cid => model.entities[cid]?.type === 'operation').length
+      if (opCount > 1) {
+        issues.push({ nodeId: id, type: 'multiple-operations', message: `${entity.name || id.slice(0, 8)} has ${opCount} operations (max 1)` })
+      }
+    }
+
+    // Management leaf (no children, no operation) — warning, not error
+    if (entity.type === 'management' && childIds.length === 0 && id !== model.rootId) {
+      issues.push({ nodeId: id, type: 'empty-management', severity: 'warning', message: `${entity.name || id.slice(0, 8)} has no children or operations` })
+    }
+  }
+
+  return issues
 }
 
 export function renameNode(model, nodeId, name) {

@@ -17,20 +17,12 @@ function buildTree() {
 }
 
 describe('moveNode', () => {
-  it('moves a node to a new parent', () => {
-    const { m, dId, aId, cId } = buildTree()
-    // Can't move D under A because A has operation C
+  it('moves a node to a new parent (draft mode allows mixed types)', () => {
+    const { m, dId, aId } = buildTree()
+    // Draft mode allows moving D under A even though A has operation C
     const m2 = moveNode(m, dId, aId)
-    expect(m2).toBe(m) // should fail — mixed types
-
-    // Remove operation from A first, then move
-    let m3 = { ...m, children: { ...m.children }, parents: { ...m.parents }, entities: { ...m.entities } }
-    // Just test moving E under root
-    const { eId, bId } = buildTree()
-    const m4 = buildTree().m
-    const result = moveNode(m4, buildTree().eId, m4.rootId)
-    // E should now be child of root, not B
-    expect(result.parents[buildTree().eId]).not.toBe(buildTree().bId)
+    expect(m2.parents[dId]).toBe(aId)
+    expect(m2.children[aId]).toContain(dId)
   })
 
   it('cannot move root', () => {
