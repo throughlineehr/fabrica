@@ -3,6 +3,9 @@ import { Send, Volume2, VolumeX, Mic, MicOff } from 'lucide-react'
 import { color, sizes } from '../../styles'
 import { useA11yType } from '../../hooks/useA11yType'
 import { useTranslation } from '../../i18n/index.jsx'
+import { useAIConfig } from '../../agent/config.jsx'
+import { AGENT_DSL } from '../../agent/commands'
+import { exportModelCompact } from '../../tree/serialize'
 
 export function AgentPanel({ agentAPI }) {
   const t = useA11yType()
@@ -11,10 +14,12 @@ export function AgentPanel({ agentAPI }) {
   const [speakEnabled, setSpeakEnabled] = useState(false)
   const [listening, setListening] = useState(false)
   const recognitionRef = useRef(null)
+  const { apiKey, provider, model, endpoint, isConnected: aiConnected } = useAIConfig()
   const [messages, setMessages] = useState([])
+  const conversationRef = useRef([]) // full conversation for AI context
   const bottomRef = useRef()
   const inputRef = useRef()
-  const initializedRef = useRef(false)
+  const [loading, setLoading] = useState(false)
 
   // Set intro message when language changes
   useEffect(() => {
@@ -150,15 +155,54 @@ export function AgentPanel({ agentAPI }) {
     return tr('agent.unknownCommand')
   }
 
-  const handleSubmit = (e) => {
+  const callAI = async (userMsg) => {
+    // Build system prompt with current model state
+    const modelYaml = agentAPI ? agentAPI.read().yaml : ''
+    const stateInfo = agentAPI ? JSON.stringify(agentAPI.getState()) : '{}'
+    const systemPrompt = `${AGENT_DSL}\n\nCURRENT MODEL STATE:\n${modelYaml}\n\nCURRENT VIEW STATE:\n${stateInfo}\n\nRespond conversationally. If the user asks you to modify the model or navigate, describe what you would do using the command names from the DSL. Keep responses concise.`
+
+    const aiMessages = [
+      { role: 'system', content: systemPrompt },
+      ...conversationRef.current,
+      { role: 'user', content: userMsg },
+    ]
+
+    const req = provider.buildRequest(aiMessages, model, apiKey, endpoint)
+    const res = await fetch(req.url, { method: 'POST', headers: req.headers, body: req.body })
+    if (!res.ok) throw new Error(`${res.status}: ${await res.text().catch(() => 'Unknown error')}`)
+    const data = await res.json()
+    return provider.parseResponse(data)
+  }
+
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!input.trim()) return
+    if (!input.trim() || loading) return
     const userMsg = input.trim()
     setMessages(prev => [...prev, { role: 'user', text: userMsg }])
     setInput('')
-    const response = executeCommand(userMsg)
-    setMessages(prev => [...prev, { role: 'agent', text: response }])
-    speak(response)
+
+    if (aiConnected && provider) {
+      // Try AI provider
+      setLoading(true)
+      try {
+        const response = await callAI(userMsg)
+        conversationRef.current.push({ role: 'user', content: userMsg })
+        conversationRef.current.push({ role: 'assistant', content: response })
+        setMessages(prev => [...prev, { role: 'agent', text: response }])
+        speak(response)
+      } catch (err) {
+        // Fall back to local commands on error
+        const fallback = executeCommand(userMsg)
+        setMessages(prev => [...prev, { role: 'agent', text: `[AI error: ${err.message}]\n\n${fallback}` }])
+      }
+      setLoading(false)
+    } else {
+      // No AI connected — use local command parser
+      const response = executeCommand(userMsg)
+      setMessages(prev => [...prev, { role: 'agent', text: response }])
+      speak(response)
+    }
+
     inputRef.current?.focus()
   }
 
@@ -182,6 +226,9 @@ export function AgentPanel({ agentAPI }) {
             </pre>
           </div>
         ))}
+        {loading && (
+          <div style={{ ...t.monoMuted, padding: '8px 12px' }}>...</div>
+        )}
         <div ref={bottomRef} />
       </div>
 
@@ -246,7 +293,7 @@ export function AgentPanel({ agentAPI }) {
             width: sizes.targetDefault, height: sizes.targetDefault,
             background: 'none', border: `1px solid ${color.border}`,
             borderRadius: 4, cursor: 'pointer',
-            color: input.trim() ? color.primary : color.muted,
+            color: input.trim() && !loading ? color.primary : color.muted,
           }}
         >
           <Send size={sizes.iconSize} strokeWidth={sizes.iconStroke} />

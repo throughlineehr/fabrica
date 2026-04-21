@@ -65,7 +65,6 @@ export const PROVIDERS = {
     }),
     parseResponse: (data) => data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response',
   },
-}
 
   ollama: {
     name: 'Ollama (Local/Private)',
