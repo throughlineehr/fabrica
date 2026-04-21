@@ -159,7 +159,18 @@ export function AgentPanel({ agentAPI }) {
     // Build system prompt with current model state
     const modelYaml = agentAPI ? agentAPI.read().yaml : ''
     const stateInfo = agentAPI ? JSON.stringify(agentAPI.getState()) : '{}'
-    const systemPrompt = `${AGENT_DSL}\n\nCURRENT MODEL STATE:\n${modelYaml}\n\nCURRENT VIEW STATE:\n${stateInfo}\n\nRespond conversationally. If the user asks you to modify the model or navigate, describe what you would do using the command names from the DSL. Keep responses concise.`
+    const systemPrompt = `${AGENT_DSL}\n\nCURRENT MODEL STATE:\n${modelYaml}\n\nCURRENT VIEW STATE:\n${stateInfo}\n\nIMPORTANT: When the user asks you to do something, DO IT by including command calls in your response. Wrap each command in backticks on its own line like this:
+
+\`addManagement("parentId")\`
+\`addOperation("parentId")\`
+\`removeNode("nodeId")\`
+\`focus("nodeId")\`
+\`detail("nodeId")\`
+\`openSystem("nodeId", "s3")\`
+\`overview()\`
+\`back()\`
+
+You can include multiple commands. Use the actual node IDs from the model state above. Put your conversational response around the commands. Keep responses concise.`
 
     const aiMessages = [
       { role: 'system', content: systemPrompt },
@@ -172,6 +183,41 @@ export function AgentPanel({ agentAPI }) {
     if (!res.ok) throw new Error(`${res.status}: ${await res.text().catch(() => 'Unknown error')}`)
     const data = await res.json()
     return provider.parseResponse(data)
+  }
+
+  const executeAICommands = (responseText) => {
+    if (!agentAPI) return []
+    const results = []
+    const cmdPattern = /`(\w+)\(([^)]*)\)`/g
+    let match
+    while ((match = cmdPattern.exec(responseText)) !== null) {
+      const fn = match[1]
+      const argsRaw = match[2]
+      const args = argsRaw.split(',').map(a => a.trim().replace(/^["']|["']$/g, '')).filter(Boolean)
+      try {
+        let result
+        switch (fn) {
+          case 'addManagement': result = agentAPI.addManagement(args[0]); break
+          case 'addOperation': result = agentAPI.addOperation(args[0]); break
+          case 'removeNode': result = agentAPI.removeNode(args[0]); break
+          case 'focus': result = agentAPI.focus(args[0]); break
+          case 'detail': result = agentAPI.detail(args[0]); break
+          case 'openSystem': result = agentAPI.openSystem(args[0], args[1]); break
+          case 'overview': result = agentAPI.overview(); break
+          case 'back': result = agentAPI.back(); break
+          case 'read': result = agentAPI.read(); break
+          case 'listNodes': result = agentAPI.listNodes(); break
+          case 'getState': result = agentAPI.getState(); break
+          case 'getNode': result = agentAPI.getNode(args[0]); break
+          case 'setFilter': result = agentAPI.setFilter(args[0], args[1] === 'true'); break
+          default: result = { ok: false, error: `Unknown command: ${fn}` }
+        }
+        results.push({ cmd: `${fn}(${argsRaw})`, ...result })
+      } catch (err) {
+        results.push({ cmd: `${fn}(${argsRaw})`, ok: false, error: err.message })
+      }
+    }
+    return results
   }
 
   const handleSubmit = async (e) => {
@@ -188,8 +234,19 @@ export function AgentPanel({ agentAPI }) {
         const response = await callAI(userMsg)
         conversationRef.current.push({ role: 'user', content: userMsg })
         conversationRef.current.push({ role: 'assistant', content: response })
-        setMessages(prev => [...prev, { role: 'agent', text: response }])
-        speak(response)
+
+        // Execute any commands in the response
+        const cmdResults = executeAICommands(response)
+
+        // Show the response, and append command results if any
+        let displayText = response
+        if (cmdResults.length > 0) {
+          const resultLines = cmdResults.map(r => `  ${r.cmd} → ${r.ok ? '✓' : '✗ ' + r.error}`)
+          displayText += '\n\n' + resultLines.join('\n')
+        }
+
+        setMessages(prev => [...prev, { role: 'agent', text: displayText }])
+        speak(response.replace(/`[^`]+`/g, ''))
       } catch (err) {
         // Fall back to local commands on error
         const fallback = executeCommand(userMsg)
