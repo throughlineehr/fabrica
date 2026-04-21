@@ -144,7 +144,7 @@ export function SettingsPanel({ t, tr }) {
 }
 
 function AIKeyConfig({ t, tr }) {
-  const { apiKey, provider, model, setApiKey, setModel, isConnected } = useAIConfig()
+  const { apiKey, provider, model, endpoint, setApiKey, setProvider, setModel, setEndpoint, isConnected } = useAIConfig()
   const [inputKey, setInputKey] = useState(apiKey ? '••••••••' + apiKey.slice(-4) : '')
   const [editing, setEditing] = useState(!apiKey)
 
@@ -175,8 +175,53 @@ function AIKeyConfig({ t, tr }) {
         </span>
       </div>
 
-      {/* API Key input */}
+      {/* Provider selector */}
       <div>
+        <label htmlFor="ai-provider-select" style={{ ...t.label, display: 'block', marginBottom: 4 }}>
+          {tr('agent.provider')}
+        </label>
+        <select
+          id="ai-provider-select"
+          value={provider?.id || ''}
+          onChange={(e) => setProvider(e.target.value)}
+          style={{
+            ...t.mono, color: color.primary,
+            padding: '6px 8px', width: '100%',
+            border: `1px solid ${color.border}`,
+            borderRadius: 3, background: 'none',
+          }}
+        >
+          <option value="">Auto-detect from key</option>
+          {Object.entries(PROVIDERS).map(([id, p]) => (
+            <option key={id} value={id}>{p.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Endpoint (for Ollama / custom) */}
+      {provider?.id === 'ollama' && (
+        <div>
+          <label htmlFor="ai-endpoint-input" style={{ ...t.label, display: 'block', marginBottom: 4 }}>
+            Endpoint
+          </label>
+          <input
+            id="ai-endpoint-input"
+            type="text"
+            value={endpoint || provider.endpoint}
+            onChange={(e) => setEndpoint(e.target.value)}
+            placeholder="http://localhost:11434"
+            style={{
+              ...t.mono, color: color.primary,
+              padding: '6px 8px', width: '100%',
+              border: `1px solid ${color.border}`,
+              borderRadius: 3, background: 'none',
+            }}
+          />
+        </div>
+      )}
+
+      {/* API Key input (not needed for Ollama) */}
+      {provider?.id !== 'ollama' && <div>
         <label htmlFor="ai-key-input" style={{ ...t.label, display: 'block', marginBottom: 4 }}>
           {tr('agent.apiKey')}
         </label>
@@ -209,7 +254,7 @@ function AIKeyConfig({ t, tr }) {
             }}>{tr('agent.cleared').split(' ')[0] || 'Clear'}</button>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* Model selector */}
       {isConnected && (

@@ -67,10 +67,35 @@ export const PROVIDERS = {
   },
 }
 
+  ollama: {
+    name: 'Ollama (Local/Private)',
+    models: ['llama3.1', 'mistral', 'codellama', 'custom'],
+    defaultModel: 'llama3.1',
+    endpoint: 'http://localhost:11434',
+    keyPrefix: null, // No key needed
+    buildRequest: (messages, model, apiKey, endpoint) => ({
+      url: `${endpoint || 'http://localhost:11434'}/v1/chat/completions`,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+      }),
+    }),
+    parseResponse: (data) => data.choices?.[0]?.message?.content || 'No response',
+  },
+}
+
 export function getProviderForKey(apiKey) {
-  if (!apiKey) return null
-  for (const [id, provider] of Object.entries(PROVIDERS)) {
-    if (apiKey.startsWith(provider.keyPrefix)) return { id, ...provider }
-  }
+  if (!apiKey || apiKey.length < 10) return null
+  // Check most specific prefixes first
+  if (apiKey.startsWith('sk-ant-')) return { id: 'anthropic', ...PROVIDERS.anthropic }
+  if (apiKey.startsWith('sk-')) return { id: 'openai', ...PROVIDERS.openai }
+  if (apiKey.startsWith('AIza')) return { id: 'google', ...PROVIDERS.google }
   return null
+}
+
+// Manual provider selection (if auto-detect fails)
+export function getProviderById(id) {
+  const p = PROVIDERS[id]
+  return p ? { id, ...p } : null
 }
