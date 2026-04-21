@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Eye, EyeOff, Filter, FolderTree, Wrench, Settings, X } from 'lucide-react'
+import { Eye, EyeOff, Filter, FolderTree, Wrench, Settings, Bot, X } from 'lucide-react'
 import { color, sizes, panel } from '../styles'
 import { Z_INDEX } from '../constants'
 import { useAccessibility } from '../accessibility'
@@ -8,6 +8,7 @@ import { useTranslation } from '../i18n/index.jsx'
 import { ExplorerTree } from './ExplorerTree'
 import { Keycap } from './Keycap'
 import { SettingsPanel } from './tabs/SettingsPanel'
+import { AgentPanel } from './tabs/AgentPanel'
 import { FilterBar, FILTER_HEIGHT } from './tabs/FilterBar'
 
 const PANEL_Z = Z_INDEX.panel
@@ -16,6 +17,7 @@ const SIDE_TABS = [
   { key: 'S', labelKey: 'tabs.settings', icon: Settings },
   { key: 'E', labelKey: 'tabs.explorer', icon: FolderTree },
   { key: 'T', labelKey: 'tabs.tools', icon: Wrench },
+  { key: 'A', labelKey: 'tools.agent', icon: Bot },
 ]
 
 function KeyLabel({ children, shortcut }) {
@@ -41,6 +43,7 @@ function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNo
     <ExplorerTree tree={tree} selectedId={selectedId} paneId={paneId} focusedId={focusedId}
       onSelect={onNodeSelect} onActivate={onNodeActivate} onAddNode={onAddNode} onBack={onBack} onAnnounce={onAnnounce} />
   )
+  if (tabKey === 'A') return <AgentPanel />
   return <StubContent sections={tabKey === 'T' ? ['Node', 'Listen', 'Users'] : []} t={t} tr={tr} />
 }
 

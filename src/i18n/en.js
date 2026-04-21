@@ -72,6 +72,7 @@ export default {
     listen: 'Listen',
     users: 'Users',
     tree: 'Tree',
+    agent: 'Agent',
   },
   systems: {
     s5: 'System 5',
