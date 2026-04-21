@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Volume2, VolumeX, Mic, MicOff } from 'lucide-react'
+import { Send, Volume2, VolumeX, Mic, MicOff, CircleStop } from 'lucide-react'
 import { color, sizes } from '../../styles'
 import { useA11yType } from '../../hooks/useA11yType'
 import { useTranslation } from '../../i18n/index.jsx'
@@ -159,18 +159,20 @@ export function AgentPanel({ agentAPI }) {
     // Build system prompt with current model state
     const modelYaml = agentAPI ? agentAPI.read().yaml : ''
     const stateInfo = agentAPI ? JSON.stringify(agentAPI.getState()) : '{}'
-    const systemPrompt = `${AGENT_DSL}\n\nCURRENT MODEL STATE:\n${modelYaml}\n\nCURRENT VIEW STATE:\n${stateInfo}\n\nIMPORTANT: When the user asks you to do something, DO IT by including command calls in your response. Wrap each command in backticks on its own line like this:
+    const voiceNote = speakEnabled ? '\n\nVOICE IS ON. Keep responses under 2 sentences. Be extremely concise. No lists. No code blocks. Just do it and confirm briefly.' : ''
 
-\`addManagement("parentId")\`
-\`addOperation("parentId")\`
-\`removeNode("nodeId")\`
-\`focus("nodeId")\`
-\`detail("nodeId")\`
-\`openSystem("nodeId", "s3")\`
-\`overview()\`
-\`back()\`
+    const systemPrompt = `${AGENT_DSL}\n\nCURRENT MODEL STATE:\n${modelYaml}\n\nCURRENT VIEW STATE:\n${stateInfo}${voiceNote}\n\nEXECUTING COMMANDS: To execute a command, use this exact syntax on its own line:
 
-You can include multiple commands. Use the actual node IDs from the model state above. Put your conversational response around the commands. Keep responses concise.`
+>>>addManagement("parentId")<<<
+>>>addOperation("parentId")<<<
+>>>removeNode("nodeId")<<<
+>>>focus("nodeId")<<<
+>>>detail("nodeId")<<<
+>>>openSystem("nodeId", "s3")<<<
+>>>overview()<<<
+>>>back()<<<
+
+The >>> and <<< delimiters are REQUIRED. Never use them for anything else. Use actual node IDs from the model state. Include multiple commands if needed. Keep conversational text concise.`
 
     const aiMessages = [
       { role: 'system', content: systemPrompt },
@@ -188,9 +190,11 @@ You can include multiple commands. Use the actual node IDs from the model state 
   const executeAICommands = (responseText) => {
     if (!agentAPI) return []
     const results = []
-    const cmdPattern = /`(\w+)\(([^)]*)\)`/g
+    const delimiter = '>>>'
+    const endDelimiter = '<<<'
+    const cmdRegex = new RegExp(delimiter + '(\\w+)\\(([^)]*)\\)' + endDelimiter, 'g')
     let match
-    while ((match = cmdPattern.exec(responseText)) !== null) {
+    while ((match = cmdRegex.exec(responseText)) !== null) {
       const fn = match[1]
       const argsRaw = match[2]
       const args = argsRaw.split(',').map(a => a.trim().replace(/^["']|["']$/g, '')).filter(Boolean)
@@ -246,7 +250,9 @@ You can include multiple commands. Use the actual node IDs from the model state 
         }
 
         setMessages(prev => [...prev, { role: 'agent', text: displayText }])
-        speak(response.replace(/`[^`]+`/g, ''))
+        // Strip command syntax from voice output
+        const stripCmd = new RegExp('>>>[^<]+' + '<<<', 'g')
+        speak(response.replace(stripCmd, '').trim())
       } catch (err) {
         // Fall back to local commands on error
         const fallback = executeCommand(userMsg)
@@ -321,6 +327,21 @@ You can include multiple commands. Use the actual node IDs from the model state 
           {listening ? <Mic size={14} strokeWidth={1.5} /> : <MicOff size={14} strokeWidth={1.5} />}
           {listening ? tr('agent.listening') : tr('agent.mic')}
         </button>
+        {speakEnabled && (
+          <button
+            onClick={() => window.speechSynthesis?.cancel()}
+            aria-label="Stop speaking"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              ...t.monoMuted, padding: '4px 8px',
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: color.s2.fill,
+            }}
+          >
+            <CircleStop size={14} strokeWidth={1.5} />
+            Stop
+          </button>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} style={{
