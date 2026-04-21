@@ -13,7 +13,15 @@ export default {
     rightClickActions: 'Clic droit pour actions', doubleClickDetail: 'Double-clic pour vue détaillée',
     doubleClickEmpty: 'Double-clic sur vide pour revenir', doubleClickSystem: 'Double-clic sur système pour ouvrir',
   },
-  menu: { actions: 'Actions', addManagement: 'Ajouter gestion', addOperation: 'Ajouter opération' },
+  menu: {
+    actions: 'Actions', addManagement: 'Ajouter gestion', addOperation: 'Ajouter opération',
+    move: 'Déplacer', moveTo: 'Déplacer vers...', insertParent: 'Insérer parent au-dessus',
+    splice: 'Supprimer et promouvoir les enfants', detach: 'Détacher de l\'arbre',
+    duplicate: 'Dupliquer', delete: 'Supprimer', deleteConfirm: 'Supprimer ceci et tous les enfants ?',
+    orphan: 'Orphelin', orphans: 'Orphelins', validate: 'Valider',
+    validationPassed: 'Le modèle est valide pour la publication', validationFailed: 'problèmes trouvés',
+    publish: 'Publier', draft: 'Brouillon',
+  },
   tabs: { filter: 'Filtre', explorer: 'Explorateur', tools: 'Outils', settings: 'Paramètres', hide: 'masquer', show: 'afficher' },
   settings: {
     accessibility: 'ACCESSIBILITÉ', display: 'AFFICHAGE', account: 'COMPTE', language: 'LANGUE',
@@ -41,6 +49,10 @@ export default {
     voice: 'Voix',
     mic: 'Micro',
     listening: 'Écoute en cours...',
+    nodeMoved: 'Nœud déplacé', parentInserted: 'Parent inséré au-dessus',
+    nodeSpliced: 'Nœud supprimé, enfants promus', nodeDetached: 'Nœud détaché de l\'arbre',
+    subtreeDuplicated: 'Sous-arbre dupliqué', modelValidated: 'Modèle validé',
+    modelReplaced: 'Modèle remplacé',
   },
   systems: { s5: 'Système 5', s4: 'Système 4', s3: 'Système 3', s2: 'Système 2', s1: 'Système 1' },
   systemPage: {

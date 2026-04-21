@@ -13,7 +13,15 @@ export default {
     rightClickActions: 'Klik kanan untuk tindakan', doubleClickDetail: 'Klik dua kali untuk tampilan detail',
     doubleClickEmpty: 'Klik dua kali area kosong untuk kembali', doubleClickSystem: 'Klik dua kali sistem untuk membuka',
   },
-  menu: { actions: 'Tindakan', addManagement: 'Tambah manajemen', addOperation: 'Tambah operasi' },
+  menu: {
+    actions: 'Tindakan', addManagement: 'Tambah manajemen', addOperation: 'Tambah operasi',
+    move: 'Pindahkan', moveTo: 'Pindahkan ke...', insertParent: 'Sisipkan induk di atas',
+    splice: 'Hapus dan promosikan anak', detach: 'Lepaskan dari pohon',
+    duplicate: 'Duplikat', delete: 'Hapus', deleteConfirm: 'Hapus ini dan semua anak?',
+    orphan: 'Yatim', orphans: 'Yatim', validate: 'Validasi',
+    validationPassed: 'Model valid untuk dipublikasikan', validationFailed: 'masalah ditemukan',
+    publish: 'Publikasikan', draft: 'Draf',
+  },
   tabs: { filter: 'Filter', explorer: 'Penjelajah', tools: 'Alat', settings: 'Pengaturan', hide: 'sembunyikan', show: 'tampilkan' },
   settings: {
     accessibility: 'AKSESIBILITAS', display: 'TAMPILAN', account: 'AKUN', language: 'BAHASA',
@@ -41,6 +49,10 @@ export default {
     voice: 'Suara',
     mic: 'Mikrofon',
     listening: 'Mendengarkan...',
+    nodeMoved: 'Node dipindahkan', parentInserted: 'Induk disisipkan di atas',
+    nodeSpliced: 'Node dihapus, anak dipromosikan', nodeDetached: 'Node dilepaskan dari pohon',
+    subtreeDuplicated: 'Subpohon diduplikasi', modelValidated: 'Model divalidasi',
+    modelReplaced: 'Model diganti',
   },
   systems: { s5: 'Sistem 5', s4: 'Sistem 4', s3: 'Sistem 3', s2: 'Sistem 2', s1: 'Sistem 1' },
   systemPage: {

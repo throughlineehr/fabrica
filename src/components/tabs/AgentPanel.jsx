@@ -258,6 +258,13 @@ For Mode 2, use the full UUID from the node list above. The >>> and <<< delimite
           case 'addManagement': result = agentAPI.addManagement(args[0]); break
           case 'addOperation': result = agentAPI.addOperation(args[0]); break
           case 'removeNode': result = agentAPI.removeNode(args[0]); break
+          case 'renameNode': result = agentAPI.renameNode(args[0], args[1]); break
+          case 'moveNode': result = agentAPI.moveNode(args[0], args[1]); break
+          case 'insertParent': result = agentAPI.insertParent(args[0]); break
+          case 'spliceNode': result = agentAPI.spliceNode(args[0]); break
+          case 'detachNode': result = agentAPI.detachNode(args[0]); break
+          case 'duplicateSubtree': result = agentAPI.duplicateSubtree(args[0], args[1]); break
+          case 'validate': result = agentAPI.validate(); break
           case 'focus': result = agentAPI.focus(args[0]); break
           case 'detail': result = agentAPI.detail(args[0]); break
           case 'openSystem': result = agentAPI.openSystem(args[0], args[1]); break

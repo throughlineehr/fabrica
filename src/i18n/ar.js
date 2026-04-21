@@ -14,7 +14,15 @@ export default {
     rightClickActions: 'انقر يمين للإجراءات', doubleClickDetail: 'انقر مرتين للعرض التفصيلي',
     doubleClickEmpty: 'انقر مرتين على الفراغ للعودة', doubleClickSystem: 'انقر مرتين على النظام للفتح',
   },
-  menu: { actions: 'إجراءات', addManagement: 'إضافة إدارة', addOperation: 'إضافة عملية' },
+  menu: {
+    actions: 'إجراءات', addManagement: 'إضافة إدارة', addOperation: 'إضافة عملية',
+    move: 'نقل', moveTo: 'نقل إلى...', insertParent: 'إدراج أب أعلى',
+    splice: 'إزالة وترقية الفروع', detach: 'فصل من الشجرة',
+    duplicate: 'تكرار', delete: 'حذف', deleteConfirm: 'حذف هذا وجميع الفروع؟',
+    orphan: 'يتيم', orphans: 'أيتام', validate: 'تحقق',
+    validationPassed: 'النموذج صالح للنشر', validationFailed: 'مشاكل وُجدت',
+    publish: 'نشر', draft: 'مسودة',
+  },
   tabs: { filter: 'تصفية', explorer: 'مستكشف', tools: 'أدوات', settings: 'إعدادات', hide: 'إخفاء', show: 'إظهار' },
   settings: {
     accessibility: 'إمكانية الوصول', display: 'العرض', account: 'الحساب', language: 'اللغة',
@@ -42,6 +50,10 @@ export default {
     voice: 'صوت',
     mic: 'ميكروفون',
     listening: 'جارٍ الاستماع...',
+    nodeMoved: 'تم نقل العقدة', parentInserted: 'تم إدراج الأب أعلى',
+    nodeSpliced: 'تم إزالة العقدة وترقية الفروع', nodeDetached: 'تم فصل العقدة من الشجرة',
+    subtreeDuplicated: 'تم تكرار الشجرة الفرعية', modelValidated: 'تم التحقق من النموذج',
+    modelReplaced: 'تم استبدال النموذج',
   },
   systems: { s5: 'نظام ٥', s4: 'نظام ٤', s3: 'نظام ٣', s2: 'نظام ٢', s1: 'نظام ١' },
   systemPage: {

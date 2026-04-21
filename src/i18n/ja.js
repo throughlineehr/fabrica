@@ -13,7 +13,15 @@ export default {
     rightClickActions: '右クリックでアクション', doubleClickDetail: 'ダブルクリックで詳細表示',
     doubleClickEmpty: '空白をダブルクリックで戻る', doubleClickSystem: 'システムをダブルクリックで開く',
   },
-  menu: { actions: 'アクション', addManagement: '管理を追加', addOperation: 'オペレーションを追加' },
+  menu: {
+    actions: 'アクション', addManagement: '管理を追加', addOperation: 'オペレーションを追加',
+    move: '移動', moveTo: '移動先...', insertParent: '上に親を挿入',
+    splice: '削除して子を昇格', detach: 'ツリーから切り離す',
+    duplicate: '複製', delete: '削除', deleteConfirm: 'これとすべての子を削除しますか？',
+    orphan: '孤立ノード', orphans: '孤立ノード一覧', validate: '検証',
+    validationPassed: 'モデルは公開可能です', validationFailed: '件の問題が見つかりました',
+    publish: '公開', draft: '下書き',
+  },
   tabs: { filter: 'フィルター', explorer: 'エクスプローラー', tools: 'ツール', settings: '設定', hide: '非表示', show: '表示' },
   settings: {
     accessibility: 'アクセシビリティ', display: '表示', account: 'アカウント', language: '言語',
@@ -41,6 +49,10 @@ export default {
     voice: '音声',
     mic: 'マイク',
     listening: '聞き取り中...',
+    nodeMoved: 'ノードを移動しました', parentInserted: '上に親を挿入しました',
+    nodeSpliced: 'ノードを削除し子を昇格しました', nodeDetached: 'ノードをツリーから切り離しました',
+    subtreeDuplicated: 'サブツリーを複製しました', modelValidated: 'モデルを検証しました',
+    modelReplaced: 'モデルを置換しました',
   },
   systems: { s5: 'システム5', s4: 'システム4', s3: 'システム3', s2: 'システム2', s1: 'システム1' },
   systemPage: {

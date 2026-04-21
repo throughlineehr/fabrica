@@ -13,7 +13,15 @@ export default {
     rightClickActions: 'Clic derecho para acciones', doubleClickDetail: 'Doble clic para vista detallada',
     doubleClickEmpty: 'Doble clic en vacío para volver', doubleClickSystem: 'Doble clic en sistema para abrir',
   },
-  menu: { actions: 'Acciones', addManagement: 'Agregar gestión', addOperation: 'Agregar operación' },
+  menu: {
+    actions: 'Acciones', addManagement: 'Agregar gestión', addOperation: 'Agregar operación',
+    move: 'Mover', moveTo: 'Mover a...', insertParent: 'Insertar padre arriba',
+    splice: 'Eliminar y promover hijos', detach: 'Desprender del árbol',
+    duplicate: 'Duplicar', delete: 'Eliminar', deleteConfirm: '¿Eliminar esto y todos los hijos?',
+    orphan: 'Huérfano', orphans: 'Huérfanos', validate: 'Validar',
+    validationPassed: 'El modelo es válido para publicar', validationFailed: 'problemas encontrados',
+    publish: 'Publicar', draft: 'Borrador',
+  },
   tabs: { filter: 'Filtro', explorer: 'Explorador', tools: 'Herramientas', settings: 'Ajustes', hide: 'ocultar', show: 'mostrar' },
   settings: {
     accessibility: 'ACCESIBILIDAD', display: 'PANTALLA', account: 'CUENTA', language: 'IDIOMA',
@@ -41,6 +49,10 @@ export default {
     voice: 'Voz',
     mic: 'Mic',
     listening: 'Escuchando...',
+    nodeMoved: 'Nodo movido', parentInserted: 'Padre insertado arriba',
+    nodeSpliced: 'Nodo eliminado, hijos promovidos', nodeDetached: 'Nodo desprendido del árbol',
+    subtreeDuplicated: 'Subárbol duplicado', modelValidated: 'Modelo validado',
+    modelReplaced: 'Modelo reemplazado',
   },
   systems: { s5: 'Sistema 5', s4: 'Sistema 4', s3: 'Sistema 3', s2: 'Sistema 2', s1: 'Sistema 1' },
   systemPage: {

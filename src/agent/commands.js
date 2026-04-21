@@ -2,14 +2,12 @@
 //
 // The agent operates the application through structured commands.
 // Each command returns a result describing what happened.
-//
-// Pass dependencies via createAgentAPI so there are no import side effects.
 
-import { addNode, removeNode, canAddManagement, canAddOperation, exportModelCompact } from '../tree/index'
+import { addNode, removeNode, renameNode, moveNode, insertParent, spliceNode, detachNode, duplicateSubtree, createOrphan, validateModel, canAddManagement, canAddOperation, exportModelCompact } from '../tree/index'
 
 export function createAgentAPI({ getModel, setModel, getNavState, navigate, panels, filters, announce }) {
   return {
-    // --- Model ---
+    // --- Model Read ---
     read: () => {
       return { ok: true, yaml: exportModelCompact(getModel()) }
     },
@@ -20,10 +18,11 @@ export function createAgentAPI({ getModel, setModel, getNavState, navigate, pane
       return { ok: true }
     },
 
+    // --- Model Mutations ---
     addManagement: (parentId) => {
       const model = getModel()
-      if (!canAddManagement(model, parentId)) return { ok: false, error: 'Cannot add management here' }
       const next = addNode(model, parentId, 'management')
+      if (next === model) return { ok: false, error: 'Cannot add management here' }
       const newId = next.children[parentId].find(id => !model.children[parentId]?.includes(id))
       setModel(next)
       announce?.('Management unit added')
@@ -32,8 +31,8 @@ export function createAgentAPI({ getModel, setModel, getNavState, navigate, pane
 
     addOperation: (parentId) => {
       const model = getModel()
-      if (!canAddOperation(model, parentId)) return { ok: false, error: 'Cannot add operation here' }
       const next = addNode(model, parentId, 'operation')
+      if (next === model) return { ok: false, error: 'Cannot add operation here' }
       const newId = next.children[parentId].find(id => !model.children[parentId]?.includes(id))
       setModel(next)
       announce?.('Operation added')
@@ -47,6 +46,66 @@ export function createAgentAPI({ getModel, setModel, getNavState, navigate, pane
       setModel(removeNode(model, nodeId))
       announce?.('Node removed')
       return { ok: true }
+    },
+
+    renameNode: (nodeId, name) => {
+      const model = getModel()
+      if (!model.entities[nodeId]) return { ok: false, error: 'Node not found' }
+      setModel(renameNode(model, nodeId, name))
+      announce?.(`Renamed to ${name}`)
+      return { ok: true }
+    },
+
+    moveNode: (nodeId, newParentId) => {
+      const model = getModel()
+      const next = moveNode(model, nodeId, newParentId)
+      if (next === model) return { ok: false, error: 'Cannot move here' }
+      setModel(next)
+      announce?.('Node moved')
+      return { ok: true }
+    },
+
+    insertParent: (nodeId) => {
+      const model = getModel()
+      const next = insertParent(model, nodeId)
+      if (next === model) return { ok: false, error: 'Cannot insert parent' }
+      const newParentId = next.parents[nodeId]
+      setModel(next)
+      announce?.('Parent inserted above')
+      return { ok: true, nodeId: newParentId }
+    },
+
+    spliceNode: (nodeId) => {
+      const model = getModel()
+      const next = spliceNode(model, nodeId)
+      if (next === model) return { ok: false, error: 'Cannot splice this node' }
+      setModel(next)
+      announce?.('Node removed, children promoted')
+      return { ok: true }
+    },
+
+    detachNode: (nodeId) => {
+      const model = getModel()
+      const next = detachNode(model, nodeId)
+      if (next === model) return { ok: false, error: 'Cannot detach' }
+      setModel(next)
+      announce?.('Node detached from tree')
+      return { ok: true }
+    },
+
+    duplicateSubtree: (nodeId, targetParentId) => {
+      const model = getModel()
+      const next = duplicateSubtree(model, nodeId, targetParentId)
+      if (next === model) return { ok: false, error: 'Cannot duplicate here' }
+      setModel(next)
+      announce?.('Subtree duplicated')
+      return { ok: true }
+    },
+
+    validate: () => {
+      const issues = validateModel(getModel())
+      announce?.(issues.length === 0 ? 'Model is valid' : `${issues.length} issues found`)
+      return { ok: true, issues, valid: issues.length === 0 }
     },
 
     // --- Navigation ---
@@ -74,7 +133,7 @@ export function createAgentAPI({ getModel, setModel, getNavState, navigate, pane
       const entity = model.entities[nodeId]
       if (!entity) return { ok: false, error: 'Node not found' }
       return {
-        ok: true, id: nodeId, type: entity.type,
+        ok: true, id: nodeId, type: entity.type, name: entity.name,
         parentId: model.parents[nodeId],
         childIds: model.children[nodeId] || [],
       }
@@ -83,7 +142,7 @@ export function createAgentAPI({ getModel, setModel, getNavState, navigate, pane
     listNodes: () => {
       const model = getModel()
       const nodes = Object.entries(model.entities).map(([id, entity]) => ({
-        id: id.slice(0, 8), fullId: id, type: entity.type,
+        id: id.slice(0, 8), fullId: id, type: entity.type, name: entity.name,
         parentId: model.parents[id]?.slice(0, 8) || null,
         children: (model.children[id] || []).length,
       }))
@@ -106,27 +165,42 @@ THE MODEL:
 The model is a tree of nodes. Each node is either "management" or "operation".
 Management nodes contain systems S5 (policy), S4 (planning), S3 (operations management).
 Operations are leaf work units with S1 (operations) and S2 (coordination/variety attenuation).
+The model uses draft mode — mixed types and orphans are allowed during construction.
+Use validate() before publishing to check for issues.
 
 COMMANDS:
-  read()                        → YAML of current model
-  addManagement(parentId)       → add management child, returns { ok, nodeId }
-  addOperation(parentId)        → add operation child (leaf only)
-  removeNode(nodeId)            → remove node and descendants
-  overview()                    → full tree view
-  focus(nodeId)                 → focus on node
-  detail(nodeId)                → detail/pane view
-  openSystem(nodeId, sysKey)    → open system page (s1-s5)
-  back()                        → go back one level
-  getState()                    → current view state
-  getNode(nodeId)               → node details
-  listNodes()                   → all nodes with short IDs
-  openPanel(key)                → E=Explorer, S=Settings, T=Tools, A=Agent, F=Filter
-  closePanel()                  → close panel
-  setFilter(sysKey, visible)    → toggle visibility (s1-s5, frame)
+  Model:
+    read()                              → YAML of current model
+    addManagement(parentId)             → add management child
+    addOperation(parentId)              → add operation child
+    removeNode(nodeId)                  → cascade delete (node + descendants)
+    renameNode(nodeId, name)            → set node name
+    moveNode(nodeId, newParentId)       → reparent entire subtree
+    insertParent(nodeId)                → insert management layer above
+    spliceNode(nodeId)                  → remove node, promote children to grandparent
+    detachNode(nodeId)                  → disconnect from parent (becomes orphan)
+    duplicateSubtree(nodeId, parentId)  → deep copy subtree under parent
+    validate()                          → check model for publish readiness
+
+  Navigation:
+    overview()                → full tree view
+    focus(nodeId)             → focus on node
+    detail(nodeId)            → detail/pane view
+    openSystem(nodeId, sysKey)→ open system page (s1-s5)
+    back()                    → go back one level
+    getState()                → current view state
+    getNode(nodeId)           → node details (type, name, parent, children)
+    listNodes()               → all nodes with names and short IDs
+
+  Panels/Filters:
+    openPanel(key)            → E=Explorer, S=Settings, T=Tools, A=Agent, F=Filter
+    closePanel()              → close panel
+    setFilter(sysKey, visible)→ toggle visibility (s1-s5, frame)
 
 RULES:
-- Management: can have child management OR one operation, not both
-- Operations: always leaves, no children
+- Operations cannot have children (data integrity)
+- Draft mode: mixed types and orphans are allowed
+- validate() reports issues: orphans, unnamed, mixed children, etc.
 - Node IDs are UUIDs — use listNodes() for short IDs
 - Navigation: overview → focus → detail → system, back() reverses
 `

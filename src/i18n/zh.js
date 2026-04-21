@@ -13,7 +13,15 @@ export default {
     rightClickActions: '右键操作', doubleClickDetail: '双击查看详情',
     doubleClickEmpty: '双击空白返回', doubleClickSystem: '双击系统打开',
   },
-  menu: { actions: '操作', addManagement: '添加管理', addOperation: '添加操作' },
+  menu: {
+    actions: '操作', addManagement: '添加管理', addOperation: '添加操作',
+    move: '移动', moveTo: '移动到...', insertParent: '在上方插入父节点',
+    splice: '移除并提升子节点', detach: '从树中分离',
+    duplicate: '复制', delete: '删除', deleteConfirm: '删除此节点及所有子节点？',
+    orphan: '孤立节点', orphans: '孤立节点', validate: '验证',
+    validationPassed: '模型可以发布', validationFailed: '个问题',
+    publish: '发布', draft: '草稿',
+  },
   tabs: { filter: '筛选', explorer: '资源管理器', tools: '工具', settings: '设置', hide: '隐藏', show: '显示' },
   settings: {
     accessibility: '无障碍', display: '显示', account: '账户', language: '语言',
@@ -41,6 +49,10 @@ export default {
     voice: '语音',
     mic: '麦克风',
     listening: '正在聆听...',
+    nodeMoved: '节点已移动', parentInserted: '已在上方插入父节点',
+    nodeSpliced: '节点已移除，子节点已提升', nodeDetached: '节点已从树中分离',
+    subtreeDuplicated: '子树已复制', modelValidated: '模型已验证',
+    modelReplaced: '模型已替换',
   },
   systems: { s5: '系统5', s4: '系统4', s3: '系统3', s2: '系统2', s1: '系统1' },
   systemPage: {

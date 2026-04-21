@@ -13,7 +13,15 @@ export default {
     rightClickActions: 'Clic destro per azioni', doubleClickDetail: 'Doppio clic per vista dettagliata',
     doubleClickEmpty: 'Doppio clic su vuoto per tornare', doubleClickSystem: 'Doppio clic su sistema per aprire',
   },
-  menu: { actions: 'Azioni', addManagement: 'Aggiungi gestione', addOperation: 'Aggiungi operazione' },
+  menu: {
+    actions: 'Azioni', addManagement: 'Aggiungi gestione', addOperation: 'Aggiungi operazione',
+    move: 'Sposta', moveTo: 'Sposta in...', insertParent: 'Inserisci genitore sopra',
+    splice: 'Rimuovi e promuovi figli', detach: 'Stacca dall\'albero',
+    duplicate: 'Duplica', delete: 'Elimina', deleteConfirm: 'Eliminare questo e tutti i figli?',
+    orphan: 'Orfano', orphans: 'Orfani', validate: 'Valida',
+    validationPassed: 'Il modello è valido per la pubblicazione', validationFailed: 'problemi trovati',
+    publish: 'Pubblica', draft: 'Bozza',
+  },
   tabs: { filter: 'Filtro', explorer: 'Esplora', tools: 'Strumenti', settings: 'Impostazioni', hide: 'nascondi', show: 'mostra' },
   settings: {
     accessibility: 'ACCESSIBILITÀ', display: 'SCHERMO', account: 'ACCOUNT', language: 'LINGUA',
@@ -41,6 +49,10 @@ export default {
     voice: 'Voce',
     mic: 'Mic',
     listening: 'In ascolto...',
+    nodeMoved: 'Nodo spostato', parentInserted: 'Genitore inserito sopra',
+    nodeSpliced: 'Nodo rimosso, figli promossi', nodeDetached: 'Nodo staccato dall\'albero',
+    subtreeDuplicated: 'Sottoalbero duplicato', modelValidated: 'Modello validato',
+    modelReplaced: 'Modello sostituito',
   },
   systems: { s5: 'Sistema 5', s4: 'Sistema 4', s3: 'Sistema 3', s2: 'Sistema 2', s1: 'Sistema 1' },
   systemPage: {

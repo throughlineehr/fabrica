@@ -13,7 +13,15 @@ export default {
     rightClickActions: 'क्रियाओं के लिए राइट-क्लिक करें', doubleClickDetail: 'विस्तृत दृश्य के लिए डबल-क्लिक करें',
     doubleClickEmpty: 'वापस जाने के लिए खाली जगह पर डबल-क्लिक करें', doubleClickSystem: 'खोलने के लिए प्रणाली पर डबल-क्लिक करें',
   },
-  menu: { actions: 'क्रियाएँ', addManagement: 'प्रबंधन जोड़ें', addOperation: 'संचालन जोड़ें' },
+  menu: {
+    actions: 'क्रियाएँ', addManagement: 'प्रबंधन जोड़ें', addOperation: 'संचालन जोड़ें',
+    move: 'स्थानांतरित करें', moveTo: 'यहाँ ले जाएँ...', insertParent: 'ऊपर पैरेंट डालें',
+    splice: 'हटाएँ और बच्चों को बढ़ावा दें', detach: 'वृक्ष से अलग करें',
+    duplicate: 'प्रतिलिपि', delete: 'हटाएँ', deleteConfirm: 'इसे और सभी बच्चों को हटाएँ?',
+    orphan: 'अनाथ', orphans: 'अनाथ', validate: 'मान्य करें',
+    validationPassed: 'मॉडल प्रकाशन के लिए मान्य है', validationFailed: 'समस्याएँ मिलीं',
+    publish: 'प्रकाशित करें', draft: 'मसौदा',
+  },
   tabs: { filter: 'फ़िल्टर', explorer: 'एक्सप्लोरर', tools: 'उपकरण', settings: 'सेटिंग्स', hide: 'छिपाएँ', show: 'दिखाएँ' },
   settings: {
     accessibility: 'सुगम्यता', display: 'प्रदर्शन', account: 'खाता', language: 'भाषा',
@@ -41,6 +49,10 @@ export default {
     voice: 'आवाज़',
     mic: 'माइक',
     listening: 'सुन रहा है...',
+    nodeMoved: 'नोड स्थानांतरित हुआ', parentInserted: 'ऊपर पैरेंट डाला गया',
+    nodeSpliced: 'नोड हटाया गया, बच्चे बढ़ावा दिए गए', nodeDetached: 'नोड वृक्ष से अलग किया गया',
+    subtreeDuplicated: 'उप-वृक्ष की प्रतिलिपि बनाई गई', modelValidated: 'मॉडल मान्य किया गया',
+    modelReplaced: 'मॉडल प्रतिस्थापित किया गया',
   },
   systems: { s5: 'प्रणाली 5', s4: 'प्रणाली 4', s3: 'प्रणाली 3', s2: 'प्रणाली 2', s1: 'प्रणाली 1' },
   systemPage: {
