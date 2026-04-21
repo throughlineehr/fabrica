@@ -175,6 +175,13 @@ function AIKeyConfig({ t, tr }) {
         </span>
       </div>
 
+      {/* Security note for cloud providers */}
+      {isConnected && provider?.id !== 'ollama' && (
+        <p style={{ ...t.caption, margin: '0', padding: '6px 0', borderLeft: `2px solid ${color.s4.fill}`, paddingLeft: 8 }}>
+          {tr('agent.securityWarning')}
+        </p>
+      )}
+
       {/* Provider selector */}
       <div>
         <label htmlFor="ai-provider-select" style={{ ...t.label, display: 'block', marginBottom: 4 }}>

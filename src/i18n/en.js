@@ -103,6 +103,7 @@ export default {
     providerDetected: 'Detected',
     saved: 'Saved',
     cleared: 'Cleared',
+    securityWarning: 'Cloud providers send your model data to external servers. For sensitive organizational data, use Ollama (local/private) to keep everything on your network.',
   },
   systems: {
     s5: 'System 5',
