@@ -37,7 +37,7 @@ function StubContent({ sections, t, tr }) {
   )
 }
 
-function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onBack, onAnnounce }) {
+function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onBack, onAnnounce, agentAPI }) {
   if (tabKey === 'S') return <SettingsPanel t={t} tr={tr} />
   if (tabKey === 'E' && tree) return (
     <ExplorerTree tree={tree} selectedId={selectedId} paneId={paneId} focusedId={focusedId}
