@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send } from 'lucide-react'
+import { Send, Volume2, VolumeX, Mic, MicOff } from 'lucide-react'
 import { color, sizes } from '../../styles'
 import { useA11yType } from '../../hooks/useA11yType'
 import { useTranslation } from '../../i18n/index.jsx'
@@ -8,6 +8,9 @@ export function AgentPanel({ agentAPI }) {
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const [input, setInput] = useState('')
+  const [speakEnabled, setSpeakEnabled] = useState(false)
+  const [listening, setListening] = useState(false)
+  const recognitionRef = useRef(null)
   const [messages, setMessages] = useState([
     { role: 'agent', text: 'I can help you build and modify your viable system model. Try commands like:\n• "list nodes"\n• "read model"\n• "add management to [id]"\n• "focus [id]"\n• "what is the current state?"' },
   ])
@@ -17,6 +20,38 @@ export function AgentPanel({ agentAPI }) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  const speak = (text) => {
+    if (!speakEnabled || !window.speechSynthesis) return
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.rate = 1.0
+    utterance.pitch = 1.0
+    window.speechSynthesis.speak(utterance)
+  }
+
+  const toggleListening = () => {
+    if (listening) {
+      recognitionRef.current?.stop()
+      setListening(false)
+      return
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) return
+    const recognition = new SR()
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.onresult = (e) => {
+      const transcript = e.results[0][0].transcript
+      setInput(transcript)
+      setListening(false)
+    }
+    recognition.onerror = () => setListening(false)
+    recognition.onend = () => setListening(false)
+    recognitionRef.current = recognition
+    recognition.start()
+    setListening(true)
+  }
 
   const executeCommand = (text) => {
     if (!agentAPI) return 'Agent API not connected'
@@ -130,6 +165,7 @@ export function AgentPanel({ agentAPI }) {
 
     const response = executeCommand(userMsg)
     setMessages(prev => [...prev, { role: 'agent', text: response }])
+    speak(response)
 
     inputRef.current?.focus()
   }
@@ -157,10 +193,45 @@ export function AgentPanel({ agentAPI }) {
         <div ref={bottomRef} />
       </div>
 
+      {/* Voice controls */}
+      <div style={{
+        display: 'flex', gap: 4, padding: '8px 16px 0',
+        borderTop: `1px solid ${color.border}`,
+      }}>
+        <button
+          onClick={() => setSpeakEnabled(s => !s)}
+          aria-label={speakEnabled ? 'Disable voice output' : 'Enable voice output'}
+          aria-pressed={speakEnabled}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            ...t.monoMuted, padding: '4px 8px',
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: speakEnabled ? color.primary : color.muted,
+          }}
+        >
+          {speakEnabled ? <Volume2 size={14} strokeWidth={1.5} /> : <VolumeX size={14} strokeWidth={1.5} />}
+          Voice
+        </button>
+        <button
+          onClick={toggleListening}
+          aria-label={listening ? 'Stop listening' : 'Start voice input'}
+          aria-pressed={listening}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            ...t.monoMuted, padding: '4px 8px',
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: listening ? color.s2.fill : color.muted,
+          }}
+        >
+          {listening ? <Mic size={14} strokeWidth={1.5} /> : <MicOff size={14} strokeWidth={1.5} />}
+          {listening ? 'Listening...' : 'Mic'}
+        </button>
+      </div>
+
+      {/* Input */}
       <form onSubmit={handleSubmit} style={{
         display: 'flex', gap: 8,
-        padding: '12px 16px',
-        borderTop: `1px solid ${color.border}`,
+        padding: '8px 16px 12px',
       }}>
         <label htmlFor="agent-input" className="sr-only">Message the agent</label>
         <input
