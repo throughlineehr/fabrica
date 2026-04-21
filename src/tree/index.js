@@ -4,6 +4,7 @@
 import { applyLayout } from './layout'
 
 export { createModel, addNode, removeNode, canAddManagement, canAddOperation } from './model'
+export { exportModel, exportModelCompact, importModel } from './serialize'
 export { applyLayout } from './layout'
 export { findNode, containsNode, nodeHasS2, findParent, flattenTree, getLastNode, getTreeBounds } from './queries'
 
