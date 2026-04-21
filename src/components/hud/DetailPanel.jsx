@@ -1,4 +1,6 @@
-import { color } from '../../styles'
+import { useState, useRef } from 'react'
+import { Pencil } from 'lucide-react'
+import { color, sizes } from '../../styles'
 import { MAX_TREE_DEPTH } from '../../constants'
 import { useAccessibility } from '../../accessibility'
 import { getPatternDataUrl } from '../../hooks/usePatternTexture'
@@ -27,13 +29,81 @@ export function DetailPanelCompact({ node, t, tr, dir }) {
   )
 }
 
-export function DetailPanelExpanded({ node, onBack, t, tr, dir }) {
+function EditableName({ node, t, tr, onRename }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState('')
+  const inputRef = useRef()
+
+  const startEdit = () => {
+    setValue(node.name || '')
+    setEditing(true)
+    requestAnimationFrame(() => {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    })
+  }
+
+  const commit = () => {
+    if (onRename) onRename(node.id, value)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <div style={{ margin: '16px 0 24px' }}>
+        <label htmlFor="detail-rename" className="sr-only">{tr('menu.rename')}</label>
+        <input
+          id="detail-rename"
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit()
+            if (e.key === 'Escape') setEditing(false)
+          }}
+          onBlur={commit}
+          placeholder={tr('menu.unnamed')}
+          style={{
+            ...t.hero, margin: 0, width: '100%',
+            border: 'none', borderBottom: `2px solid ${color.focus}`,
+            background: 'none', padding: '0 0 4px',
+          }}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, margin: '16px 0 24px' }}>
+      <h1
+        onDoubleClick={startEdit}
+        style={{ ...t.hero, margin: 0, cursor: 'text' }}
+      >
+        {nodeLabel(node, tr)}
+      </h1>
+      <button
+        onClick={startEdit}
+        aria-label={tr('menu.rename')}
+        style={{
+          display: 'flex', alignItems: 'center',
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: color.muted, padding: 4, flexShrink: 0,
+        }}
+      >
+        <Pencil size={sizes.iconSize} strokeWidth={sizes.iconStroke} />
+      </button>
+    </div>
+  )
+}
+
+export function DetailPanelExpanded({ node, onBack, onRename, t, tr, dir }) {
   const { colorBlind } = useAccessibility()
   if (!node) return null
   return (
     <div dir={dir} style={{ maxWidth: 360 }}>
       <Breadcrumb node={node} mode="pane" onBack={onBack} t={t} tr={tr} />
-      <h1 style={{ ...t.hero, margin: '16px 0 24px' }}>{nodeLabel(node, tr)}</h1>
+      <EditableName node={node} t={t} tr={tr} onRename={onRename} />
 
       <div style={{ borderTop: `1px solid ${color.border}`, paddingTop: 16, marginBottom: 20 }}>
         <h3 style={{ ...t.h3, margin: '0 0 8px' }}>{tr('hud.position')}</h3>

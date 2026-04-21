@@ -18,7 +18,7 @@ export const PROVIDERS = {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 1024,
+        max_tokens: 8192,
         system: messages[0]?.content || '',
         messages: messages.slice(1).map(m => ({ role: m.role, content: m.content })),
       }),
@@ -41,7 +41,7 @@ export const PROVIDERS = {
       body: JSON.stringify({
         model,
         messages: messages.map(m => ({ role: m.role, content: m.content })),
-        max_tokens: 1024,
+        max_tokens: 8192,
       }),
     }),
     parseResponse: (data) => data.choices?.[0]?.message?.content || 'No response',

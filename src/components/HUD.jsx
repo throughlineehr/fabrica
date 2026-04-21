@@ -7,7 +7,7 @@ import { Breadcrumb } from './hud/Breadcrumb'
 import { DetailPanelCompact, DetailPanelExpanded } from './hud/DetailPanel'
 import { Instructions } from './hud/Instructions'
 
-export function HUD({ node, mode, onBack }) {
+export function HUD({ node, mode, onBack, onRename }) {
   const t = useA11yType()
   const { t: tr, dir } = useTranslation()
   const isPaneMode = mode === 'pane'
@@ -43,7 +43,7 @@ export function HUD({ node, mode, onBack }) {
         paddingRight: isPaneMode ? 12 : undefined,
       }}>
         {isPaneMode
-          ? <DetailPanelExpanded node={node} onBack={onBack} t={t} tr={tr} dir={dir} />
+          ? <DetailPanelExpanded node={node} onBack={onBack} onRename={onRename} t={t} tr={tr} dir={dir} />
           : <DetailPanelCompact node={node} t={t} tr={tr} dir={dir} />
         }
       </div>

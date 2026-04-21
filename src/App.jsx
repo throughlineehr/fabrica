@@ -504,7 +504,10 @@ function App() {
 
       <div id="main-content">
         {!transitioning && !systemView && (
-          <HUD node={activeNode} mode={hudMode} onBack={handleBack} />
+          <HUD node={activeNode} mode={hudMode} onBack={handleBack} onRename={(nodeId, name) => {
+            setModel(prev => renameNode(prev, nodeId, name))
+            setAnnouncement(name ? `Renamed to ${name}` : 'Name cleared')
+          }} />
         )}
       </div>
 
