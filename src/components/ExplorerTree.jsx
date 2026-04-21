@@ -17,7 +17,7 @@ function KeyBadge({ letter, t }) {
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      width: 18, height: 18,
+      width: 22, height: 22,
       border: `1.5px solid ${color.primary}`,
       borderRadius: 3,
       ...t.keycap,

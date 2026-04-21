@@ -79,43 +79,43 @@ export default function StyleGuide() {
           <p style={{ ...type.h3, margin: 0 }}>Processing Node Alpha</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>BODY — 13px / 400 / 0em — #666 on white — 5.7:1 ✓ AA</p>
+          <p style={type.label}>BODY — 14px / 400 — #666 on white — 5.7:1 ✓ AA</p>
           <p style={{ ...type.body, margin: 0 }}>Each meta unit contains three subsystems arranged vertically.</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>BODY STRONG — 13px / 400 / 0em — #1a1a1a on white — 17.4:1 ✓ AAA</p>
+          <p style={type.label}>BODY STRONG — 14px / 400 — #1a1a1a on white — 17.4:1 ✓ AAA</p>
           <p style={{ ...type.bodyStrong, margin: 0 }}>System indicators with primary color text.</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>CAPTION — 11px / 400 / 0.02em — #767676 on white — 4.5:1 ✓ AA</p>
+          <p style={type.label}>CAPTION — 12px / 400 — #767676 on white — 4.5:1 ✓ AA</p>
           <p style={{ ...type.caption, margin: 0 }}>Last modified 2 hours ago · 3 children · Layer -2</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>MONO — 11px / 400 / 0.04em — #666 on white — 5.7:1 ✓ AA</p>
+          <p style={type.label}>MONO — 12px / 400 — #666 on white — 5.7:1 ✓ AA</p>
           <p style={{ ...type.mono, margin: 0 }}>coords: (2, 0, -3) · id: node_0f2a · depth: 4/20</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>MONO ACTIVE — 11px / 500 / 0.04em — #1a1a1a on white — 17.4:1 ✓ AAA</p>
+          <p style={type.label}>MONO ACTIVE — 12px / 500 — #1a1a1a on white — 17.4:1 ✓ AAA</p>
           <p style={{ ...type.monoActive, margin: 0 }}>Selected item · Active state</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>MONO MUTED — 11px / 400 / 0.04em — #767676 on white — 4.5:1 ✓ AA</p>
+          <p style={type.label}>MONO MUTED — 12px / 400 — #767676 on white — 4.5:1 ✓ AA</p>
           <p style={{ ...type.monoMuted, margin: 0 }}>Inactive items · Secondary info</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>MONO BOLD — 11px / 500 / 0.04em — #1a1a1a on white — 17.4:1 ✓ AAA</p>
+          <p style={type.label}>MONO BOLD — 12px / 500 — #1a1a1a on white — 17.4:1 ✓ AAA</p>
           <p style={{ ...type.monoBold, margin: 0 }}>Back · Confirm · Cancel</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>KEYCAP — 10px / 700 / 0.05em — #1a1a1a on white — 17.4:1 ✓ AAA</p>
-          <p style={{ ...type.keycap, margin: 0, display: 'inline-flex', border: `1.5px solid ${color.primary}`, borderRadius: 3, padding: '1px 5px' }}>M</p>
+          <p style={type.label}>KEYCAP — 12px / 700 — #1a1a1a on white — 17.4:1 ✓ AAA</p>
+          <p style={{ ...type.keycap, margin: 0, display: 'inline-flex', border: `1.5px solid ${color.primary}`, borderRadius: 3, padding: '2px 6px' }}>M</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>KEYCAP INVERTED — 9px / 700 / 0.05em — #fff on #1a1a1a — 17.4:1 ✓ AAA</p>
-          <p style={{ ...type.keycapInverted, margin: 0, display: 'inline-flex', background: color.primary, borderRadius: 3, padding: '2px 5px' }}>SHIFT</p>
+          <p style={type.label}>KEYCAP INVERTED — 12px / 700 — #fff on #1a1a1a — 17.4:1 ✓ AAA</p>
+          <p style={{ ...type.keycapInverted, margin: 0, display: 'inline-flex', background: color.primary, borderRadius: 3, padding: '2px 6px' }}>SHIFT</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>LABEL — 9px / 400 / 0.08em / UPPERCASE — #767676 on white — 4.5:1 ✓ AA</p>
+          <p style={type.label}>LABEL — 12px / 400 / UPPERCASE — #767676 on white — 4.5:1 ✓ AA</p>
           <p style={{ ...type.label, margin: 0 }}>ACTIONS · STATUS · COORDINATES</p>
         </div>
       </div>

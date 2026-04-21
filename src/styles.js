@@ -30,101 +30,99 @@ export const color = {
 }
 
 // --- Typography ---
-// Minimum body text: 13px. Large text threshold: 18px (or 14px bold).
-// Line height ≥1.5 for body text (WCAG 1.4.12).
+// MINIMUM font size: 12px (WCAG practical minimum for readability)
+// Line height: ≥1.5 for body text (WCAG 1.4.12 text spacing)
+// Large text threshold: 18px (or 14px bold) — 3:1 contrast acceptable
 export const type = {
   hero: {
     fontFamily: FONT_PRIMARY,
-    fontSize: '64px', fontWeight: 700,
+    fontSize: '64px', fontWeight: 700,              // large text
     letterSpacing: '-0.04em', lineHeight: 1.1,
-    color: color.primary,
+    color: color.primary,                            // 17.4:1 ✓ AAA
   },
   title: {
     fontFamily: FONT_PRIMARY,
-    fontSize: '34px', fontWeight: 600,
+    fontSize: '34px', fontWeight: 600,              // large text
     letterSpacing: '-0.03em', lineHeight: 1.2,
-    color: color.primary,
+    color: color.primary,                            // 17.4:1 ✓ AAA
   },
   h1: {
     fontFamily: FONT_PRIMARY,
-    fontSize: '24px', fontWeight: 500,       // large text: 3:1 OK
+    fontSize: '24px', fontWeight: 500,              // large text
     letterSpacing: '-0.02em', lineHeight: 1.3,
-    color: color.primary,
+    color: color.primary,                            // 17.4:1 ✓ AAA
   },
   h2: {
     fontFamily: FONT_PRIMARY,
-    fontSize: '18px', fontWeight: 500,       // large text: 3:1 OK
+    fontSize: '18px', fontWeight: 500,              // large text
     letterSpacing: '-0.01em', lineHeight: 1.4,
-    color: color.primary,
+    color: color.primary,                            // 17.4:1 ✓ AAA
   },
   h3: {
     fontFamily: FONT_PRIMARY,
-    fontSize: '14px', fontWeight: 500,       // 14px bold = large text: 3:1 OK
+    fontSize: '14px', fontWeight: 500,              // 14px bold = large text
     letterSpacing: '0', lineHeight: 1.5,
-    color: color.primary,
+    color: color.primary,                            // 17.4:1 ✓ AAA
   },
   body: {
     fontFamily: FONT_PRIMARY,
-    fontSize: '13px', fontWeight: 400,
-    letterSpacing: '0', lineHeight: 1.6,
-    color: color.secondary,                  // 5.7:1 ✓ AA
+    fontSize: '14px', fontWeight: 400,              // was 13px → 14px
+    letterSpacing: '0', lineHeight: 1.5,
+    color: color.secondary,                          // 5.7:1 ✓ AA
   },
   bodyStrong: {
     fontFamily: FONT_PRIMARY,
-    fontSize: '13px', fontWeight: 400,
-    letterSpacing: '0', lineHeight: 1.6,
-    color: color.primary,                    // 17.4:1 ✓ AAA
+    fontSize: '14px', fontWeight: 400,              // was 13px → 14px
+    letterSpacing: '0', lineHeight: 1.5,
+    color: color.primary,                            // 17.4:1 ✓ AAA
   },
   caption: {
     fontFamily: FONT_PRIMARY,
-    fontSize: '11px', fontWeight: 400,
+    fontSize: '12px', fontWeight: 400,              // was 11px → 12px
     letterSpacing: '0.02em', lineHeight: 1.5,
-    color: color.muted,                      // 4.5:1 ✓ AA
+    color: color.muted,                              // 4.5:1 ✓ AA
   },
   mono: {
     fontFamily: FONT_MONO,
-    fontSize: '11px', fontWeight: 400,
+    fontSize: '12px', fontWeight: 400,              // was 11px → 12px
     letterSpacing: '0.04em', lineHeight: 1.5,
-    color: color.secondary,                  // 5.7:1 ✓ AA
+    color: color.secondary,                          // 5.7:1 ✓ AA
   },
   monoBold: {
     fontFamily: FONT_MONO,
-    fontSize: '11px', fontWeight: 500,       // 11px bold < 14px, needs 4.5:1
+    fontSize: '12px', fontWeight: 500,              // was 11px → 12px
     letterSpacing: '0.04em', lineHeight: 1.5,
-    color: color.primary,                    // 17.4:1 ✓ AAA
+    color: color.primary,                            // 17.4:1 ✓ AAA
   },
-  // Active/muted variants for conditional text
   monoActive: {
     fontFamily: FONT_MONO,
-    fontSize: '11px', fontWeight: 500,
+    fontSize: '12px', fontWeight: 500,              // was 11px → 12px
     letterSpacing: '0.04em', lineHeight: 1.5,
-    color: color.primary,                    // 17.4:1 ✓ AAA
+    color: color.primary,                            // 17.4:1 ✓ AAA
   },
   monoMuted: {
     fontFamily: FONT_MONO,
-    fontSize: '11px', fontWeight: 400,
+    fontSize: '12px', fontWeight: 400,              // was 11px → 12px
     letterSpacing: '0.04em', lineHeight: 1.5,
-    color: color.muted,                      // 4.5:1 ✓ AA
+    color: color.muted,                              // 4.5:1 ✓ AA
   },
-  // Keyboard key badge (e.g. [M], [SHIFT])
   keycap: {
     fontFamily: FONT_MONO,
-    fontSize: '10px', fontWeight: 700,
+    fontSize: '12px', fontWeight: 700,              // was 10px → 12px
     letterSpacing: '0.05em', lineHeight: 1,
-    color: color.primary,                    // 17.4:1 ✓ AAA
+    color: color.primary,                            // 17.4:1 ✓ AAA
   },
-  // Inverted keycap (white on dark)
   keycapInverted: {
     fontFamily: FONT_MONO,
-    fontSize: '9px', fontWeight: 700,
+    fontSize: '12px', fontWeight: 700,              // was 9px → 12px
     letterSpacing: '0.05em', lineHeight: 1,
-    color: color.white,                      // on primary bg: 17.4:1 ✓ AAA
+    color: color.white,                              // on primary bg: 17.4:1 ✓ AAA
   },
   label: {
     fontFamily: FONT_MONO,
-    fontSize: '9px', fontWeight: 400,
+    fontSize: '12px', fontWeight: 400,              // was 9px → 12px
     letterSpacing: '0.08em', lineHeight: 1.5,
-    color: color.muted,                      // 4.5:1 ✓ AA
+    color: color.muted,                              // 4.5:1 ✓ AA
     textTransform: 'uppercase',
   },
 }
