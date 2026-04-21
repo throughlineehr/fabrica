@@ -29,13 +29,26 @@ The Software shall not be used for predictive policing, social credit systems, o
 ## Permitted Uses
 
 This Software is intended for and encouraged to be used by:
-- Healthcare organizations
-- Educational institutions
+- Labor unions and worker organizations
 - Cooperatives and worker-owned organizations
+- Peace organizations and anti-war movements
+- Anti-racist and racial justice organizations
+- Feminist organizations and women's rights groups
+- LGBTQ+ organizations and queer liberation movements
+- Anti-imperialist and decolonial organizations
+- Anti-capitalist and economic justice movements
+- Healthcare organizations and community health projects
+- Educational institutions and free schools
 - Municipal and civic governments
 - Non-profit organizations and NGOs
-- Social enterprises
-- Any organization working toward human welfare and flourishing
+- Social enterprises and solidarity economy projects
+- Mutual aid networks and community organizations
+- Environmental justice organizations
+- Disability rights and neurodiversity organizations
+- Indigenous rights and sovereignty organizations
+- Immigrant and refugee support organizations
+- Prison abolition and restorative justice organizations
+- Any organization working toward liberation, equity, and human flourishing for the marginalized and powerless
 
 ## Warranty Disclaimer
 

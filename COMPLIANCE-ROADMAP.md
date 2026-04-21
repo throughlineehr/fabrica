@@ -33,13 +33,24 @@ Fabrica is licensed under the **Hippocratic License 3.0** (HL3). This license pe
 - Organizations conducting mass surveillance
 
 ### Encouraged Buyers
+- Labor unions and worker organizations
+- Cooperatives and worker-owned enterprises
+- Peace organizations and anti-war movements
+- Anti-racist and racial justice organizations
+- Feminist and women's rights organizations
+- LGBTQ+ and queer liberation organizations
+- Anti-imperialist and decolonial movements
+- Anti-capitalist and economic justice organizations
 - Hospitals and healthcare systems
-- Schools and universities
-- Cooperatives and worker-owned organizations
+- Schools, universities, and free schools
 - Municipal and civic governments
 - Non-profits and NGOs
-- Social enterprises
-- Any organization working to improve human welfare
+- Social enterprises and solidarity economy projects
+- Mutual aid networks and community organizations
+- Environmental and disability justice organizations
+- Indigenous rights and immigrant support organizations
+- Prison abolition and restorative justice organizations
+- Any organization working toward liberation, equity, and human flourishing
 
 ---
 
