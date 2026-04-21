@@ -3,7 +3,7 @@
 
 import { applyLayout } from './layout'
 
-export { createModel, addNode, removeNode, renameNode, canAddManagement, canAddOperation } from './model'
+export { createModel, addNode, removeNode, renameNode, moveNode, insertParent, flattenNode, duplicateSubtree, canAddManagement, canAddOperation } from './model'
 export { exportModel, exportModelCompact, importModel } from './serialize'
 export { parseShorthand } from './shorthand'
 export { applyLayout } from './layout'
