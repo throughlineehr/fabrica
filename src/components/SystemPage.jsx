@@ -1,9 +1,20 @@
+import { useEffect } from 'react'
 import { color, ui } from '../styles'
 import { SYSTEMS, EXTERNAL_SYSTEMS } from '../constants'
 import { useA11yType } from '../hooks/useA11yType'
 import { useTranslation } from '../i18n/index.jsx'
 
 export function SystemPage({ nodeId, systemKey, onBack }) {
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Escape') {
+        e.stopImmediatePropagation()
+        onBack()
+      }
+    }
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [onBack])
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const sys = SYSTEMS[systemKey] || EXTERNAL_SYSTEMS[systemKey]

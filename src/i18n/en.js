@@ -37,6 +37,7 @@ export default {
     arrowKeysNavigate: 'Arrow keys to navigate',
     enterToActivate: 'Enter to activate',
     homeForRoot: 'Home for root node',
+    mForMenu: 'M for menu',
     doubleClickSystem: 'Double-click system to open',
   },
   menu: {

@@ -75,7 +75,8 @@ export const FONT_VISIBILITY_WEIGHT_BOOST = 200
 export const Z_INDEX = {
   systemPage: 100,
   hud: 900,
-  menu: 1000,
+  panel: 950,
+  menu: 1100,
 }
 
 // --- Coordinate Transform ---

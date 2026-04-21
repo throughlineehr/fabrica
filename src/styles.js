@@ -96,6 +96,29 @@ export const type = {
   },
 }
 
+// --- Spacing ---
+export const spacing = {
+  xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, xxxl: 48,
+}
+
+// --- Sizes ---
+export const sizes = {
+  targetMin: 24,        // WCAG minimum interactive target
+  targetDefault: 44,    // WCAG recommended
+  sidebarWidth: 240,
+  panelMinWidth: 240,
+  panelDefaultWidth: 300,
+  systemIndicator: 12,
+  iconSize: 16,
+  iconStroke: 1.5,
+}
+
+// --- Panel ---
+export const panel = {
+  background: 'rgba(255,255,255,0.95)',
+  backdropFilter: 'blur(8px)',
+}
+
 // --- UI Components ---
 export const ui = {
   contextMenu: {

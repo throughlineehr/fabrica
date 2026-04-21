@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
-import { SQUARE_SIZE, MARGIN, CELL, LAYER_SPACING, SYSTEMS, EXTERNAL_SYSTEMS, ROUNDED_RECT_RADIUS, S2_Y_OFFSET, S2_PANE_X_OFFSET, S2_PANE_SCALE } from '../constants'
+import { Line } from '@react-three/drei'
+import { SQUARE_SIZE, MARGIN, CELL, LAYER_SPACING, SYSTEMS, EXTERNAL_SYSTEMS, ROUNDED_RECT_RADIUS, S2_Y_OFFSET, S2_PANE_X_OFFSET, S2_PANE_SCALE, toWorld } from '../constants'
 import { color } from '../styles'
 import { IsoSquare } from './IsoSquare'
 import { IsoTriangle, TRI_BOTTOM } from './IsoTriangle'
@@ -11,7 +12,7 @@ const SYSTEM_COUNT = SYSTEM_KEYS.length
 const s2 = EXTERNAL_SYSTEMS.s2
 const S2_PANE_OFFSET_Y = -SQUARE_SIZE / (2 * S2_PANE_SCALE) - TRI_BOTTOM
 
-export function MetaUnit({ x = 0, layer = 0, nodeId, onContextMenu, onDoubleClick, onSystemClick, onHover, dimmed, highlighted, hasS2 = false, isPaneView = false }) {
+export function MetaUnit({ x = 0, layer = 0, nodeId, onContextMenu, onDoubleClick, onSystemClick, onHover, dimmed, highlighted, keySelected, keySelectedSystem, hasS2 = false, isPaneView = false }) {
   const centerY = ((SYSTEM_COUNT - 1) / 2) * CELL
   const rectWidth = SQUARE_SIZE + MARGIN * 2
   const rectHeight = SYSTEM_COUNT * CELL - MARGIN + MARGIN * 2
@@ -64,8 +65,32 @@ export function MetaUnit({ x = 0, layer = 0, nodeId, onContextMenu, onDoubleClic
           />
         )
       })}
+
+      {/* System keyboard focus ring */}
+      {keySelectedSystem && ['s5', 's4', 's3'].includes(keySelectedSystem) && (() => {
+        const sys = SYSTEMS[keySelectedSystem]
+        const pos = toWorld(x, sys.yOffset, layer)
+        const hs = SQUARE_SIZE / 2 + 0.06
+        return (
+          <group position={pos} rotation={[-Math.PI / 2, 0, 0]}>
+            <Line points={[[-hs,-hs,0],[hs,-hs,0],[hs,hs,0],[-hs,hs,0],[-hs,-hs,0]]} color={color.focus} lineWidth={2} />
+          </group>
+        )
+      })()}
+      {keySelectedSystem === 's2' && hasS2 && (() => {
+        const pos = toWorld(...s2Coords)
+        return (
+          <group position={pos} rotation={[-Math.PI / 2, 0, 0]}>
+            <Line points={[[-0.3,-0.3,0],[0.3,-0.3,0],[0.3,0.3,0],[-0.3,0.3,0],[-0.3,-0.3,0]]} color={color.focus} lineWidth={2} />
+          </group>
+        )
+      })()}
+
       <group position={[x * CELL, layer * LAYER_SPACING, centerY]} rotation={[-Math.PI / 2, 0, 0]}>
         <RoundedRectOutline width={rectWidth} height={rectHeight} radius={ROUNDED_RECT_RADIUS} color={color.metaUnit} dimmed={dimmed} />
+        {keySelected && (
+          <RoundedRectOutline width={rectWidth + 0.12} height={rectHeight + 0.12} radius={ROUNDED_RECT_RADIUS + 0.02} color={color.focus} dimmed={false} strokeWidth={0.04} />
+        )}
       </group>
       {hasS2 && (
         <group>
