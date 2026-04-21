@@ -25,6 +25,7 @@ function buildExportTree(model, id) {
   const entity = model.entities[id]
   const childIds = model.children[id] || []
   const node = { type: entity.type }
+  if (entity.name) node.name = entity.name
 
   // Include id for round-trip fidelity
   node.id = id
@@ -51,7 +52,7 @@ function buildModelFromTree(tree) {
 
   function walk(node, parentId) {
     const id = node.id || crypto.randomUUID()
-    entities[id] = { type: node.type }
+    entities[id] = { type: node.type, name: node.name || '' }
     children[id] = []
     parents[id] = parentId
 
@@ -83,6 +84,7 @@ function buildCompactTree(model, id) {
   const entity = model.entities[id]
   const childIds = model.children[id] || []
   const node = { type: entity.type }
+  if (entity.name) node.name = entity.name
 
   if (childIds.length > 0) {
     node.children = childIds.map(cid => buildCompactTree(model, cid))

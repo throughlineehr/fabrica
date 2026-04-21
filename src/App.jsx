@@ -6,7 +6,7 @@ import {
   CAMERA_INITIAL, CAMERA_LOOK_INITIAL, CAMERA_FOV, CAMERA_NEAR, CAMERA_FAR,
   TRANSITION, Z_INDEX, getNodeCenterY, getSystemPanePosition,
 } from './constants'
-import { createModel, addNode, canAddManagement, canAddOperation, findNode, buildRenderTree, getTreeBounds, nodeHasS2 } from './tree/index'
+import { createModel, addNode, renameNode, canAddManagement, canAddOperation, findNode, buildRenderTree, getTreeBounds, nodeHasS2 } from './tree/index'
 import { CameraController } from './components/CameraController'
 import { MetaTree } from './components/MetaTree'
 import { ContextMenu } from './components/UI'
@@ -55,23 +55,20 @@ function App() {
           ]
       const systemChildren = allSystems.filter(s => visibleSystems[s.systemKey] !== false)
 
-      // Build action children for management nodes
-      const actionChildren = []
+      // Build action children
+      const actionItems = []
+      // Rename available on all nodes
+      actionItems.push({ id: `${node.id}:rename`, type: 'action', actionType: 'rename', parentNodeId: node.id, children: [] })
       if (!isOp) {
-        const mgmtOk = canAddManagement(model, node.id)
-        const opOk = canAddOperation(model, node.id)
-        if (mgmtOk || opOk) {
-          const actionItems = []
-          if (mgmtOk) actionItems.push({ id: `${node.id}:add-management`, type: 'action', actionType: 'management', parentNodeId: node.id, children: [] })
-          if (opOk) actionItems.push({ id: `${node.id}:add-operation`, type: 'action', actionType: 'operation', parentNodeId: node.id, children: [] })
-          actionChildren.push({
-            id: `${node.id}:actions`,
-            type: 'actions-group',
-            parentNodeId: node.id,
-            children: actionItems,
-          })
-        }
+        if (canAddManagement(model, node.id)) actionItems.push({ id: `${node.id}:add-management`, type: 'action', actionType: 'management', parentNodeId: node.id, children: [] })
+        if (canAddOperation(model, node.id)) actionItems.push({ id: `${node.id}:add-operation`, type: 'action', actionType: 'operation', parentNodeId: node.id, children: [] })
       }
+      const actionChildren = [{
+        id: `${node.id}:actions`,
+        type: 'actions-group',
+        parentNodeId: node.id,
+        children: actionItems,
+      }]
 
       return {
         ...node,
@@ -441,6 +438,10 @@ function App() {
             setKeySelectedSystem(null)
             setHoveredId(id)
           }
+        }}
+        onRenameNode={(nodeId, name) => {
+          setModel(prev => renameNode(prev, nodeId, name))
+          setAnnouncement(name ? `Renamed to ${name}` : 'Name cleared')
         }}
         onAddNode={(nodeId, nodeType) => {
           setModel((prev) => {

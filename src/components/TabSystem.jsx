@@ -37,17 +37,17 @@ function StubContent({ sections, t, tr }) {
   )
 }
 
-function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onBack, onAnnounce, agentAPI }) {
+function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onRenameNode, onBack, onAnnounce, agentAPI }) {
   if (tabKey === 'S') return <SettingsPanel t={t} tr={tr} />
   if (tabKey === 'E' && tree) return (
     <ExplorerTree tree={tree} selectedId={selectedId} paneId={paneId} focusedId={focusedId}
-      onSelect={onNodeSelect} onActivate={onNodeActivate} onAddNode={onAddNode} onBack={onBack} onAnnounce={onAnnounce} />
+      onSelect={onNodeSelect} onActivate={onNodeActivate} onAddNode={onAddNode} onRenameNode={onRenameNode} onBack={onBack} onAnnounce={onAnnounce} />
   )
   if (tabKey === 'A') return <AgentPanel agentAPI={agentAPI} />
   return <StubContent sections={tabKey === 'T' ? ['Node', 'Listen', 'Users'] : []} t={t} tr={tr} />
 }
 
-export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onBack, onAnnounce, onExplorerClose, visibleSystems, onToggleSystem, agentAPI, requestOpenExplorer = false }) {
+export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onRenameNode, onBack, onAnnounce, onExplorerClose, visibleSystems, onToggleSystem, agentAPI, requestOpenExplorer = false }) {
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const [activeTab, setActiveTab] = useState(null)
@@ -246,7 +246,7 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
             <PanelContent tabKey={activeTab} t={t} tr={tr} tree={tree} selectedId={selectedId}
               paneId={paneId} focusedId={focusedId}
               onNodeSelect={onNodeSelect} onNodeActivate={onNodeActivate}
-              onAddNode={onAddNode} onBack={onBack} onAnnounce={onAnnounce} agentAPI={agentAPI} />
+              onAddNode={onAddNode} onRenameNode={onRenameNode} onBack={onBack} onAnnounce={onAnnounce} agentAPI={agentAPI} />
           </div>
         </div>
       )}

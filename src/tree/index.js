@@ -3,7 +3,7 @@
 
 import { applyLayout } from './layout'
 
-export { createModel, addNode, removeNode, canAddManagement, canAddOperation } from './model'
+export { createModel, addNode, removeNode, renameNode, canAddManagement, canAddOperation } from './model'
 export { exportModel, exportModelCompact, importModel } from './serialize'
 export { applyLayout } from './layout'
 export { findNode, containsNode, nodeHasS2, findParent, flattenTree, getLastNode, getTreeBounds } from './queries'
@@ -21,6 +21,7 @@ function buildNode(model, id) {
   return {
     id,
     type: entity.type,
+    name: entity.name || '',
     children: childIds.map(cid => buildNode(model, cid)),
   }
 }

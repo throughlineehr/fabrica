@@ -31,7 +31,7 @@ function findParentInTree(root, targetId) {
   return null
 }
 
-function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onActivate, onAdd, t, tr, paneId }) {
+function TreeNode({ node, depth, expanded, onToggle, selectedId, renamingId, onSelect, onActivate, onAdd, onRename, onStartRename, t, tr, paneId }) {
   const isSelected = selectedId === node.id
   const hasChildren = node.children.length > 0
   const isExpanded = expanded[node.id]
@@ -39,14 +39,34 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onAct
   const isSystem = node.type === 'system'
   const isActionsGroup = node.type === 'actions-group'
   const isAction = node.type === 'action'
+  const isRenameAction = isAction && node.actionType === 'rename'
+  const isDataNode = !isSystem && !isActionsGroup && !isAction
 
-  let label, icon
+  const editing = renamingId === node.id && isDataNode
+  const [editName, setEditName] = useState('')
+  const editRef = useRef()
+
+  useEffect(() => {
+    if (editing) {
+      setEditName(node.name || '')
+      requestAnimationFrame(() => {
+        editRef.current?.focus()
+        editRef.current?.select()
+      })
+    }
+  }, [editing])
+
+  let label
   if (isActionsGroup) {
     label = tr('menu.actions')
+  } else if (isRenameAction) {
+    label = tr('menu.rename')
   } else if (isAction) {
     label = node.actionType === 'management' ? tr('menu.addManagement') : tr('menu.addOperation')
   } else if (isSystem) {
     label = tr(`systems.${node.systemKey}`)
+  } else if (node.name) {
+    label = node.name
   } else if (isOperation) {
     label = `${tr('nav.op')} ${shortId(node.id)}`
   } else {
@@ -56,14 +76,20 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onAct
   const btnRef = useRef()
 
   useEffect(() => {
-    if (isSelected && btnRef.current) {
+    if (isSelected && btnRef.current && !editing) {
       btnRef.current.focus({ preventScroll: false })
       btnRef.current.scrollIntoView({ block: 'nearest' })
     }
   }, [isSelected])
 
+  const commitRename = () => {
+    if (onRename) onRename(node.id, editName)
+  }
+
   const handleClick = () => {
-    if (isAction) {
+    if (isRenameAction) {
+      onStartRename?.(node.parentNodeId)
+    } else if (isAction) {
       onAdd(node.parentNodeId, node.actionType)
     } else {
       onSelect(node.id)
@@ -71,7 +97,9 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onAct
   }
 
   const handleDoubleClick = () => {
-    if (!isAction && !isActionsGroup) onActivate(node.id)
+    if (isDataNode) {
+      onActivate(node.id)
+    }
   }
 
   // Determine icon
@@ -139,7 +167,27 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onAct
           <span style={{ width: ICON_SIZE }} aria-hidden="true" />
         )}
         {iconElement}
-        {label}
+        {editing && isDataNode ? (
+          <input
+            ref={editRef}
+            type="text"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitRename()
+              if (e.key === 'Escape') setEditing(false)
+              e.stopPropagation()
+            }}
+            onBlur={commitRename}
+            aria-label={tr('menu.rename')}
+            style={{
+              ...t.mono, color: color.primary,
+              border: `1px solid ${color.focus}`,
+              borderRadius: 2, padding: '1px 4px',
+              background: 'none', width: '100%',
+            }}
+          />
+        ) : label}
       </button>
       {hasChildren && isExpanded && (
         <ul role="group" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
@@ -154,6 +202,9 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onAct
               onSelect={onSelect}
               onActivate={onActivate}
               onAdd={onAdd}
+              onRename={onRename}
+              onStartRename={onStartRename}
+              renamingId={renamingId}
               paneId={paneId}
               t={t}
               tr={tr}
@@ -165,12 +216,13 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onAct
   )
 }
 
-export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focusedId, onSelect, onActivate, onAddNode, onBack, onAnnounce }) {
+export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focusedId, onSelect, onActivate, onAddNode, onRenameNode, onBack, onAnnounce }) {
   const selectedId = selectedIdProp ?? tree.id
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const treeRef = useRef()
   const mounted = useRef(false)
+  const [renamingId, setRenamingId] = useState(null)
 
   useEffect(() => {
     if (!mounted.current) {
@@ -209,6 +261,20 @@ export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focused
   const handleToggle = useCallback((id) => {
     setExpanded(prev => ({ ...prev, [id]: !prev[id] }))
   }, [])
+
+  const handleStartRename = useCallback((nodeId) => {
+    setRenamingId(nodeId)
+  }, [])
+
+  const handleCommitRename = useCallback((nodeId, name) => {
+    if (onRenameNode) onRenameNode(nodeId, name)
+    setRenamingId(null)
+    // Refocus the node
+    requestAnimationFrame(() => {
+      const btn = treeRef.current?.querySelector(`button[data-node-id="${nodeId}"]`)
+      btn?.focus()
+    })
+  }, [onRenameNode])
 
   const handleAdd = useCallback((nodeId, type) => {
     if (onAddNode) {
@@ -283,6 +349,12 @@ export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focused
         e.stopImmediatePropagation()
         onBack?.()
       }
+    } else if (e.key === 'F2') {
+      e.preventDefault()
+      const id = document.activeElement?.dataset?.nodeId
+      if (id && !id.includes(':')) {
+        handleStartRename(id)
+      }
     } else if (e.key === 'Home') {
       e.preventDefault()
       if (buttons[0]) { buttons[0].focus(); if (buttons[0].dataset.nodeId) onSelect(buttons[0].dataset.nodeId) }
@@ -291,7 +363,7 @@ export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focused
       const last = buttons[buttons.length - 1]
       if (last) { last.focus(); if (last.dataset.nodeId && !last.dataset.nodeId.includes(':')) onSelect(last.dataset.nodeId) }
     }
-  }, [tree, expanded, onSelect, onBack, paneId, focusedId, handleToggle])
+  }, [tree, expanded, onSelect, onBack, paneId, focusedId, handleToggle, handleStartRename])
 
   useEffect(() => {
     const handler = (e) => {
@@ -318,6 +390,9 @@ export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focused
         onSelect={onSelect}
         onActivate={onActivate}
         onAdd={handleAdd}
+        onRename={handleCommitRename}
+        onStartRename={handleStartRename}
+        renamingId={renamingId}
         paneId={paneId}
         t={t}
         tr={tr}

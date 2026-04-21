@@ -3,7 +3,7 @@
 export function createModel(rootType = 'management') {
   const rootId = crypto.randomUUID()
   return {
-    entities: { [rootId]: { type: rootType } },
+    entities: { [rootId]: { type: rootType, name: '' } },
     children: { [rootId]: [] },
     parents: { [rootId]: null },
     rootId,
@@ -38,7 +38,7 @@ export function addNode(model, parentId, nodeType) {
   const id = crypto.randomUUID()
   return {
     ...model,
-    entities: { ...model.entities, [id]: { type: nodeType } },
+    entities: { ...model.entities, [id]: { type: nodeType, name: '' } },
     children: {
       ...model.children,
       [parentId]: [...(model.children[parentId] || []), id],
@@ -72,4 +72,15 @@ export function removeNode(model, nodeId) {
   children[parentId] = children[parentId].filter(id => id !== nodeId)
 
   return { ...model, entities, children, parents }
+}
+
+export function renameNode(model, nodeId, name) {
+  if (!model.entities[nodeId]) return model
+  return {
+    ...model,
+    entities: {
+      ...model.entities,
+      [nodeId]: { ...model.entities[nodeId], name },
+    },
+  }
 }

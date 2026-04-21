@@ -46,6 +46,8 @@ export default {
     actions: 'Actions',
     addManagement: 'Add management',
     addOperation: 'Add operation',
+    rename: 'Rename',
+    unnamed: 'Unnamed',
   },
   tabs: {
     filter: 'Filter',
