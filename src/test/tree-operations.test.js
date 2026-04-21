@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createModel, addNode, moveNode, insertParent, flattenNode, duplicateSubtree, detachNode } from '../tree/model'
+import { createModel, addNode, moveNode, insertParent, spliceNode, duplicateSubtree, detachNode } from '../tree/model'
 
 function buildTree() {
   // Root -> [A(mgmt), B(mgmt)]
@@ -78,7 +78,7 @@ describe('insertParent', () => {
   })
 })
 
-describe('flattenNode', () => {
+describe('spliceNode', () => {
   it('removes node and promotes children', () => {
     // Root -> B -> [D, E]
     // After flattening B: Root -> [A, D, E]
@@ -94,7 +94,7 @@ describe('flattenNode', () => {
     const yId = clean.children[xId][0]
     const zId = clean.children[xId][1]
 
-    const result = flattenNode(clean, xId)
+    const result = spliceNode(clean, xId)
     expect(result.entities[xId]).toBeUndefined()
     expect(result.children[clean.rootId]).toContain(yId)
     expect(result.children[clean.rootId]).toContain(zId)
@@ -104,12 +104,12 @@ describe('flattenNode', () => {
 
   it('cannot flatten root', () => {
     const { m } = buildTree()
-    expect(flattenNode(m, m.rootId)).toBe(m)
+    expect(spliceNode(m, m.rootId)).toBe(m)
   })
 
   it('cannot flatten operation', () => {
     const { m, cId } = buildTree()
-    expect(flattenNode(m, cId)).toBe(m)
+    expect(spliceNode(m, cId)).toBe(m)
   })
 
   it('rejects if flattening would mix types', () => {

@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Filter, X } from 'lucide-react'
-import { color } from '../../styles'
-import { sizes } from '../../styles'
+import { color, sizes, panel } from '../../styles'
 import { useAccessibility } from '../../accessibility'
 import { getPatternDataUrl } from '../../hooks/usePatternTexture'
 
@@ -62,8 +61,8 @@ export function FilterBar({ open, onClose, t, tr, visibleSystems = {}, onToggleS
         position: 'fixed', top: 8, left: '50%', transform: 'translateX(-50%)',
         height: FILTER_HEIGHT,
         zIndex: 950,
-        background: 'rgba(255,255,255,0.95)',
-        backdropFilter: 'blur(8px)',
+        background: panel.background,
+        backdropFilter: panel.backdropFilter,
         border: `1px solid ${color.border}`,
         borderRadius: 6,
         display: 'flex', alignItems: 'center',

@@ -5,8 +5,7 @@ import { useA11yType } from '../../hooks/useA11yType'
 import { useTranslation } from '../../i18n/index.jsx'
 import { useAIConfig } from '../../agent/config.jsx'
 import { AGENT_DSL } from '../../agent/commands'
-import { exportModelCompact, importModel } from '../../tree/serialize'
-import { parseShorthand } from '../../tree/shorthand'
+import { exportModelCompact, importModel, parseShorthand } from '../../tree/index'
 
 export function AgentPanel({ agentAPI }) {
   const t = useA11yType()

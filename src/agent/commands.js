@@ -5,8 +5,7 @@
 //
 // Pass dependencies via createAgentAPI so there are no import side effects.
 
-import { addNode, removeNode, canAddManagement, canAddOperation } from '../tree/model'
-import { exportModelCompact } from '../tree/serialize'
+import { addNode, removeNode, canAddManagement, canAddOperation, exportModelCompact } from '../tree/index'
 
 export function createAgentAPI({ getModel, setModel, getNavState, navigate, panels, filters, announce }) {
   return {

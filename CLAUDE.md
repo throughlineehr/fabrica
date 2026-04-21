@@ -9,41 +9,91 @@ An isometric 3D visualization of a viable system model (VSM). Built with React +
 src/
   styles.js              <- SINGLE SOURCE OF TRUTH: fonts, colors, type tokens, ui component styles
   constants.js           <- ALL numbers: grid, systems, camera, opacity, timing, geometry, z-index, a11y scaling
-  tree.js                <- Data model (entities + adjacency + parents), commands, layout, queries
   accessibility.jsx      <- React context: epilepsy, fontVisibility, dyslexia modes
   App.jsx                <- State + composition. No rendering logic.
   StyleGuide.jsx         <- Visual reference at ?styleguide
-  main.jsx               <- Entry point, wraps in AccessibilityProvider
+  main.jsx               <- Entry point, wraps providers (I18n, Accessibility, AIConfig)
+  tree/
+    index.js             <- Re-exports + buildRenderTree
+    model.js             <- Entity store, CRUD commands, validation, tree operations
+    layout.js            <- Position algorithm (x, layer computation)
+    queries.js           <- findNode, containsNode, nodeHasS2, flattenTree, etc.
+    serialize.js         <- YAML import/export (full + compact)
+    shorthand.js         <- BUILD shorthand parser for AI agent
+  agent/
+    commands.js          <- Agent command API (createAgentAPI, AGENT_DSL)
+    providers.js         <- AI provider configs (Anthropic, OpenAI, Google, Ollama)
+    config.jsx           <- AIConfig context (API key, provider, model selection)
+    index.js             <- Re-exports
   hooks/
     useNodeOpacity.js    <- 3D shape opacity (handles epilepsy: highlight vs dim)
     useA11yType.js       <- Modified type tokens (handles fontVisibility + dyslexia)
+    usePatternTexture.js <- Color-blind pattern textures for 3D shapes
+  utils/
+    nodeLabel.js         <- Shared node label formatting (name or fallback)
+  i18n/
+    index.jsx            <- I18n context + useTranslation hook
+    en.js + 8 languages  <- Translation files
   components/
     IsoSquare.jsx        <- Diamond/square (S5, S4, S3)
     IsoEllipse.jsx       <- Circle (S1/operations)
     IsoTriangle.jsx      <- Triangle (S2). Exports TRI_BOTTOM.
-    RoundedRectOutline.jsx <- Mesh outline (NOT lines). Also exports RoundedRectFill.
-    Connection.jsx       <- Elbow + attenuator styles. Also straight, curved, dashed.
+    RoundedRectOutline.jsx <- Mesh outline (NOT lines)
+    Connection.jsx       <- Elbow + attenuator styles
     MetaUnit.jsx         <- S5+S4+S3 group + rounded rect + optional S2
-    OperationNode.jsx    <- S1 circle only (leaf node, S2 owned by parent management)
-    MetaTree.jsx         <- Recursive renderer: connections, S2 chains, pane/focus/dim
-    CameraController.jsx <- Lerp/snap camera, user-interrupt, epilepsy instant mode
-    HUD.jsx              <- Breadcrumbs, detail panels (compact/expanded), instructions
-    UI.jsx               <- ContextMenu
-    SystemPage.jsx       <- Full-page system detail (entered from pane mode)
-    TabSystem.jsx        <- Settings/Explorer/Tools panels, Filter bar, keyboard shortcuts
+    OperationNode.jsx    <- S1 circle only (leaf node)
+    MetaTree.jsx         <- Recursive 3D tree renderer
+    CameraController.jsx <- Lerp/snap camera, user-interrupt
+    Keycap.jsx           <- Keyboard shortcut indicator (<kbd>)
+    HUD.jsx              <- Composition: breadcrumbs, detail panels, instructions
+    UI.jsx               <- ContextMenu (3D right-click)
+    SystemPage.jsx       <- Full-page system detail
+    TabSystem.jsx        <- Panel orchestrator (Settings, Explorer, Tools, Agent, Filter)
+    ExplorerTree.jsx     <- DOM tree view (keyboard nav, inline actions)
+    hud/
+      Breadcrumb.jsx     <- Navigation breadcrumb
+      DetailPanel.jsx    <- Compact + expanded detail views (with editable name)
+      Instructions.jsx   <- Contextual keyboard hints
+    tabs/
+      FilterBar.jsx      <- System visibility filter
+      SettingsPanel.jsx  <- Accessibility, language, AI config
+      AgentPanel.jsx     <- AI chat with voice I/O, command execution
+  test/
+    setup.js
+    tree-model.test.js
+    tree-operations.test.js
+    tree-queries.test.js
+    tree-serialize.test.js
+    tree-shorthand.test.js
+    tree-validate.test.js
+    tree-complexity.test.js
 ```
 
-## Data model (tree.js)
+## Data model (tree/model.js)
 State is `model = { entities, children, parents, rootId }`:
-- `entities: { [uuid]: { type } }` — flat map
+- `entities: { [uuid]: { type, name } }` — flat map
 - `children: { [parentId]: [childId, ...] }` — adjacency
-- `parents: { [childId]: parentId }` — reverse lookup
-- Render tree derived: `buildRenderTree(model)` → `{ id, type, children, x, layer }`
-- Commands: `addNode(model, parentId, type)`, `removeNode(model, id)` — pure, return new model
-- Validation: `canAddManagement()`, `canAddOperation()` — enforce tree rules
+- `parents: { [childId]: parentId }` — reverse lookup (null for root and orphans)
+- Render tree derived: `buildRenderTree(model)` → `{ id, type, name, children, x, layer }`
 
-## Node types & rules
-- **management** — MetaUnit. Can have child management OR one operation (not both).
+### Commands (all pure, return new model):
+- `addNode(parentId, type)` — add child (blocked only on operations)
+- `removeNode(nodeId)` — cascade delete (node + all descendants)
+- `spliceNode(nodeId)` — remove node, promote children to grandparent
+- `detachNode(nodeId)` — disconnect from parent, keep as orphan
+- `moveNode(nodeId, newParentId)` — reparent entire subtree
+- `insertParent(nodeId)` — insert new management above this node
+- `duplicateSubtree(nodeId, targetParentId)` — deep copy with new IDs
+- `createOrphan(model, type, name)` — create standalone unattached node
+- `renameNode(nodeId, name)` — set/change name
+
+### Draft/Validate model:
+- **Draft mode** (default): relaxed rules, mixed types allowed, orphans allowed
+- **Validate mode** (`validateModel(model)`): returns list of issues for publish gate
+  - orphan, unnamed, mixed-children, multiple-operations, empty-management, operation-has-children
+
+## Node types & rules (enforced at publish, relaxed in draft)
+- **management** — MetaUnit. Should have child management OR one operation (not both).
 - **operation** — S1 circle. Leaf only. S2 owned by parent management, not by operation.
 
 ## Systems

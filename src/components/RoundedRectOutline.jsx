@@ -19,7 +19,8 @@ function roundedRectShape(w, h, r) {
   return shape
 }
 
-export function RoundedRectFill({ width, height, radius, color = '#fff', dimmed }) {
+// Currently unused — kept for future pane mode backgrounds
+function RoundedRectFill({ width, height, radius, color, dimmed }) {
   const geometry = useMemo(() => {
     const shape = roundedRectShape(width, height, radius)
     return new THREE.ShapeGeometry(shape, 32)
@@ -32,7 +33,7 @@ export function RoundedRectFill({ width, height, radius, color = '#fff', dimmed 
   )
 }
 
-export function RoundedRectOutline({ width, height, radius, color = '#666', dimmed, strokeWidth = ROUNDED_RECT_STROKE }) {
+export function RoundedRectOutline({ width, height, radius, color, dimmed, strokeWidth = ROUNDED_RECT_STROKE }) {
   const { epilepsy } = useAccessibility()
   const geometry = useMemo(() => {
     const outer = roundedRectShape(width, height, radius)

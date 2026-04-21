@@ -139,7 +139,7 @@ export function insertParent(model, nodeId) {
 
 // Flatten: remove a node and reconnect its children to its parent.
 // Only works on management nodes (not root, not operations).
-export function flattenNode(model, nodeId) {
+export function spliceNode(model, nodeId) {
   if (!model.entities[nodeId]) return model
   if (nodeId === model.rootId) return model
   if (model.entities[nodeId].type !== 'management') return model
