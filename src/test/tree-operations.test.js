@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createModel, addNode, moveNode, insertParent, flattenNode, duplicateSubtree } from '../tree/model'
+import { createModel, addNode, moveNode, insertParent, flattenNode, duplicateSubtree, detachNode } from '../tree/model'
 
 function buildTree() {
   // Root -> [A(mgmt), B(mgmt)]
@@ -120,6 +120,36 @@ describe('flattenNode', () => {
     // Root -> X -> [op1, mgmt1] — can't flatten X because parent would get mixed types
     // But wait, X can't have both op and mgmt — our validation prevents it
     // So flattening should generally work unless the parent already has something incompatible
+  })
+})
+
+describe('detachNode', () => {
+  it('detaches node from parent (becomes orphan)', () => {
+    const { m, aId } = buildTree()
+    const result = detachNode(m, aId)
+    expect(result.parents[aId]).toBeNull()
+    expect(result.children[m.rootId]).not.toContain(aId)
+    // Node and its subtree still exist
+    expect(result.entities[aId]).toBeDefined()
+    expect(result.children[aId]).toBeDefined()
+  })
+
+  it('cannot detach root', () => {
+    const { m } = buildTree()
+    expect(detachNode(m, m.rootId)).toBe(m)
+  })
+
+  it('already detached returns same model', () => {
+    const { m, aId } = buildTree()
+    const m2 = detachNode(m, aId)
+    expect(detachNode(m2, aId)).toBe(m2)
+  })
+
+  it('subtree stays intact after detach', () => {
+    const { m, aId, cId } = buildTree()
+    const result = detachNode(m, aId)
+    expect(result.children[aId]).toContain(cId)
+    expect(result.parents[cId]).toBe(aId)
   })
 })
 

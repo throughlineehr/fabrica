@@ -261,6 +261,24 @@ export function validateModel(model) {
   return issues
 }
 
+// Detach a node from its parent. Node and its subtree become orphans.
+// Can be reattached later with moveNode.
+export function detachNode(model, nodeId) {
+  if (!model.entities[nodeId]) return model
+  if (nodeId === model.rootId) return model
+  const parentId = model.parents[nodeId]
+  if (!parentId) return model // already detached
+
+  return {
+    ...model,
+    children: {
+      ...model.children,
+      [parentId]: model.children[parentId].filter(id => id !== nodeId),
+    },
+    parents: { ...model.parents, [nodeId]: null },
+  }
+}
+
 export function renameNode(model, nodeId, name) {
   if (!model.entities[nodeId]) return model
   return {
