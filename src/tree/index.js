@@ -5,6 +5,7 @@ import { applyLayout } from './layout'
 
 export { createModel, addNode, removeNode, renameNode, canAddManagement, canAddOperation } from './model'
 export { exportModel, exportModelCompact, importModel } from './serialize'
+export { parseShorthand } from './shorthand'
 export { applyLayout } from './layout'
 export { findNode, containsNode, nodeHasS2, findParent, flattenTree, getLastNode, getTreeBounds } from './queries'
 

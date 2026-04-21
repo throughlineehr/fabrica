@@ -352,9 +352,7 @@ export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focused
     } else if (e.key === 'F2') {
       e.preventDefault()
       const id = document.activeElement?.dataset?.nodeId
-      if (id && !id.includes(':')) {
-        handleStartRename(id)
-      }
+      if (id && !id.includes(':')) handleStartRename(id)
     } else if (e.key === 'Home') {
       e.preventDefault()
       if (buttons[0]) { buttons[0].focus(); if (buttons[0].dataset.nodeId) onSelect(buttons[0].dataset.nodeId) }

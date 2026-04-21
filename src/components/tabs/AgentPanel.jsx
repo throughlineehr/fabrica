@@ -6,6 +6,7 @@ import { useTranslation } from '../../i18n/index.jsx'
 import { useAIConfig } from '../../agent/config.jsx'
 import { AGENT_DSL } from '../../agent/commands'
 import { exportModelCompact, importModel } from '../../tree/serialize'
+import { parseShorthand } from '../../tree/shorthand'
 
 export function AgentPanel({ agentAPI }) {
   const t = useA11yType()
@@ -164,37 +165,38 @@ export function AgentPanel({ agentAPI }) {
     const rootFullId = nodeList.nodes?.find(n => n.id === nodeList.rootId)?.fullId || ''
     const voiceNote = speakEnabled ? '\n\nVOICE IS ON. Keep responses under 2 sentences. Be extremely concise. No lists. No code blocks. Just do it and confirm briefly.' : ''
 
-    const systemPrompt = `${AGENT_DSL}\n\nROOT NODE ID: ${rootFullId}\n\nALL NODES (use the FULL ID in parentheses for commands):\n${nodeTable}\n\nCURRENT VIEW STATE:\n${stateInfo}${voiceNote}\n\nCRITICAL: You MUST use the full UUID from the parentheses above for single commands.
+    const systemPrompt = `${AGENT_DSL}\n\nROOT NODE ID: ${rootFullId}\n\nALL NODES (use the FULL ID in parentheses for commands):\n${nodeTable}\n\nCURRENT VIEW STATE:\n${stateInfo}${voiceNote}\n\nEXECUTING COMMANDS — TWO MODES:
 
-EXECUTING COMMANDS — TWO MODES:
+MODE 1 — BUILD (preferred for creating/modifying trees):
+Output a tree between >>>BUILD and BUILD<<<. Uses shorthand: each line is "name: type" where indentation (2 spaces) = depth. Types: m (management), o (operation). This REPLACES the entire model.
 
-MODE 1 — BULK BUILD (preferred for creating/modifying multiple nodes):
-Output a complete YAML model between >>>YAML and YAML<<<. This REPLACES the entire model.
-Example:
->>>YAML
-type: management
-children:
-  - type: management
-    children:
-      - type: operation
-  - type: management
-    children:
-      - type: management
-      - type: operation
-YAML<<<
-This is the BEST way to build complex trees. Just output the desired structure as YAML. No IDs needed — they are generated automatically. Always include the full tree from root.
+>>>BUILD
+CEO: m
+  Marketing: m
+    Social Media: o
+    Brand: o
+  Engineering: m
+    Frontend: m
+      UI Team: o
+      Design: o
+    Backend: m
+      API Team: o
+      Database: o
+  Sales: m
+    Enterprise: o
+    SMB: o
+BUILD<<<
 
-MODE 2 — SINGLE ACTIONS (for navigation, small edits, queries):
->>>addManagement("fullUUID")<<<
->>>addOperation("fullUUID")<<<
->>>removeNode("fullUUID")<<<
+This is compact and efficient. 50 nodes in 50 lines. Always include the full tree from root. Use this for any request that involves building or restructuring.
+
+MODE 2 — SINGLE ACTIONS (for navigation, small edits):
 >>>focus("fullUUID")<<<
 >>>detail("fullUUID")<<<
 >>>openSystem("fullUUID", "s3")<<<
 >>>overview()<<<
 >>>back()<<<
 
-Use Mode 1 for building/restructuring. Use Mode 2 for navigation and small tweaks. The >>> and <<< delimiters are REQUIRED. Never use them for anything else.`
+For Mode 2, use the full UUID from the node list above. The >>> and <<< delimiters are REQUIRED.`
 
     const aiMessages = [
       { role: 'system', content: systemPrompt },
@@ -213,14 +215,28 @@ Use Mode 1 for building/restructuring. Use Mode 2 for navigation and small tweak
     if (!agentAPI) return []
     const results = []
 
-    // Mode 1: YAML state replace
+    // Mode 1a: BUILD shorthand (preferred)
+    const buildMatch = responseText.match(/>>>BUILD\n([\s\S]*?)BUILD<<</)
+    if (buildMatch) {
+      try {
+        const newModel = parseShorthand(buildMatch[1])
+        agentAPI.replaceModel(newModel)
+        const nodeCount = Object.keys(newModel.entities).length
+        results.push({ cmd: `Built ${nodeCount} nodes`, ok: true })
+        return results
+      } catch (err) {
+        results.push({ cmd: 'BUILD', ok: false, error: err.message })
+        return results
+      }
+    }
+
+    // Mode 1b: YAML state replace (fallback)
     const yamlMatch = responseText.match(/>>>YAML\n([\s\S]*?)YAML<<</)
     if (yamlMatch) {
       try {
         const newModel = importModel(yamlMatch[1])
         agentAPI.replaceModel(newModel)
-        // If setModel isn't on agentAPI, use the one from props
-        results.push({ cmd: 'YAML replace', ok: true, error: null })
+        results.push({ cmd: 'YAML replace', ok: true })
         return results
       } catch (err) {
         results.push({ cmd: 'YAML replace', ok: false, error: err.message })
@@ -298,7 +314,7 @@ Use Mode 1 for building/restructuring. Use Mode 2 for navigation and small tweak
 
         setMessages(prev => [...prev, { role: 'agent', text: displayText }])
         // Strip all command syntax from voice output
-        let voiceText = response.replace(/>>>YAML[\s\S]*?YAML<<</, '')
+        let voiceText = response.replace(/>>>BUILD[\s\S]*?BUILD<<</, '').replace(/>>>YAML[\s\S]*?YAML<<</, '')
         const stripCmd = new RegExp('>>>[^<]+' + '<<<', 'g')
         voiceText = voiceText.replace(stripCmd, '').trim()
         speak(voiceText)
