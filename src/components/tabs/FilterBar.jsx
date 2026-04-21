@@ -36,7 +36,13 @@ export function FilterBar({ open, onClose, t, tr }) {
           display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
           ...t.mono, color: color.primary,
         }}>
-          <span style={{
+          <input
+            type="checkbox"
+            defaultChecked
+            aria-label={`Filter ${sys.label}`}
+            style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}
+          />
+          <span aria-hidden="true" style={{
             width: colorBlind ? 22 : 14,
             height: colorBlind ? 22 : 14,
             border: `2px solid ${sys.c}`,

@@ -13,6 +13,7 @@ import { ContextMenu } from './components/UI'
 import { HUD } from './components/HUD'
 import { SystemPage } from './components/SystemPage'
 import { TabSystem } from './components/TabSystem'
+import { color } from './styles'
 import { useAccessibility } from './accessibility'
 
 function App() {
@@ -33,29 +34,6 @@ function App() {
   const [transitioning, setTransitioning] = useState(false)
   const [canvasOpacity, setCanvasOpacity] = useState(1)
   const [systemPageOpacity, setSystemPageOpacity] = useState(0)
-
-  // Global keyboard: arrow keys open Explorer, Escape backs out when no panel is open
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
-      if (e.target.closest('[role="tree"], [role="menu"]')) return
-      if (transitioning || systemView) return
-
-      if (e.key === 'Escape' && (focusedId != null || paneId != null)) {
-        e.preventDefault()
-        handleBack()
-        return
-      }
-
-      const isArrow = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)
-      if (isArrow) {
-        e.preventDefault()
-        setExplorerRequested(true)
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [transitioning, systemView, focusedId, paneId, handleBack])
 
   // Derive render tree from model
   const tree = useMemo(() => buildRenderTree(model), [model])
@@ -103,18 +81,33 @@ function App() {
   }, [])
 
   const addNodeOfType = useCallback((nodeType) => {
-    setModel((prev) => addNode(prev, menu.nodeId, nodeType))
+    const parentId = menu.nodeId
+    setModel((prev) => addNode(prev, parentId, nodeType))
     setMenu(null)
-    setHoveredId(null)
+    setHoveredId(parentId)
+    setKeySelectedId(parentId)
+    // Refocus the Explorer tree after menu closes
+    requestAnimationFrame(() => {
+      const btn = document.querySelector(`[role="tree"] button[data-node-id="${parentId}"]`)
+      btn?.focus()
+    })
   }, [menu])
 
   const handleAddChild = useCallback(() => addNodeOfType('management'), [addNodeOfType])
   const handleAddOperation = useCallback(() => addNodeOfType('operation'), [addNodeOfType])
 
   const handleCloseMenu = useCallback(() => {
+    const nodeId = menu?.nodeId
     setMenu(null)
     setHoveredId(null)
-  }, [])
+    // Refocus Explorer tree if it's open
+    if (nodeId) {
+      requestAnimationFrame(() => {
+        const btn = document.querySelector(`[role="tree"] button[data-node-id="${nodeId}"]`)
+        btn?.focus()
+      })
+    }
+  }, [menu])
 
   const handleDoubleClick = useCallback((nodeId) => {
     const node = findNode(tree, nodeId)
@@ -264,6 +257,29 @@ function App() {
     }
   }, [tree, paneId])
 
+  // Global keyboard: arrow keys open Explorer, Escape backs out when no panel is open
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+      if (e.target.closest('[role="tree"], [role="menu"]')) return
+      if (transitioning || systemView) return
+
+      if (e.key === 'Escape' && (focusedId != null || paneId != null)) {
+        e.preventDefault()
+        handleBack()
+        return
+      }
+
+      const isArrow = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)
+      if (isArrow) {
+        e.preventDefault()
+        setExplorerRequested(true)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [transitioning, systemView, focusedId, paneId, handleBack])
+
   // Clear keyboard selection when mouse takes over
   const handleMouseMove = useCallback(() => {
     if (keySelectedId) setKeySelectedId(null)
@@ -271,6 +287,7 @@ function App() {
 
   return (
     <div style={{ width: '100vw', height: '100vh' }} onContextMenu={(e) => e.preventDefault()} onMouseMove={handleMouseMove}>
+      <a href="#main-content" className="sr-only" style={{ position: 'absolute', zIndex: 9999 }} onFocus={(e) => { e.target.style.position = 'fixed'; e.target.style.top = '8px'; e.target.style.left = '8px'; e.target.style.width = 'auto'; e.target.style.height = 'auto'; e.target.style.clip = 'auto'; e.target.style.padding = '8px 16px'; e.target.style.background = color.white; e.target.style.border = `2px solid ${color.focus}`; e.target.style.borderRadius = '4px'; }} onBlur={(e) => { e.target.style.position = 'absolute'; e.target.style.width = '1px'; e.target.style.height = '1px'; e.target.style.clip = 'rect(0,0,0,0)'; }}>Skip to main content</a>
       <div
         role="application"
         aria-label="3D viable system model"
@@ -362,9 +379,12 @@ function App() {
             setHoveredId(id)
           }
         }}
-        onNodeContextMenu={(nodeId, x, y) => {
+        canAddManagement={(id) => canAddManagement(model, id)}
+        canAddOperation={(id) => canAddOperation(model, id)}
+        onAddNode={(nodeId, nodeType) => {
+          setModel((prev) => addNode(prev, nodeId, nodeType))
+          setKeySelectedId(nodeId)
           setHoveredId(nodeId)
-          setMenu({ nodeId, x, y })
         }}
         onNodeActivate={(id) => {
           if (id.includes(':')) {
@@ -388,18 +408,20 @@ function App() {
         }}
       />
 
-      {!transitioning && !systemView && (
-        <>
+      <div id="main-content">
+        {!transitioning && !systemView && (
           <HUD node={activeNode} mode={hudMode} onBack={handleBack} />
-          {menu && (
-            <ContextMenu
-              x={menu.x} y={menu.y}
-              onAddChild={canAddManagement(model, menu.nodeId) ? handleAddChild : null}
-              onAddOperation={canAddOperation(model, menu.nodeId) ? handleAddOperation : null}
-              onClose={handleCloseMenu}
-            />
-          )}
-        </>
+        )}
+      </div>
+
+      {/* Context menu rendered at top level for z-index reliability */}
+      {menu && (
+        <ContextMenu
+          x={menu.x} y={menu.y}
+          onAddChild={canAddManagement(model, menu.nodeId) ? handleAddChild : null}
+          onAddOperation={canAddOperation(model, menu.nodeId) ? handleAddOperation : null}
+          onClose={handleCloseMenu}
+        />
       )}
     </div>
   )

@@ -48,6 +48,7 @@ function Slider({ label, value, onChange, min = 0, max = 1, step = 0.1, t }) {
       </div>
       <input
         id={id} type="range" min={min} max={max} step={step} value={value}
+        aria-valuenow={value} aria-valuemin={min} aria-valuemax={max}
         aria-valuetext={`${Math.round(value * 100)}%`}
         onChange={(e) => onChange(parseFloat(e.target.value))}
         style={{ width: '100%', accentColor: color.primary }}
@@ -91,6 +92,7 @@ export function SettingsPanel({ t, tr }) {
             <button
               key={l.code}
               onClick={() => setLang(l.code)}
+              aria-current={lang === l.code ? 'true' : undefined}
               style={{
                 ...t.mono,
                 color: lang === l.code ? color.primary : color.muted,
@@ -122,7 +124,7 @@ export function SettingsPanel({ t, tr }) {
           <Toggle label={tr('settings.colorBlindMode')} value={colorBlind} onChange={toggleColorBlind} t={t} />
         </div>
         <div style={{ borderTop: `1px solid ${color.borderLight}` }}>
-          <Toggle label={tr('settings.screenReader')} value={false} onChange={() => {}} t={t} />
+          <Toggle label={`${tr('settings.screenReader')} (${tr('settings.notImplemented')})`} value={false} onChange={() => {}} t={t} />
         </div>
       </AccordionSection>
 

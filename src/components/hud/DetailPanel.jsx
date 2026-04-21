@@ -33,23 +33,23 @@ export function DetailPanelExpanded({ node, onBack, t, tr, dir }) {
   return (
     <div dir={dir} style={{ maxWidth: 360 }}>
       <Breadcrumb node={node} mode="pane" onBack={onBack} t={t} tr={tr} />
-      <p style={{ ...t.hero, margin: '16px 0 24px' }}>{nodeLabel(node, tr)}</p>
+      <h1 style={{ ...t.hero, margin: '16px 0 24px' }}>{nodeLabel(node, tr)}</h1>
 
       <div style={{ borderTop: `1px solid ${color.border}`, paddingTop: 16, marginBottom: 20 }}>
-        <p style={{ ...t.h3, margin: '0 0 8px' }}>{tr('hud.position')}</p>
+        <h3 style={{ ...t.h3, margin: '0 0 8px' }}>{tr('hud.position')}</h3>
         <p style={{ ...t.mono, margin: '0 0 2px' }}>{tr('hud.layer')}: {node.layer}</p>
         <p style={{ ...t.mono, margin: '0 0 2px' }}>{tr('hud.x')}: {node.x?.toFixed(1)}</p>
         <p style={{ ...t.mono, margin: '0 0 2px' }}>{tr('hud.depth')}: {-node.layer}/{MAX_TREE_DEPTH}</p>
       </div>
 
       <div style={{ borderTop: `1px solid ${color.border}`, paddingTop: 16, marginBottom: 20 }}>
-        <p style={{ ...t.h3, margin: '0 0 8px' }}>{tr('hud.structure')}</p>
+        <h3 style={{ ...t.h3, margin: '0 0 8px' }}>{tr('hud.structure')}</h3>
         <p style={{ ...t.mono, margin: '0 0 2px' }}>{tr('hud.children')}: {node.children.length}</p>
         <p style={{ ...t.mono, margin: '0 0 2px' }}>{tr('hud.subtree')}: {countDescendants(node)}</p>
       </div>
 
       <div style={{ borderTop: `1px solid ${color.border}`, paddingTop: 16, marginBottom: 20 }}>
-        <p style={{ ...t.h3, margin: '0 0 8px' }}>{tr('hud.systems')}</p>
+        <h3 style={{ ...t.h3, margin: '0 0 8px' }}>{tr('hud.systems')}</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {['s5', 's4', 's3', 's2', 's1'].map((key) => (
             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -67,7 +67,7 @@ export function DetailPanelExpanded({ node, onBack, t, tr, dir }) {
       </div>
 
       <div style={{ borderTop: `1px solid ${color.border}`, paddingTop: 16 }}>
-        <p style={{ ...t.h3, margin: '0 0 8px' }}>{tr('hud.status')}</p>
+        <h3 style={{ ...t.h3, margin: '0 0 8px' }}>{tr('hud.status')}</h3>
         <p style={{ ...t.body, margin: '0 0 2px' }}>{tr('hud.state')}: {tr('hud.nominal')}</p>
         <p style={{ ...t.caption, margin: 0 }}>{tr('hud.lastModified')}: —</p>
       </div>

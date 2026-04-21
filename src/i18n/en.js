@@ -8,6 +8,8 @@ export default {
     unit: 'Unit',
     operation: 'Operation',
     op: 'Op',
+    expand: 'Expand',
+    collapse: 'Collapse',
   },
   hud: {
     metaUnit: 'META UNIT',

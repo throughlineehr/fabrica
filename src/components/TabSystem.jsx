@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Eye, EyeOff, Filter, FolderTree, Wrench, Settings, X } from 'lucide-react'
 import { color, sizes, panel } from '../styles'
 import { Z_INDEX } from '../constants'
@@ -35,16 +35,17 @@ function StubContent({ sections, t, tr }) {
   )
 }
 
-function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onNodeContextMenu, onBack }) {
+function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, canAddManagement, canAddOperation, onAddNode, onBack }) {
   if (tabKey === 'S') return <SettingsPanel t={t} tr={tr} />
   if (tabKey === 'E' && tree) return (
     <ExplorerTree tree={tree} selectedId={selectedId} paneId={paneId} focusedId={focusedId}
-      onSelect={onNodeSelect} onActivate={onNodeActivate} onContextMenu={onNodeContextMenu} onBack={onBack} />
+      onSelect={onNodeSelect} onActivate={onNodeActivate}
+      canAddManagement={canAddManagement} canAddOperation={canAddOperation} onAddNode={onAddNode} onBack={onBack} />
   )
   return <StubContent sections={tabKey === 'T' ? ['Node', 'Listen', 'Users'] : []} t={t} tr={tr} />
 }
 
-export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onNodeContextMenu, onBack, requestOpenExplorer = false }) {
+export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, canAddManagement, canAddOperation, onAddNode, onBack, requestOpenExplorer = false }) {
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const [activeTab, setActiveTab] = useState(null)
@@ -54,11 +55,14 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
   const [tabsHidden, setTabsHidden] = useState(false)
 
   // Open Explorer when requested externally
+  // Only open explorer on rising edge of requestOpenExplorer
+  const prevRequested = useRef(false)
   useEffect(() => {
-    if (requestOpenExplorer && activeTab !== 'E' && !tabsHidden) {
+    if (requestOpenExplorer && !prevRequested.current && activeTab !== 'E' && !tabsHidden) {
       setActiveTab('E')
       onPanelWidthChange?.(panelWidth)
     }
+    prevRequested.current = requestOpenExplorer
   }, [requestOpenExplorer])
 
   const toggleSide = useCallback((key) => {
@@ -75,8 +79,10 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
     const handler = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
       if (tabsHidden) return
-      // Don't intercept keys inside the Explorer tree (except Escape)
-      if (e.target.closest('[role="tree"]') && e.key !== 'Escape') return
+      // Don't intercept navigation keys inside the Explorer tree — but still handle tab-switching keys
+      const upper = e.key.toUpperCase()
+      const isTabKey = upper === 'F' || SIDE_TABS.some(s => s.key === upper)
+      if (e.target.closest('[role="tree"]') && e.key !== 'Escape' && !isTabKey) return
 
       if (e.key === 'Escape') {
         // If in Explorer with back state, let it through
@@ -86,7 +92,6 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
         return
       }
 
-      const upper = e.key.toUpperCase()
       if (upper === 'F') {
         e.preventDefault()
         setFilterOpen(prev => !prev)
@@ -226,7 +231,7 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {(() => { const Icon = SIDE_TABS.find(s => s.key === activeTab)?.icon; return Icon ? <Icon size={sizes.iconSize} strokeWidth={sizes.iconStroke} /> : null })()}
-              <span style={t.h3}>{tr(SIDE_TABS.find(s => s.key === activeTab)?.labelKey)}</span>
+              <h2 style={{ ...t.h3, margin: 0 }}>{tr(SIDE_TABS.find(s => s.key === activeTab)?.labelKey)}</h2>
             </div>
             <button onClick={() => toggleSide(activeTab)}
               style={{ color: color.muted, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
@@ -236,7 +241,8 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
           <div style={{ flex: 1, overflow: 'auto' }}>
             <PanelContent tabKey={activeTab} t={t} tr={tr} tree={tree} selectedId={selectedId}
               paneId={paneId} focusedId={focusedId}
-              onNodeSelect={onNodeSelect} onNodeActivate={onNodeActivate} onNodeContextMenu={onNodeContextMenu} onBack={onBack} />
+              onNodeSelect={onNodeSelect} onNodeActivate={onNodeActivate}
+              canAddManagement={canAddManagement} canAddOperation={canAddOperation} onAddNode={onAddNode} onBack={onBack} />
           </div>
         </div>
       )}

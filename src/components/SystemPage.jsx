@@ -33,7 +33,7 @@ export function SystemPage({ nodeId, systemKey, onBack }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 12, height: 12, background: sys.color, border: `2px solid ${sys.strokeColor}`, borderRadius: 2 }} />
-          <span style={t.h3}>{name}</span>
+          <h2 style={{ ...t.h3, margin: 0 }}>{name}</h2>
           <span style={t.mono}>{tr('nav.unit')} {nodeId?.slice(0, 5)}</span>
         </div>
         <button
