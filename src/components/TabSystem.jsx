@@ -134,11 +134,11 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
             color: tabsHidden ? color.muted : color.primary,
             background: 'none', border: 'none',
             cursor: 'pointer', padding: '4px 8px',
-            opacity: 0.4, transition: 'opacity 0.15s',
+            transition: 'color 0.15s',
             display: 'flex', alignItems: 'center',
           }}
-          onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
-          onMouseLeave={(e) => e.currentTarget.style.opacity = 0.4}
+          onMouseEnter={(e) => e.currentTarget.style.color = color.primary}
+          onMouseLeave={(e) => e.currentTarget.style.color = tabsHidden ? color.muted : color.primary}
         >
           {tabsHidden ? <EyeOff size={sizes.iconSize} strokeWidth={sizes.iconStroke} /> : <Eye size={sizes.iconSize} strokeWidth={sizes.iconStroke} />}
         </button>
@@ -154,11 +154,11 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
                 position: 'fixed', top: 8, left: '50%', transform: 'translateX(-50%)',
                 zIndex: PANEL_Z, color: color.muted,
                 background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px',
-                opacity: 0.5, transition: 'opacity 0.15s',
+                transition: 'color 0.15s',
                 display: 'flex', alignItems: 'center', gap: 6,
               }}
-              onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
-              onMouseLeave={(e) => e.currentTarget.style.opacity = 0.5}
+              onMouseEnter={(e) => e.currentTarget.style.color = color.primary}
+              onMouseLeave={(e) => e.currentTarget.style.color = color.muted}
             >
               <Filter size={sizes.iconSize} strokeWidth={sizes.iconStroke} />
               <span style={t.monoBold}><KeyLabel>{tr('tabs.filter')}</KeyLabel></span>
