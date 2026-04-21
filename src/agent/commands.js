@@ -15,6 +15,12 @@ export function createAgentAPI({ getModel, setModel, getNavState, navigate, pane
       return { ok: true, yaml: exportModelCompact(getModel()) }
     },
 
+    replaceModel: (newModel) => {
+      setModel(newModel)
+      announce?.('Model replaced')
+      return { ok: true }
+    },
+
     addManagement: (parentId) => {
       const model = getModel()
       if (!canAddManagement(model, parentId)) return { ok: false, error: 'Cannot add management here' }

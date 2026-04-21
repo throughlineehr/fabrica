@@ -5,7 +5,7 @@ import { useA11yType } from '../../hooks/useA11yType'
 import { useTranslation } from '../../i18n/index.jsx'
 import { useAIConfig } from '../../agent/config.jsx'
 import { AGENT_DSL } from '../../agent/commands'
-import { exportModelCompact } from '../../tree/serialize'
+import { exportModelCompact, importModel } from '../../tree/serialize'
 
 export function AgentPanel({ agentAPI }) {
   const t = useA11yType()
@@ -164,18 +164,37 @@ export function AgentPanel({ agentAPI }) {
     const rootFullId = nodeList.nodes?.find(n => n.id === nodeList.rootId)?.fullId || ''
     const voiceNote = speakEnabled ? '\n\nVOICE IS ON. Keep responses under 2 sentences. Be extremely concise. No lists. No code blocks. Just do it and confirm briefly.' : ''
 
-    const systemPrompt = `${AGENT_DSL}\n\nROOT NODE ID: ${rootFullId}\n\nALL NODES (use the FULL ID in parentheses for commands):\n${nodeTable}\n\nCURRENT VIEW STATE:\n${stateInfo}${voiceNote}\n\nCRITICAL: You MUST use the full UUID from the parentheses above, NOT short IDs or made-up names like "root" or "node-2". Example: if the root is listed as "a3f2b1c8 (a3f2b1c8-xxxx-xxxx-xxxx) management", use the full ID in the parentheses.\n\nEXECUTING COMMANDS: To execute a command, use this exact syntax on its own line:
+    const systemPrompt = `${AGENT_DSL}\n\nROOT NODE ID: ${rootFullId}\n\nALL NODES (use the FULL ID in parentheses for commands):\n${nodeTable}\n\nCURRENT VIEW STATE:\n${stateInfo}${voiceNote}\n\nCRITICAL: You MUST use the full UUID from the parentheses above for single commands.
 
->>>addManagement("parentId")<<<
->>>addOperation("parentId")<<<
->>>removeNode("nodeId")<<<
->>>focus("nodeId")<<<
->>>detail("nodeId")<<<
->>>openSystem("nodeId", "s3")<<<
+EXECUTING COMMANDS — TWO MODES:
+
+MODE 1 — BULK BUILD (preferred for creating/modifying multiple nodes):
+Output a complete YAML model between >>>YAML and YAML<<<. This REPLACES the entire model.
+Example:
+>>>YAML
+type: management
+children:
+  - type: management
+    children:
+      - type: operation
+  - type: management
+    children:
+      - type: management
+      - type: operation
+YAML<<<
+This is the BEST way to build complex trees. Just output the desired structure as YAML. No IDs needed — they are generated automatically. Always include the full tree from root.
+
+MODE 2 — SINGLE ACTIONS (for navigation, small edits, queries):
+>>>addManagement("fullUUID")<<<
+>>>addOperation("fullUUID")<<<
+>>>removeNode("fullUUID")<<<
+>>>focus("fullUUID")<<<
+>>>detail("fullUUID")<<<
+>>>openSystem("fullUUID", "s3")<<<
 >>>overview()<<<
 >>>back()<<<
 
-The >>> and <<< delimiters are REQUIRED. Never use them for anything else. Use actual node IDs from the model state. Include multiple commands if needed. Keep conversational text concise.`
+Use Mode 1 for building/restructuring. Use Mode 2 for navigation and small tweaks. The >>> and <<< delimiters are REQUIRED. Never use them for anything else.`
 
     const aiMessages = [
       { role: 'system', content: systemPrompt },
@@ -193,6 +212,23 @@ The >>> and <<< delimiters are REQUIRED. Never use them for anything else. Use a
   const executeAICommands = (responseText) => {
     if (!agentAPI) return []
     const results = []
+
+    // Mode 1: YAML state replace
+    const yamlMatch = responseText.match(/>>>YAML\n([\s\S]*?)YAML<<</)
+    if (yamlMatch) {
+      try {
+        const newModel = importModel(yamlMatch[1])
+        agentAPI.replaceModel(newModel)
+        // If setModel isn't on agentAPI, use the one from props
+        results.push({ cmd: 'YAML replace', ok: true, error: null })
+        return results
+      } catch (err) {
+        results.push({ cmd: 'YAML replace', ok: false, error: err.message })
+        return results
+      }
+    }
+
+    // Mode 2: Individual commands
     const delimiter = '>>>'
     const endDelimiter = '<<<'
     const cmdRegex = new RegExp(delimiter + '(\\w+)\\(([^)]*)\\)' + endDelimiter, 'g')
@@ -261,8 +297,11 @@ The >>> and <<< delimiters are REQUIRED. Never use them for anything else. Use a
         conversationRef.current.push({ role: 'assistant', content: assistantContent })
 
         setMessages(prev => [...prev, { role: 'agent', text: displayText }])
+        // Strip all command syntax from voice output
+        let voiceText = response.replace(/>>>YAML[\s\S]*?YAML<<</, '')
         const stripCmd = new RegExp('>>>[^<]+' + '<<<', 'g')
-        speak(response.replace(stripCmd, '').trim())
+        voiceText = voiceText.replace(stripCmd, '').trim()
+        speak(voiceText)
       } catch (err) {
         // Fall back to local commands on error
         const fallback = executeCommand(userMsg)
