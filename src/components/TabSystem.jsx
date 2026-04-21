@@ -28,7 +28,7 @@ function StubContent({ sections, t, tr }) {
       {sections.map((s, i) => (
         <div key={i} style={{ marginBottom: 20 }}>
           <p style={{ ...t.label, margin: '0 0 8px' }}>{s.toUpperCase()}</p>
-          <p style={{ ...t.mono, color: color.muted, margin: 0 }}>{tr('settings.notImplemented')}</p>
+          <p style={{ ...t.monoMuted, margin: 0 }}>{tr('settings.notImplemented')}</p>
         </div>
       ))}
     </div>

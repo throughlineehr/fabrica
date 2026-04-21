@@ -6,7 +6,7 @@ function BreadcrumbLink({ label, onClick, t }) {
     <button
       onClick={onClick}
       style={{
-        ...t.mono, color: color.muted,
+        ...t.monoMuted,
         background: 'none', border: 'none', cursor: 'pointer',
         padding: 0, textDecoration: 'none',
       }}
@@ -23,19 +23,19 @@ export function Breadcrumb({ node, mode, onBack, t, tr }) {
       <BreadcrumbLink label={tr('app.name')} onClick={onBack} t={t} />
       {mode === 'focused' && (
         <>
-          <span style={{ ...t.mono, color: color.muted }}>/</span>
-          <span style={{ ...t.mono, color: color.primary }}>{nodeLabelShort(node, tr)}</span>
+          <span style={t.monoMuted}>/</span>
+          <span style={t.monoActive}>{nodeLabelShort(node, tr)}</span>
         </>
       )}
       {mode === 'pane' && (
         <>
-          <span style={{ ...t.mono, color: color.muted }}>/</span>
+          <span style={t.monoMuted}>/</span>
           <BreadcrumbLink label={nodeLabelShort(node, tr)} onClick={onBack} t={t} />
-          <span style={{ ...t.mono, color: color.muted }}>/</span>
-          <span style={{ ...t.mono, color: color.primary }}>{tr('nav.detail')}</span>
+          <span style={t.monoMuted}>/</span>
+          <span style={t.monoActive}>{tr('nav.detail')}</span>
         </>
       )}
-      <span style={{ ...t.caption, color: color.muted, marginLeft: 6 }}>{tr('nav.esc')}</span>
+      <span style={{ ...t.caption, marginLeft: 6 }}>{tr('nav.esc')}</span>
     </div>
   )
 }

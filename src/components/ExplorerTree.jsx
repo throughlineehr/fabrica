@@ -13,15 +13,14 @@ const SYSTEM_COLORS = {
   s5: color.s5, s4: color.s4, s3: color.s3, s2: color.s2, s1: color.s1,
 }
 
-function KeyBadge({ letter }) {
+function KeyBadge({ letter, t }) {
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       width: 18, height: 18,
       border: `1.5px solid ${color.primary}`,
       borderRadius: 3,
-      fontFamily: 'inherit', fontSize: '10px', fontWeight: 700,
-      color: color.primary, lineHeight: 1,
+      ...t.keycap,
       flexShrink: 0,
     }}>{letter}</span>
   )
@@ -79,8 +78,7 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onAct
             minHeight: 28,
             background: 'none', border: 'none',
             cursor: 'pointer', textAlign: 'left',
-            ...t.mono,
-            color: isSelected ? color.primary : color.secondary,
+            ...(isSelected ? t.monoActive : t.mono),
           }}
         >
           {hasChildren ? (
@@ -115,11 +113,10 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onAct
           {label}
           {isSelected && canAdd && !shiftHeld && (
             <span style={{
-              ...t.mono, fontSize: '9px', color: color.white,
+              ...t.keycapInverted,
               background: color.primary,
               borderRadius: 3, padding: '2px 5px',
               marginLeft: 6, flexShrink: 0,
-              letterSpacing: '0.05em', fontWeight: 700,
             }}>SHIFT</span>
           )}
         </button>
@@ -149,7 +146,7 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onAct
                       border: 'none',
                       borderLeft: focused ? `2px solid ${color.focus}` : '2px solid transparent',
                       cursor: 'pointer', textAlign: 'left',
-                      ...t.mono, color: color.muted,
+                      ...t.monoMuted,
                     }}
                   >
                     {/* Spacer matching chevron width */}
@@ -157,7 +154,7 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onAct
                     {/* Icon in the square's position */}
                     <cmd.Icon size={8} strokeWidth={2} />
                     {cmd.label}
-                    <KeyBadge letter={cmd.hotkey} />
+                    <KeyBadge letter={cmd.hotkey} t={t} />
                   </button>
                 </li>
               )

@@ -59,43 +59,63 @@ export default function StyleGuide() {
         <p style={type.label}>TYPOGRAPHY</p>
 
         <div style={layout.row}>
-          <p style={type.label}>HERO — 64px / 700 / -0.04em</p>
+          <p style={type.label}>HERO — 64px / 700 / -0.04em — #1a1a1a on white — 17.4:1 ✓ AAA</p>
           <p style={{ ...type.hero, margin: 0 }}>Fabrica</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>TITLE — 34px / 600 / -0.03em</p>
+          <p style={type.label}>TITLE — 34px / 600 / -0.03em — #1a1a1a on white — 17.4:1 ✓ AAA</p>
           <p style={{ ...type.title, margin: 0 }}>Fabrica</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>H1 — 24px / 500 / -0.02em</p>
+          <p style={type.label}>H1 — 24px / 500 / -0.02em — #1a1a1a on white — 17.4:1 ✓ AAA (large text)</p>
           <p style={{ ...type.h1, margin: 0 }}>System Architecture Overview</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>H2 — 18px / 500 / -0.01em</p>
+          <p style={type.label}>H2 — 18px / 500 / -0.01em — #1a1a1a on white — 17.4:1 ✓ AAA (large text)</p>
           <p style={{ ...type.h2, margin: 0 }}>Meta Unit Configuration</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>H3 — 14px / 500 / 0em</p>
+          <p style={type.label}>H3 — 14px / 500 / 0em — #1a1a1a on white — 17.4:1 ✓ AAA (14px bold = large)</p>
           <p style={{ ...type.h3, margin: 0 }}>Processing Node Alpha</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>BODY — 13px / 400 / 0em</p>
-          <p style={{ ...type.body, margin: 0 }}>Each meta unit contains three subsystems arranged vertically. The layout algorithm positions siblings to prevent overlap at any depth.</p>
+          <p style={type.label}>BODY — 13px / 400 / 0em — #666 on white — 5.7:1 ✓ AA</p>
+          <p style={{ ...type.body, margin: 0 }}>Each meta unit contains three subsystems arranged vertically.</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>CAPTION — 11px / 400 / 0.02em</p>
+          <p style={type.label}>BODY STRONG — 13px / 400 / 0em — #1a1a1a on white — 17.4:1 ✓ AAA</p>
+          <p style={{ ...type.bodyStrong, margin: 0 }}>System indicators with primary color text.</p>
+        </div>
+        <div style={layout.row}>
+          <p style={type.label}>CAPTION — 11px / 400 / 0.02em — #767676 on white — 4.5:1 ✓ AA</p>
           <p style={{ ...type.caption, margin: 0 }}>Last modified 2 hours ago · 3 children · Layer -2</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>MONO — 11px / 400 / 0.04em</p>
+          <p style={type.label}>MONO — 11px / 400 / 0.04em — #666 on white — 5.7:1 ✓ AA</p>
           <p style={{ ...type.mono, margin: 0 }}>coords: (2, 0, -3) · id: node_0f2a · depth: 4/20</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>MONO BOLD — 11px / 500 / 0.04em</p>
+          <p style={type.label}>MONO ACTIVE — 11px / 500 / 0.04em — #1a1a1a on white — 17.4:1 ✓ AAA</p>
+          <p style={{ ...type.monoActive, margin: 0 }}>Selected item · Active state</p>
+        </div>
+        <div style={layout.row}>
+          <p style={type.label}>MONO MUTED — 11px / 400 / 0.04em — #767676 on white — 4.5:1 ✓ AA</p>
+          <p style={{ ...type.monoMuted, margin: 0 }}>Inactive items · Secondary info</p>
+        </div>
+        <div style={layout.row}>
+          <p style={type.label}>MONO BOLD — 11px / 500 / 0.04em — #1a1a1a on white — 17.4:1 ✓ AAA</p>
           <p style={{ ...type.monoBold, margin: 0 }}>Back · Confirm · Cancel</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>LABEL — 9px / 400 / 0.08em / UPPERCASE</p>
+          <p style={type.label}>KEYCAP — 10px / 700 / 0.05em — #1a1a1a on white — 17.4:1 ✓ AAA</p>
+          <p style={{ ...type.keycap, margin: 0, display: 'inline-flex', border: `1.5px solid ${color.primary}`, borderRadius: 3, padding: '1px 5px' }}>M</p>
+        </div>
+        <div style={layout.row}>
+          <p style={type.label}>KEYCAP INVERTED — 9px / 700 / 0.05em — #fff on #1a1a1a — 17.4:1 ✓ AAA</p>
+          <p style={{ ...type.keycapInverted, margin: 0, display: 'inline-flex', background: color.primary, borderRadius: 3, padding: '2px 5px' }}>SHIFT</p>
+        </div>
+        <div style={layout.row}>
+          <p style={type.label}>LABEL — 9px / 400 / 0.08em / UPPERCASE — #767676 on white — 4.5:1 ✓ AA</p>
           <p style={{ ...type.label, margin: 0 }}>ACTIONS · STATUS · COORDINATES</p>
         </div>
       </div>

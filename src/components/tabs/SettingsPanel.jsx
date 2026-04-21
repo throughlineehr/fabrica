@@ -22,7 +22,7 @@ function Toggle({ label, value, onChange, t }) {
         textAlign: 'left',
       }}
     >
-      <span style={{ ...t.mono, color: color.primary }}>{label}</span>
+      <span style={t.monoActive}>{label}</span>
       <span aria-hidden="true" style={{
         width: 32, height: 16, borderRadius: 8,
         background: value ? color.primary : color.border,
@@ -43,8 +43,8 @@ function Slider({ label, value, onChange, min = 0, max = 1, step = 0.1, t }) {
   return (
     <div style={{ padding: '8px 0', minHeight: sizes.targetDefault }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-        <label htmlFor={id} style={{ ...t.mono, color: color.primary }}>{label}</label>
-        <span aria-hidden="true" style={{ ...t.mono, color: color.muted }}>{Math.round(value * 100)}%</span>
+        <label htmlFor={id} style={t.monoActive}>{label}</label>
+        <span aria-hidden="true" style={t.monoMuted}>{Math.round(value * 100)}%</span>
       </div>
       <input
         id={id} type="range" min={min} max={max} step={step} value={value}
@@ -94,9 +94,7 @@ export function SettingsPanel({ t, tr }) {
               onClick={() => setLang(l.code)}
               aria-current={lang === l.code ? 'true' : undefined}
               style={{
-                ...t.mono,
-                color: lang === l.code ? color.primary : color.muted,
-                fontWeight: lang === l.code ? 500 : 400,
+                ...(lang === l.code ? t.monoActive : t.monoMuted),
                 background: 'none', border: 'none',
                 borderLeft: `2px solid ${lang === l.code ? color.primary : 'transparent'}`,
                 paddingLeft: 8, paddingBlock: 4,
@@ -105,7 +103,7 @@ export function SettingsPanel({ t, tr }) {
                 minHeight: sizes.targetMin,
               }}
             >
-              <span style={{ fontSize: 14 }}>{l.flag}</span>
+              <span aria-hidden="true">{l.flag}</span>
               {l.label}
             </button>
           ))}

@@ -1,4 +1,3 @@
-import { color } from '../../styles'
 
 export function Instructions({ mode, t, tr }) {
   const hints = {
@@ -35,7 +34,7 @@ export function Instructions({ mode, t, tr }) {
   return (
     <div>
       {lines.map((line, i) => (
-        <p key={i} style={{ ...t.mono, color: color.muted, margin: '0 0 2px', textAlign: 'end' }}>{line}</p>
+        <p key={i} style={{ ...t.monoMuted, margin: '0 0 2px', textAlign: 'end' }}>{line}</p>
       ))}
     </div>
   )

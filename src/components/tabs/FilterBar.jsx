@@ -34,7 +34,7 @@ export function FilterBar({ open, onClose, t, tr }) {
       ].map((sys) => (
         <label key={sys.label} style={{
           display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-          ...t.mono, color: color.primary,
+          ...t.monoActive,
         }}>
           <input
             type="checkbox"

@@ -69,6 +69,12 @@ export const type = {
     letterSpacing: '0', lineHeight: 1.6,
     color: color.secondary,                  // 5.7:1 ✓ AA
   },
+  bodyStrong: {
+    fontFamily: FONT_PRIMARY,
+    fontSize: '13px', fontWeight: 400,
+    letterSpacing: '0', lineHeight: 1.6,
+    color: color.primary,                    // 17.4:1 ✓ AAA
+  },
   caption: {
     fontFamily: FONT_PRIMARY,
     fontSize: '11px', fontWeight: 400,
@@ -86,6 +92,33 @@ export const type = {
     fontSize: '11px', fontWeight: 500,       // 11px bold < 14px, needs 4.5:1
     letterSpacing: '0.04em', lineHeight: 1.5,
     color: color.primary,                    // 17.4:1 ✓ AAA
+  },
+  // Active/muted variants for conditional text
+  monoActive: {
+    fontFamily: FONT_MONO,
+    fontSize: '11px', fontWeight: 500,
+    letterSpacing: '0.04em', lineHeight: 1.5,
+    color: color.primary,                    // 17.4:1 ✓ AAA
+  },
+  monoMuted: {
+    fontFamily: FONT_MONO,
+    fontSize: '11px', fontWeight: 400,
+    letterSpacing: '0.04em', lineHeight: 1.5,
+    color: color.muted,                      // 4.5:1 ✓ AA
+  },
+  // Keyboard key badge (e.g. [M], [SHIFT])
+  keycap: {
+    fontFamily: FONT_MONO,
+    fontSize: '10px', fontWeight: 700,
+    letterSpacing: '0.05em', lineHeight: 1,
+    color: color.primary,                    // 17.4:1 ✓ AAA
+  },
+  // Inverted keycap (white on dark)
+  keycapInverted: {
+    fontFamily: FONT_MONO,
+    fontSize: '9px', fontWeight: 700,
+    letterSpacing: '0.05em', lineHeight: 1,
+    color: color.white,                      // on primary bg: 17.4:1 ✓ AAA
   },
   label: {
     fontFamily: FONT_MONO,

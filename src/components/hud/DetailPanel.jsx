@@ -22,7 +22,7 @@ export function DetailPanelCompact({ node, t, tr, dir }) {
       <p style={{ ...t.mono, margin: '0 0 2px' }}>{tr('hud.x')}: {node.x?.toFixed(1)}</p>
       <p style={{ ...t.mono, margin: '0 0 2px' }}>{tr('hud.children')}: {node.children.length}</p>
       <p style={{ ...t.mono, margin: '0 0 2px' }}>{tr('hud.depth')}: {-node.layer}/{MAX_TREE_DEPTH}</p>
-      <p style={{ ...t.mono, margin: '0 0 2px', color: color.muted }}>{tr('hud.status')}: {tr('hud.nominal')}</p>
+      <p style={{ ...t.monoMuted, margin: '0 0 2px' }}>{tr('hud.status')}: {tr('hud.nominal')}</p>
     </div>
   )
 }
@@ -60,7 +60,7 @@ export function DetailPanelExpanded({ node, onBack, t, tr, dir }) {
                   : color[key].fill,
                 backgroundSize: colorBlind ? '6px 6px' : undefined,
               }} />
-              <p style={{ ...t.body, color: color.primary, margin: 0 }}>{tr(`systems.${key}`).split(' ').pop()} — {tr('hud.active')}</p>
+              <p style={{ ...t.bodyStrong, margin: 0 }}>{tr(`systems.${key}`).split(' ').pop()} — {tr('hud.active')}</p>
             </div>
           ))}
         </div>
