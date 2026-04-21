@@ -15,6 +15,7 @@ import { SystemPage } from './components/SystemPage'
 import { TabSystem } from './components/TabSystem'
 import { color } from './styles'
 import { useAccessibility } from './accessibility'
+import { createAgentAPI } from './agent/commands'
 
 function App() {
   const { epilepsy } = useAccessibility()
@@ -311,6 +312,33 @@ function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [transitioning, systemView, focusedId, paneId, handleBack])
 
+  // Agent API — uses refs to access live state
+  const modelRef = useRef(model)
+  modelRef.current = model
+  const navStateRef = useRef({})
+  navStateRef.current = { focusedId, paneId, systemView }
+
+  const agentAPI = useMemo(() => createAgentAPI({
+    getModel: () => modelRef.current,
+    setModel,
+    getNavState: () => navStateRef.current,
+    navigate: {
+      overview: handleBack, // repeated until overview
+      focus: (nodeId) => { handleDoubleClick(nodeId) },
+      detail: (nodeId) => { navigateToPane(nodeId) },
+      openSystem: (nodeId, systemKey) => { navigateToSystem(nodeId, systemKey) },
+      back: handleBack,
+    },
+    panels: {
+      open: (key) => setExplorerRequested(key === 'E'),
+      close: () => {},
+    },
+    filters: {
+      set: (key, visible) => setVisibleSystems(prev => ({ ...prev, [key]: visible })),
+    },
+    announce: setAnnouncement,
+  }), [handleBack, handleDoubleClick, navigateToPane, navigateToSystem])
+
   // Clear keyboard selection when mouse takes over
   const handleMouseMove = useCallback(() => {
     if (keySelectedId) setKeySelectedId(null)
@@ -368,6 +396,7 @@ function App() {
         onAnnounce={setAnnouncement}
         visibleSystems={visibleSystems}
         onToggleSystem={(key) => setVisibleSystems(prev => ({ ...prev, [key]: !prev[key] }))}
+        agentAPI={agentAPI}
         onExplorerClose={() => { setKeySelectedId(null); setHoveredId(null) }}
         requestOpenExplorer={explorerRequested}
         onNodeSelect={(id) => {

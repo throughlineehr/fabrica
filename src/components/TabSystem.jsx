@@ -43,11 +43,11 @@ function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNo
     <ExplorerTree tree={tree} selectedId={selectedId} paneId={paneId} focusedId={focusedId}
       onSelect={onNodeSelect} onActivate={onNodeActivate} onAddNode={onAddNode} onBack={onBack} onAnnounce={onAnnounce} />
   )
-  if (tabKey === 'A') return <AgentPanel />
+  if (tabKey === 'A') return <AgentPanel agentAPI={agentAPI} />
   return <StubContent sections={tabKey === 'T' ? ['Node', 'Listen', 'Users'] : []} t={t} tr={tr} />
 }
 
-export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onBack, onAnnounce, onExplorerClose, visibleSystems, onToggleSystem, requestOpenExplorer = false }) {
+export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onBack, onAnnounce, onExplorerClose, visibleSystems, onToggleSystem, agentAPI, requestOpenExplorer = false }) {
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const [activeTab, setActiveTab] = useState(null)
@@ -246,7 +246,7 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
             <PanelContent tabKey={activeTab} t={t} tr={tr} tree={tree} selectedId={selectedId}
               paneId={paneId} focusedId={focusedId}
               onNodeSelect={onNodeSelect} onNodeActivate={onNodeActivate}
-              onAddNode={onAddNode} onBack={onBack} onAnnounce={onAnnounce} />
+              onAddNode={onAddNode} onBack={onBack} onAnnounce={onAnnounce} agentAPI={agentAPI} />
           </div>
         </div>
       )}
