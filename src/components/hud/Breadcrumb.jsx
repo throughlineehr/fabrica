@@ -1,5 +1,6 @@
 import { color } from '../../styles'
 import { nodeLabelShort } from '../../utils/nodeLabel'
+import { Keycap } from '../Keycap'
 
 function BreadcrumbLink({ label, onClick, t }) {
   return (
@@ -35,7 +36,7 @@ export function Breadcrumb({ node, mode, onBack, t, tr }) {
           <span style={t.monoActive}>{tr('nav.detail')}</span>
         </>
       )}
-      <span style={{ ...t.caption, marginLeft: 6 }}>{tr('nav.esc')}</span>
+      <span style={{ marginLeft: 6 }}><Keycap>ESC</Keycap></span>
     </div>
   )
 }

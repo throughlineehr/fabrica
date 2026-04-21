@@ -107,12 +107,17 @@ export default function StyleGuide() {
           <p style={{ ...type.monoBold, margin: 0 }}>Back · Confirm · Cancel</p>
         </div>
         <div style={layout.row}>
-          <p style={type.label}>KEYCAP — 12px / 700 — #1a1a1a on white — 17.4:1 ✓ AAA</p>
-          <p style={{ ...type.keycap, margin: 0, display: 'inline-flex', border: `1.5px solid ${color.primary}`, borderRadius: 3, padding: '2px 6px' }}>M</p>
-        </div>
-        <div style={layout.row}>
-          <p style={type.label}>KEYCAP INVERTED — 12px / 700 — #fff on #1a1a1a — 17.4:1 ✓ AAA</p>
-          <p style={{ ...type.keycapInverted, margin: 0, display: 'inline-flex', background: color.primary, borderRadius: 3, padding: '2px 6px' }}>SHIFT</p>
+          <p style={type.label}>KEYCAP — 12px / 600 — keyboard shortcut indicator — 17.4:1 ✓ AAA</p>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+            <kbd style={ui.keycap}>M</kbd>
+            <kbd style={ui.keycap}>O</kbd>
+            <kbd style={ui.keycap}>ESC</kbd>
+            <kbd style={ui.keycap}>SHIFT</kbd>
+            <kbd style={ui.keycap}>F</kbd>
+            <kbd style={ui.keycap}>S</kbd>
+            <kbd style={ui.keycap}>E</kbd>
+            <kbd style={ui.keycap}>T</kbd>
+          </div>
         </div>
         <div style={layout.row}>
           <p style={type.label}>LABEL — 12px / 400 / UPPERCASE — #767676 on white — 4.5:1 ✓ AA</p>

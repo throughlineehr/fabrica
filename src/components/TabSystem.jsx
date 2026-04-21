@@ -6,6 +6,7 @@ import { useAccessibility } from '../accessibility'
 import { useA11yType } from '../hooks/useA11yType'
 import { useTranslation } from '../i18n/index.jsx'
 import { ExplorerTree } from './ExplorerTree'
+import { Keycap } from './Keycap'
 import { SettingsPanel } from './tabs/SettingsPanel'
 import { FilterBar, FILTER_HEIGHT } from './tabs/FilterBar'
 
@@ -17,9 +18,8 @@ const SIDE_TABS = [
   { key: 'T', labelKey: 'tabs.tools', icon: Wrench },
 ]
 
-function KeyLabel({ children }) {
-  const text = String(children)
-  return <span><span style={{ textDecoration: 'underline' }}>{text[0]}</span>{text.slice(1)}</span>
+function KeyLabel({ children, shortcut }) {
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{children} <Keycap>{shortcut}</Keycap></span>
 }
 
 function StubContent({ sections, t, tr }) {
@@ -161,7 +161,7 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
               onMouseLeave={(e) => e.currentTarget.style.color = color.muted}
             >
               <Filter size={sizes.iconSize} strokeWidth={sizes.iconStroke} />
-              <span style={t.monoBold}><KeyLabel>{tr('tabs.filter')}</KeyLabel></span>
+              <span style={t.monoBold}><KeyLabel shortcut="F">{tr('tabs.filter')}</KeyLabel></span>
             </button>
           )}
           <FilterBar open={filterOpen} onClose={() => setFilterOpen(false)} t={t} tr={tr} />
@@ -202,7 +202,7 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
                 onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = color.muted }}
               >
                 <Icon size={sizes.iconSize} strokeWidth={sizes.iconStroke} />
-                <KeyLabel>{tr(tab.labelKey)}</KeyLabel>
+                <KeyLabel shortcut={tab.key}>{tr(tab.labelKey)}</KeyLabel>
               </button>
             )
           })}

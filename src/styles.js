@@ -108,15 +108,9 @@ export const type = {
   },
   keycap: {
     fontFamily: FONT_MONO,
-    fontSize: '12px', fontWeight: 700,              // was 10px → 12px
+    fontSize: '12px', fontWeight: 600,
     letterSpacing: '0.05em', lineHeight: 1,
-    color: color.primary,                            // 17.4:1 ✓ AAA
-  },
-  keycapInverted: {
-    fontFamily: FONT_MONO,
-    fontSize: '12px', fontWeight: 700,              // was 9px → 12px
-    letterSpacing: '0.05em', lineHeight: 1,
-    color: color.white,                              // on primary bg: 17.4:1 ✓ AAA
+    color: color.primary,                            // 17.4:1 ✓ AAA on white
   },
   label: {
     fontFamily: FONT_MONO,
@@ -179,6 +173,16 @@ export const ui = {
     itemHover: {
       background: color.hoverBg,
     },
+  },
+  keycap: {
+    ...type.keycap,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    minWidth: 22, minHeight: 22,
+    padding: '2px 6px',
+    background: color.white,
+    border: `1.5px solid ${color.border}`,         // 3.5:1 ✓
+    borderRadius: 4,
+    boxShadow: '0 1px 0 rgba(0,0,0,0.1)',
   },
   button: {
     ...type.monoBold,

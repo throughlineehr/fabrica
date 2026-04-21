@@ -1,5 +1,6 @@
 import { useCallback, useState, useEffect, useRef } from 'react'
 import { ChevronRight, ChevronDown, Circle, SquarePlus, CirclePlus } from 'lucide-react'
+import { Keycap } from './Keycap'
 import { color, sizes } from '../styles'
 import { useA11yType } from '../hooks/useA11yType'
 import { useTranslation } from '../i18n/index.jsx'
@@ -11,19 +12,6 @@ function shortId(id) { return id ? id.slice(0, 5) : '' }
 
 const SYSTEM_COLORS = {
   s5: color.s5, s4: color.s4, s3: color.s3, s2: color.s2, s1: color.s1,
-}
-
-function KeyBadge({ letter, t }) {
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      width: 22, height: 22,
-      border: `1.5px solid ${color.primary}`,
-      borderRadius: 3,
-      ...t.keycap,
-      flexShrink: 0,
-    }}>{letter}</span>
-  )
 }
 
 function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onActivate, onAdd, shiftHeld, commandIdx, canAddMgmt, canAddOp, t, tr, paneId }) {
@@ -112,12 +100,7 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onAct
           )}
           {label}
           {isSelected && canAdd && !shiftHeld && (
-            <span style={{
-              ...t.keycapInverted,
-              background: color.primary,
-              borderRadius: 3, padding: '2px 5px',
-              marginLeft: 6, flexShrink: 0,
-            }}>SHIFT</span>
+            <span style={{ marginLeft: 6, flexShrink: 0 }}><Keycap>SHIFT</Keycap></span>
           )}
         </button>
 
@@ -154,7 +137,7 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, onSelect, onAct
                     {/* Icon in the square's position */}
                     <cmd.Icon size={8} strokeWidth={2} />
                     {cmd.label}
-                    <KeyBadge letter={cmd.hotkey} t={t} />
+                    <Keycap>{cmd.hotkey}</Keycap>
                   </button>
                 </li>
               )
