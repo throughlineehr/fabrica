@@ -3,6 +3,8 @@ import { ChevronRight, ChevronDown } from 'lucide-react'
 import { color, sizes } from '../../styles'
 import { useAccessibility } from '../../accessibility'
 import { useTranslation, LANGUAGES } from '../../i18n/index.jsx'
+import { useAIConfig } from '../../agent/config.jsx'
+import { PROVIDERS } from '../../agent/providers'
 
 let _sliderId = 0
 let _accordionId = 0
@@ -133,6 +135,105 @@ export function SettingsPanel({ t, tr }) {
       <AccordionSection label={tr('settings.account')} t={t}>
         <p style={{ ...t.mono, color: color.muted, margin: 0 }}>{tr('settings.notImplemented')}</p>
       </AccordionSection>
+
+      <AccordionSection label={`${tr('tools.agent')} ${tr('agent.apiKey')}`} t={t}>
+        <AIKeyConfig t={t} tr={tr} />
+      </AccordionSection>
+    </div>
+  )
+}
+
+function AIKeyConfig({ t, tr }) {
+  const { apiKey, provider, model, setApiKey, setModel, isConnected } = useAIConfig()
+  const [inputKey, setInputKey] = useState(apiKey ? '••••••••' + apiKey.slice(-4) : '')
+  const [editing, setEditing] = useState(!apiKey)
+
+  const handleSave = () => {
+    if (inputKey && !inputKey.startsWith('••')) {
+      setApiKey(inputKey)
+      setInputKey('••••••••' + inputKey.slice(-4))
+      setEditing(false)
+    }
+  }
+
+  const handleClear = () => {
+    setApiKey('')
+    setInputKey('')
+    setEditing(true)
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* Status */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{
+          width: 8, height: 8, borderRadius: '50%',
+          background: isConnected ? color.s1.fill : color.muted,
+        }} />
+        <span style={isConnected ? t.monoActive : t.monoMuted}>
+          {isConnected ? `${tr('agent.connected')}: ${provider.name}` : tr('agent.notConnected')}
+        </span>
+      </div>
+
+      {/* API Key input */}
+      <div>
+        <label htmlFor="ai-key-input" style={{ ...t.label, display: 'block', marginBottom: 4 }}>
+          {tr('agent.apiKey')}
+        </label>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <input
+            id="ai-key-input"
+            type={editing ? 'text' : 'password'}
+            value={editing ? inputKey : (apiKey ? '••••••••' + apiKey.slice(-4) : '')}
+            onChange={(e) => { setInputKey(e.target.value); setEditing(true) }}
+            placeholder={tr('agent.apiKeyPlaceholder')}
+            style={{
+              flex: 1, ...t.mono, color: color.primary,
+              padding: '6px 8px',
+              border: `1px solid ${color.border}`,
+              borderRadius: 3, background: 'none',
+            }}
+          />
+          {editing && inputKey && !inputKey.startsWith('••') && (
+            <button onClick={handleSave} style={{
+              ...t.monoActive, padding: '6px 10px',
+              background: 'none', border: `1px solid ${color.border}`,
+              borderRadius: 3, cursor: 'pointer',
+            }}>{tr('agent.saved').split(' ')[0] || 'Save'}</button>
+          )}
+          {apiKey && !editing && (
+            <button onClick={handleClear} style={{
+              ...t.monoMuted, padding: '6px 10px',
+              background: 'none', border: `1px solid ${color.border}`,
+              borderRadius: 3, cursor: 'pointer',
+            }}>{tr('agent.cleared').split(' ')[0] || 'Clear'}</button>
+          )}
+        </div>
+      </div>
+
+      {/* Model selector */}
+      {isConnected && (
+        <div>
+          <label htmlFor="ai-model-select" style={{ ...t.label, display: 'block', marginBottom: 4 }}>
+            {tr('agent.model')}
+          </label>
+          <select
+            id="ai-model-select"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            style={{
+              ...t.mono, color: color.primary,
+              padding: '6px 8px', width: '100%',
+              border: `1px solid ${color.border}`,
+              borderRadius: 3, background: 'none',
+            }}
+          >
+            {provider.models.map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </div>
+      )}
     </div>
   )
 }
