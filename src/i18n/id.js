@@ -1,6 +1,6 @@
 export default {
   app: { name: 'Fabrica' },
-  nav: { detail: 'Detail', esc: 'esc', unit: 'Unit', operation: 'Operasi', op: 'Op', expand: 'Perluas', collapse: 'Ciutkan' },
+  nav: { detail: 'Detail', esc: 'esc', back: 'Kembali', close: 'Tutup', navigate: 'Buka', unit: 'Unit', operation: 'Operasi', op: 'Op', expand: 'Perluas', collapse: 'Ciutkan' },
   hud: {
     metaUnit: 'UNIT META', operationLabel: 'OPERASI',
     position: 'Posisi', structure: 'Struktur', systems: 'Sistem', status: 'Status',

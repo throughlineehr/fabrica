@@ -1,6 +1,6 @@
 export default {
   app: { name: 'Fabrica' },
-  nav: { detail: 'Detalle', esc: 'esc', unit: 'Unidad', operation: 'Operación', op: 'Op', expand: 'Expandir', collapse: 'Contraer' },
+  nav: { detail: 'Detalle', esc: 'esc', back: 'Atrás', close: 'Cerrar', navigate: 'Ir a', unit: 'Unidad', operation: 'Operación', op: 'Op', expand: 'Expandir', collapse: 'Contraer' },
   hud: {
     metaUnit: 'UNIDAD META', operationLabel: 'OPERACIÓN',
     position: 'Posición', structure: 'Estructura', systems: 'Sistemas', status: 'Estado',

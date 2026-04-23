@@ -47,15 +47,17 @@ export function RoomShell({ systemKey, nodeId, nodeName, node, tree, onBack, onN
         pointerEvents: 'none',
       }}>
         <div style={{ display: 'flex', flexDirection: 'column', pointerEvents: 'auto' }}>
-          <h1 style={{
+          {/* Sub-page: page-level heading is h2 so document h1 (overview) isn't shadowed.
+              Unit label demotes to h3. */}
+          <h2 style={{
             ...t.title, margin: 0, lineHeight: 1,
             borderBottom: `4px solid ${sysColor}`,
             paddingBottom: 6,
             display: 'inline-block',
-          }}>{verb}</h1>
-          <h2 style={{ ...t.h1, margin: '4px 0 0', color: color.secondary }}>{unitLabel}</h2>
+          }}>{verb}</h2>
+          <h3 style={{ ...t.h1, margin: '4px 0 0', color: color.secondary }}>{unitLabel}</h3>
         </div>
-        <button onClick={onBack} style={{ ...ui.button, pointerEvents: 'auto' }}>{tr('nav.esc')}</button>
+        <button onClick={onBack} aria-label={tr('nav.back')} style={{ ...ui.button, pointerEvents: 'auto' }}>{tr('nav.esc')}</button>
       </div>
 
       {/* Content area — centered in viewport */}

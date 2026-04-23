@@ -1,6 +1,6 @@
 export default {
   app: { name: 'Фабрика' },
-  nav: { detail: 'Детали', esc: 'esc', unit: 'Блок', operation: 'Операция', op: 'Оп', expand: 'Развернуть', collapse: 'Свернуть' },
+  nav: { detail: 'Детали', esc: 'esc', back: 'Назад', close: 'Закрыть', navigate: 'Перейти', unit: 'Блок', operation: 'Операция', op: 'Оп', expand: 'Развернуть', collapse: 'Свернуть' },
   hud: {
     metaUnit: 'МЕТА-БЛОК', operationLabel: 'ОПЕРАЦИЯ',
     position: 'Позиция', structure: 'Структура', systems: 'Системы', status: 'Статус',

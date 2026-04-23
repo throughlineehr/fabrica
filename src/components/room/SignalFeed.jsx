@@ -7,7 +7,7 @@ function formatTime(ts) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
-function SignalIcon({ type }) {
+function SignalIcon({ type, srLabel }) {
   const icons = { metric: '◆', event: '⚡', narrative: '¶', alert: '▲' }
   const colors = {
     metric: color.s4.fill,
@@ -15,10 +15,14 @@ function SignalIcon({ type }) {
     narrative: color.s3.fill,
     alert: color.s2.fill,
   }
+  // Screen readers get the type name; visual users get the colored glyph.
   return (
-    <span aria-hidden="true" style={{ color: colors[type] || color.muted }}>
-      {icons[type] || '●'}
-    </span>
+    <>
+      <span className="sr-only">{srLabel || type}:</span>
+      <span aria-hidden="true" style={{ color: colors[type] || color.muted }}>
+        {icons[type] || '●'}
+      </span>
+    </>
   )
 }
 
@@ -58,11 +62,14 @@ export function SignalFeed({ signals, label }) {
                 <span style={{ ...t.mono, color: color.primary }}>{signalSummary(signal)}</span>
               </div>
               {signal.hops && signal.hops.length > 0 && (
-                <div style={{ ...t.monoMuted, paddingLeft: 24, marginTop: 2 }}>
-                  <span style={{ marginRight: 6, opacity: 0.6 }}>{tr('systemPage.hops')}</span>
+                <div
+                  style={{ ...t.monoMuted, paddingLeft: 24, marginTop: 2 }}
+                  aria-label={`${tr('systemPage.hops')} ${signal.hops.map(formatHop).join(', ')}`}
+                >
+                  <span aria-hidden="true" style={{ marginRight: 6, opacity: 0.6 }}>{tr('systemPage.hops')}</span>
                   {signal.hops.map((h, i) => (
-                    <span key={i}>
-                      {i > 0 && <span style={{ color: color.borderLight }}> → </span>}
+                    <span key={i} aria-hidden="true">
+                      {i > 0 && <span style={{ color: color.muted }}> → </span>}
                       {formatHop(h)}
                     </span>
                   ))}

@@ -1,6 +1,6 @@
 export default {
   app: { name: 'फ़ैब्रिका' },
-  nav: { detail: 'विवरण', esc: 'esc', unit: 'इकाई', operation: 'संचालन', op: 'सं', expand: 'विस्तार', collapse: 'संक्षिप्त' },
+  nav: { detail: 'विवरण', esc: 'esc', back: 'वापस', close: 'बंद करें', navigate: 'जाएं', unit: 'इकाई', operation: 'संचालन', op: 'सं', expand: 'विस्तार', collapse: 'संक्षिप्त' },
   hud: {
     metaUnit: 'मेटा इकाई', operationLabel: 'संचालन',
     position: 'स्थिति', structure: 'संरचना', systems: 'प्रणालियाँ', status: 'स्थिति',

@@ -1,6 +1,6 @@
 export default {
   app: { name: '法布里卡' },
-  nav: { detail: '详情', esc: 'esc', unit: '单元', operation: '操作', op: '操作', expand: '展开', collapse: '折叠' },
+  nav: { detail: '详情', esc: 'esc', back: '返回', close: '关闭', navigate: '前往', unit: '单元', operation: '操作', op: '操作', expand: '展开', collapse: '折叠' },
   hud: {
     metaUnit: '元单元', operationLabel: '操作',
     position: '位置', structure: '结构', systems: '系统', status: '状态',

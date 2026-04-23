@@ -23,6 +23,10 @@ const WALL_ARROWS = {
   right: ArrowRight,
 }
 
+// Wall → direction name for screen-reader aria-labels (when color ambiguity
+// forces us to render a wall-direction arrow, we also name the direction in text).
+const WALL_NAMES = { top: 'top', bottom: 'bottom', left: 'left', right: 'right' }
+
 function TerminalDot({ terminal, active, onToggle, interactive = true, size = ui.checkbox.size, showArrow = false }) {
   const fill = color[terminal.colorKey]?.fill || color.border
   const ArrowIcon = showArrow ? WALL_ARROWS[terminal.wall] : null
@@ -36,13 +40,19 @@ function TerminalDot({ terminal, active, onToggle, interactive = true, size = ui
     flexShrink: 0,
   }
   const arrow = ArrowIcon ? <ArrowIcon size={Math.max(10, size - 8)} strokeWidth={2.5} color={arrowColor} aria-hidden="true" /> : null
+  // When the direction arrow is rendered (ambiguous color), the aria-label
+  // also names the wall so screen-reader users get the disambiguation.
+  const wallSuffix = showArrow && WALL_NAMES[terminal.wall]
+    ? ` — ${WALL_NAMES[terminal.wall]} wall`
+    : ''
+  const srLabel = `${terminal.terminalId}${active ? ' (on)' : ' (off)'}${wallSuffix}`
   if (!interactive) {
     return <span aria-hidden="true" title={terminal.terminalId} style={common}>{arrow}</span>
   }
   return (
     <button
       type="button"
-      aria-label={`${terminal.terminalId}${active ? ' (on)' : ' (off)'}`}
+      aria-label={srLabel}
       aria-pressed={active}
       title={terminal.terminalId}
       onClick={(e) => { e.stopPropagation(); onToggle() }}
@@ -115,6 +125,7 @@ function TypeChipRow({ selected, onChange, disabled }) {
 
 function TagsInput({ tags, onChange, disabled }) {
   const t = useA11yType()
+  const { t: tr } = useTranslation()
   const [text, setText] = useState((tags || []).join(', '))
   const commit = () => {
     const cleaned = text.split(',').map(s => s.trim()).filter(Boolean)
@@ -132,6 +143,7 @@ function TagsInput({ tags, onChange, disabled }) {
       }}
       onClick={(e) => e.stopPropagation()}
       placeholder="—"
+      aria-label={tr('systemPage.filterTags')}
       style={{
         ...t.mono,
         padding: '2px 6px',

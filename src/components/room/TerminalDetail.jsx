@@ -20,31 +20,40 @@ export function TerminalDetail({ terminal, connections, onNavigate }) {
     <div style={{ padding: 32 }}>
       {/* Terminal header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-        <div style={{
+        <div aria-hidden="true" style={{
           width: 16, height: 16, borderRadius: '50%',
           background: c.fill,
         }} />
         <h3 style={{ ...t.h3, margin: 0 }}>{tr(terminal.labelKey)}</h3>
-        <span style={t.monoMuted}>{dir}</span>
+        <span style={t.monoMuted} aria-label={`${tr('systemPage.inOut')}: ${dir}`}>{dir}</span>
       </div>
 
-      {/* Connected nodes */}
+      {/* Connected nodes — semantic list so screen readers announce the count */}
       {connections && connections.length > 0 ? (
-        connections.map(conn => (
-          <div key={conn.id} style={{
-            display: 'flex', alignItems: 'baseline', gap: 8,
-            padding: '10px 0',
-          }}>
-            <span style={{ ...t.mono, color: color.primary }}>{conn.verb}</span>
-            {onNavigate ? (
-              <a href="#" role="link" style={{ ...t.mono, color: color.secondary, textDecoration: 'underline', textUnderlineOffset: 2 }}
-                onClick={(e) => { e.preventDefault(); onNavigate(conn.id, conn.systemKey) }}
-              >{conn.name}</a>
-            ) : (
-              <span style={t.monoMuted}>{conn.name}</span>
-            )}
-          </div>
-        ))
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }} aria-label={tr('systemPage.connections')}>
+          {connections.map(conn => (
+            <li key={conn.id} style={{
+              display: 'flex', alignItems: 'baseline', gap: 8,
+              padding: '10px 0',
+            }}>
+              <span style={{ ...t.mono, color: color.primary }}>{conn.verb}</span>
+              {onNavigate ? (
+                <button
+                  type="button"
+                  style={{
+                    ...t.mono, color: color.secondary, background: 'none', border: 'none',
+                    padding: 0, cursor: 'pointer',
+                    textDecoration: 'underline', textUnderlineOffset: 2,
+                  }}
+                  onClick={() => onNavigate(conn.id, conn.systemKey)}
+                  aria-label={`${tr('nav.navigate')} ${conn.name}`}
+                >{conn.name}</button>
+              ) : (
+                <span style={t.monoMuted}>{conn.name}</span>
+              )}
+            </li>
+          ))}
+        </ul>
       ) : (
         <p style={t.monoMuted}>{tr('settings.notImplemented')}</p>
       )}

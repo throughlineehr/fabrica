@@ -1,6 +1,6 @@
 export default {
   app: { name: 'ファブリカ' },
-  nav: { detail: '詳細', esc: 'esc', unit: 'ユニット', operation: 'オペレーション', op: 'Op', expand: '展開', collapse: '折りたたみ' },
+  nav: { detail: '詳細', esc: 'esc', back: '戻る', close: '閉じる', navigate: '移動', unit: 'ユニット', operation: 'オペレーション', op: 'Op', expand: '展開', collapse: '折りたたみ' },
   hud: {
     metaUnit: 'メタユニット', operationLabel: 'オペレーション',
     position: '位置', structure: '構造', systems: 'システム', status: '状態',

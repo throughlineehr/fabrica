@@ -1,7 +1,7 @@
 export default {
   _meta: { dir: 'rtl' },
   app: { name: 'فابريكا' },
-  nav: { detail: 'تفصيل', esc: 'خروج', unit: 'وحدة', operation: 'عملية', op: 'عمل', expand: 'توسيع', collapse: 'طي' },
+  nav: { detail: 'تفصيل', esc: 'خروج', back: 'رجوع', close: 'إغلاق', navigate: 'انتقل إلى', unit: 'وحدة', operation: 'عملية', op: 'عمل', expand: 'توسيع', collapse: 'طي' },
   hud: {
     metaUnit: 'وحدة ميتا', operationLabel: 'عملية',
     position: 'الموقع', structure: 'الهيكل', systems: 'الأنظمة', status: 'الحالة',

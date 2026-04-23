@@ -41,12 +41,16 @@ export function Checkbox({
         style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}
       />
       <span aria-hidden="true" style={{
+        // Border stays at full opacity so the unchecked box has usable
+        // UI-boundary contrast (WCAG 1.4.11, min 3:1). Only the fill
+        // carries the opacity shift to soften the checked state visually
+        // on colored variants without punishing the unchecked one.
         width: size, height: size,
         border: `${ui.checkbox.borderWidth}px solid ${checked ? fillColor : strokeColor}`,
         borderRadius: ui.checkbox.borderRadius,
         background: checked ? (pattern || fillColor) : 'transparent',
         backgroundSize: colorBlind && pattern ? '8px 8px' : undefined,
-        opacity: checked ? ui.checkbox.opacityChecked : ui.checkbox.opacityUnchecked,
+        opacity: disabled ? ui.checkbox.opacityUnchecked : (checked ? ui.checkbox.opacityChecked : 1),
         flexShrink: 0,
         transition: 'opacity 0.1s, background 0.1s',
       }} />
