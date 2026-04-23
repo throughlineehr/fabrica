@@ -5,6 +5,8 @@ export default {
   nav: {
     detail: 'Detail',
     esc: 'esc',
+    back: 'Back',
+    close: 'Close',
     unit: 'Unit',
     operation: 'Operation',
     op: 'Op',
@@ -193,6 +195,8 @@ export default {
     liveLog: 'Live log',
     noSignalsYet: 'No signals yet',
     hops: 'hops:',
+    openProcessor: 'Open',
+    removeProcessor: 'Remove',
     algedonic: 'Algedonic',
     switchboard: 'Switchboard',
     dashboard: 'Dashboard',

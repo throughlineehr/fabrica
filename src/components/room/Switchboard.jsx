@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { Lightbulb, Plus, ChevronRight, Trash2, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react'
 import { color } from '../../styles'
 import { useA11yType } from '../../hooks/useA11yType'
@@ -162,6 +162,7 @@ export function Switchboard({
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const [libraryOpen, setLibraryOpen] = useState(false)
+  const rowRefs = useRef({}) // instanceId → <tr> element, for arrow-key focus movement
 
   const showAlgedonic = systemKey === 's5'
 
@@ -255,27 +256,66 @@ export function Switchboard({
         <table
           role="grid"
           aria-label={tr('systemPage.switchboard')}
+          aria-rowcount={enriched.length + 1}
+          aria-colcount={6}
           style={{
             width: '100%', borderCollapse: 'collapse',
             border: `1px solid ${color.border}`,
           }}
         >
           <thead>
-            <tr style={{ background: sysColor ? `${sysColor}18` : 'transparent' }}>
-              <th style={thStyle}>{tr('systemPage.incoming')}</th>
-              <th style={thStyle}>{tr('systemPage.processor')}</th>
-              <th style={thStyle}>{tr('systemPage.outgoing')}</th>
-              <th style={thStyle}>{tr('systemPage.filterTypes')}</th>
-              <th style={thStyle}>{tr('systemPage.filterTags')}</th>
-              <th style={{ ...thStyle, borderRight: 'none', textAlign: 'right' }}>&nbsp;</th>
+            <tr role="row" aria-rowindex={1} style={{ background: sysColor ? `${sysColor}18` : 'transparent' }}>
+              <th role="columnheader" aria-colindex={1} style={thStyle}>{tr('systemPage.incoming')}</th>
+              <th role="columnheader" aria-colindex={2} style={thStyle}>{tr('systemPage.processor')}</th>
+              <th role="columnheader" aria-colindex={3} style={thStyle}>{tr('systemPage.outgoing')}</th>
+              <th role="columnheader" aria-colindex={4} style={thStyle}>{tr('systemPage.filterTypes')}</th>
+              <th role="columnheader" aria-colindex={5} style={thStyle}>{tr('systemPage.filterTags')}</th>
+              <th role="columnheader" aria-colindex={6} style={{ ...thStyle, borderRight: 'none', textAlign: 'right' }}>&nbsp;</th>
             </tr>
           </thead>
           <tbody>
-            {enriched.map(({ inst, def, displayName }) => {
+            {enriched.map(({ inst, def, displayName }, idx) => {
               const filters = inst.filters || defaultFilters()
+              const handleRowKeyDown = (e) => {
+                // Only respond when focus is on the row itself, not an interactive cell child
+                if (e.target !== e.currentTarget) return
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onOpenProcessor?.(inst.id)
+                } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  const nextIdx = e.key === 'ArrowDown'
+                    ? Math.min(enriched.length - 1, idx + 1)
+                    : Math.max(0, idx - 1)
+                  const nextId = enriched[nextIdx]?.inst.id
+                  if (nextId && nextId !== inst.id) rowRefs.current[nextId]?.focus()
+                } else if (e.key === 'Home') {
+                  e.preventDefault()
+                  rowRefs.current[enriched[0]?.inst.id]?.focus()
+                } else if (e.key === 'End') {
+                  e.preventDefault()
+                  rowRefs.current[enriched[enriched.length - 1]?.inst.id]?.focus()
+                } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                  e.preventDefault()
+                  onRemoveProcessor?.(inst.id)
+                  // Shift focus to the next row (or previous if at end)
+                  const nextIdx = idx < enriched.length - 1 ? idx + 1 : idx - 1
+                  const nextId = enriched[nextIdx]?.inst.id
+                  if (nextId) requestAnimationFrame(() => rowRefs.current[nextId]?.focus())
+                }
+              }
               return (
-                <tr key={inst.id} role="row">
-                  <td style={cellStyle}>
+                <tr
+                  key={inst.id}
+                  role="row"
+                  tabIndex={0}
+                  aria-rowindex={idx + 2}
+                  aria-label={`${displayName} processor row. Enter to open, arrow keys to move, Delete to remove.`}
+                  ref={(el) => { if (el) rowRefs.current[inst.id] = el; else delete rowRefs.current[inst.id] }}
+                  onKeyDown={handleRowKeyDown}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <td role="gridcell" aria-colindex={1} style={cellStyle}>
                     <TerminalDotRow
                       terminals={roomTerminals}
                       selected={filters.inputTerminals}
@@ -283,10 +323,10 @@ export function Switchboard({
                       disabled={!def.hasInputs}
                     />
                   </td>
-                  <td style={cellStyle}>
+                  <td role="gridcell" aria-colindex={2} style={cellStyle}>
                     <button
-                      onClick={() => onOpenProcessor?.(inst.id)}
-                      aria-label={`Open ${displayName}`}
+                      onClick={(e) => { e.stopPropagation(); onOpenProcessor?.(inst.id) }}
+                      aria-label={`${tr('systemPage.openProcessor')} ${displayName}`}
                       style={{
                         ...t.mono, color: color.primary,
                         background: 'none', border: 'none',
@@ -298,7 +338,7 @@ export function Switchboard({
                       <ChevronRight size={12} strokeWidth={1.5} color={color.muted} aria-hidden="true" />
                     </button>
                   </td>
-                  <td style={cellStyle}>
+                  <td role="gridcell" aria-colindex={3} style={cellStyle}>
                     <TerminalDotRow
                       terminals={roomTerminals}
                       selected={filters.outputTerminals}
@@ -306,25 +346,25 @@ export function Switchboard({
                       disabled={!def.hasOutputs}
                     />
                   </td>
-                  <td style={cellStyle}>
+                  <td role="gridcell" aria-colindex={4} style={cellStyle}>
                     <TypeChipRow
                       selected={filters.types}
                       onChange={(next) => updateFilter(inst, { types: next })}
                       disabled={!def.hasInputs}
                     />
                   </td>
-                  <td style={cellStyle}>
+                  <td role="gridcell" aria-colindex={5} style={cellStyle}>
                     <TagsInput
                       tags={filters.tags}
                       onChange={(next) => updateFilter(inst, { tags: next })}
                       disabled={!def.hasInputs}
                     />
                   </td>
-                  <td style={{ ...lastCellStyle, textAlign: 'right' }}>
+                  <td role="gridcell" aria-colindex={6} style={{ ...lastCellStyle, textAlign: 'right' }}>
                     {onRemoveProcessor && (
                       <button
-                        aria-label={`Remove ${displayName}`}
-                        onClick={() => onRemoveProcessor(inst.id)}
+                        aria-label={`${tr('systemPage.removeProcessor')} ${displayName}`}
+                        onClick={(e) => { e.stopPropagation(); onRemoveProcessor(inst.id) }}
                         style={{
                           background: 'none', border: 'none', padding: 4, cursor: 'pointer',
                           color: color.muted,
@@ -337,8 +377,10 @@ export function Switchboard({
                 </tr>
               )
             })}
+            {/* Empty padding rows — visual-only so the table height is stable.
+                aria-hidden so screen readers don't announce N blank rows. */}
             {Array.from({ length: emptyRows }).map((_, i) => (
-              <tr key={`empty-${i}`}>
+              <tr key={`empty-${i}`} aria-hidden="true" role="presentation">
                 <td style={cellStyle}>&nbsp;</td>
                 <td style={cellStyle}>&nbsp;</td>
                 <td style={cellStyle}>&nbsp;</td>

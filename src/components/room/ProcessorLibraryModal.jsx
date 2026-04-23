@@ -18,18 +18,46 @@ function IOBadge({ present, label, emptyLabel }) {
 export function ProcessorLibraryModal({ systemKey, onPick, onClose }) {
   const t = useA11yType()
   const { t: tr } = useTranslation()
+  const dialogRef = useRef(null)
   const firstBtnRef = useRef(null)
 
+  // Modal focus management: focus the first processor on open, trap Tab
+  // within the dialog, close on Escape. Restore focus to the element
+  // that opened the modal on close.
   useEffect(() => {
+    const openerEl = document.activeElement
     firstBtnRef.current?.focus()
+
     const handler = (e) => {
       if (e.key === 'Escape') {
         e.stopImmediatePropagation()
         onClose()
+        return
+      }
+      if (e.key !== 'Tab' || !dialogRef.current) return
+
+      // Collect tabbable elements inside the dialog and wrap focus at ends.
+      const focusables = dialogRef.current.querySelectorAll(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )
+      if (focusables.length === 0) return
+      const first = focusables[0]
+      const last = focusables[focusables.length - 1]
+      const active = document.activeElement
+      if (e.shiftKey && active === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
       }
     }
     window.addEventListener('keydown', handler, true)
-    return () => window.removeEventListener('keydown', handler, true)
+    return () => {
+      window.removeEventListener('keydown', handler, true)
+      // Restore focus so the user lands back where they were
+      if (openerEl && typeof openerEl.focus === 'function') openerEl.focus()
+    }
   }, [onClose])
 
   const available = PROCESSOR_LIBRARY.filter(def => canPlaceProcessor(def, systemKey))
@@ -48,6 +76,7 @@ export function ProcessorLibraryModal({ systemKey, onPick, onClose }) {
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
         style={{
           ...panel,
@@ -66,14 +95,14 @@ export function ProcessorLibraryModal({ systemKey, onPick, onClose }) {
         }}>
           <h2 style={{ ...type.h2, margin: 0 }}>{tr('systemPage.processorLibrary')}</h2>
           <button
-            aria-label={tr('nav.esc')}
+            aria-label={tr('nav.close')}
             onClick={onClose}
             style={{
               background: 'none', border: 'none', cursor: 'pointer',
               color: color.secondary, padding: 4,
             }}
           >
-            <X size={18} strokeWidth={1.5} />
+            <X size={18} strokeWidth={1.5} aria-hidden="true" />
           </button>
         </div>
 
