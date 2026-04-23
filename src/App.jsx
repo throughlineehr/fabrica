@@ -2,23 +2,31 @@ import { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import {
-  toWorld, FOCUS_DISTANCE, PANE_DISTANCE, SYSTEM_VIEW_DISTANCE, TREE_VIEW_ZOOM,
-  CAMERA_INITIAL, CAMERA_LOOK_INITIAL, CAMERA_FOV, CAMERA_NEAR, CAMERA_FAR,
-  TRANSITION, Z_INDEX, getNodeCenterY, getSystemPanePosition,
+  TREE_VIEW_ZOOM, CAMERA_INITIAL, CAMERA_LOOK_INITIAL, CAMERA_FOV, CAMERA_NEAR, CAMERA_FAR,
+  TRANSITION, Z_INDEX,
+  focusTarget, paneTarget, systemTarget,
 } from './constants'
-import { createModel, addNode, renameNode, canAddManagement, canAddOperation, findNode, buildRenderTree, getTreeBounds, nodeHasS2 } from './tree/index'
+import { createModel, addNode, removeNode, renameNode, moveNode, spliceNode, duplicateSubtree, canAddManagement, canAddOperation, canSplice, findNode, buildRenderTree, getTreeBounds, nodeHasS2 } from './tree/index'
 import { CameraController } from './components/CameraController'
 import { MetaTree } from './components/MetaTree'
 import { ContextMenu } from './components/UI'
 import { HUD } from './components/HUD'
 import { SystemPage } from './components/SystemPage'
+import { ProcessorPage } from './components/ProcessorPage'
 import { TabSystem } from './components/TabSystem'
 import { color } from './styles'
 import { useAccessibility } from './accessibility'
+import { useTranslation } from './i18n/index.jsx'
 import { createAgentAPI } from './agent/commands'
+import { useBus } from './signals/BusContext.jsx'
+import { getProcessorDef } from './signals/library'
+import { computeRoomSubscriptions, enumerateRooms, roomKey as makeRoomKey } from './signals/topology'
+import { wireTopology } from './signals/wiring'
+import { defaultFilters } from './signals/filter'
 
 function App() {
   const { epilepsy } = useAccessibility()
+  const { t: tr } = useTranslation()
   const [model, setModel] = useState(() => createModel('management'))
   const [menu, setMenu] = useState(null)
   const [focusedId, setFocusedId] = useState(null)
@@ -34,12 +42,102 @@ function App() {
 
   // System page state
   const [systemView, setSystemView] = useState(null)
+  const [processorView, setProcessorView] = useState(null) // { nodeId, systemKey, instanceId }
   const [transitioning, setTransitioning] = useState(false)
   const [canvasOpacity, setCanvasOpacity] = useState(1)
   const [systemPageOpacity, setSystemPageOpacity] = useState(0)
 
   // Derive render tree from model
   const tree = useMemo(() => buildRenderTree(model), [model])
+  const bus = useBus()
+
+  // Processor instances keyed by "${nodeId}:${systemKey}".
+  // Shape: { id, defId, config }
+  const [processors, setProcessors] = useState({})
+
+  // Compute channel topology from the tree (which rooms subscribe to which).
+  const topology = useMemo(() => computeRoomSubscriptions(tree), [tree])
+
+  // Wire the tree's subscriptions onto the bus. Tree changes → teardown + rewire.
+  useEffect(() => {
+    if (!bus) return
+    return wireTopology(bus, topology)
+  }, [bus, topology])
+
+  // Prune processors whose room no longer exists in the tree (node was deleted).
+  // Checked during render (not in effect) so the runtime effect below sees
+  // the pruned state on the same pass.
+  const [prevTreeForPrune, setPrevTreeForPrune] = useState(tree)
+  if (tree !== prevTreeForPrune) {
+    setPrevTreeForPrune(tree)
+    const liveRooms = new Set(enumerateRooms(tree).map(r => makeRoomKey(r.nodeId, r.systemKey)))
+    setProcessors(prev => {
+      let changed = false
+      const next = {}
+      for (const [key, list] of Object.entries(prev)) {
+        if (liveRooms.has(key)) next[key] = list
+        else changed = true
+      }
+      return changed ? next : prev
+    })
+  }
+
+  // Start/stop running instances in sync with the processors state.
+  // Rebuilds all on every change — simple and correct for small counts.
+  useEffect(() => {
+    if (!bus) return
+    const running = []
+    for (const [key, instances] of Object.entries(processors)) {
+      const [nodeId, systemKey] = key.split(':')
+      for (const inst of instances) {
+        const def = getProcessorDef(inst.defId)
+        if (!def) continue
+        const handle = def.create(inst.config || def.defaultConfig || {}, {
+          bus,
+          instanceId: inst.id,
+          roomNodeId: nodeId,
+          roomSystemKey: systemKey,
+          filters: inst.filters || defaultFilters(),
+        })
+        handle.start()
+        running.push(handle)
+      }
+    }
+    return () => running.forEach(h => h.stop())
+  }, [bus, processors])
+
+  const addProcessor = useCallback((nodeId, systemKey, def) => {
+    const roomKey = `${nodeId}:${systemKey}`
+    const instance = {
+      id: crypto.randomUUID(),
+      defId: def.id,
+      config: { ...(def.defaultConfig || {}) },
+      filters: defaultFilters(),
+    }
+    setProcessors(prev => ({
+      ...prev,
+      [roomKey]: [...(prev[roomKey] || []), instance],
+    }))
+    setAnnouncement(`${def.name} added`)
+  }, [])
+
+  const removeProcessor = useCallback((nodeId, systemKey, instanceId) => {
+    const roomKey = `${nodeId}:${systemKey}`
+    setProcessors(prev => ({
+      ...prev,
+      [roomKey]: (prev[roomKey] || []).filter(i => i.id !== instanceId),
+    }))
+  }, [])
+
+  const updateProcessor = useCallback((nodeId, systemKey, instanceId, updates) => {
+    const roomKey = `${nodeId}:${systemKey}`
+    setProcessors(prev => ({
+      ...prev,
+      [roomKey]: (prev[roomKey] || []).map(inst =>
+        inst.id === instanceId ? { ...inst, ...updates } : inst
+      ),
+    }))
+  }, [])
 
   // Build explorer tree with system children
   const explorerTree = useMemo(() => {
@@ -56,12 +154,25 @@ function App() {
       const systemChildren = allSystems.filter(s => visibleSystems[s.systemKey] !== false)
 
       // Build action children
+      const isRoot = node.id === model.rootId
       const actionItems = []
       // Rename available on all nodes
       actionItems.push({ id: `${node.id}:rename`, type: 'action', actionType: 'rename', parentNodeId: node.id, children: [] })
       if (!isOp) {
         if (canAddManagement(model, node.id)) actionItems.push({ id: `${node.id}:add-management`, type: 'action', actionType: 'management', parentNodeId: node.id, children: [] })
         if (canAddOperation(model, node.id)) actionItems.push({ id: `${node.id}:add-operation`, type: 'action', actionType: 'operation', parentNodeId: node.id, children: [] })
+      }
+      // Duplicate available on non-root management nodes (operations are sole children, can't duplicate)
+      if (!isRoot && !isOp) {
+        actionItems.push({ id: `${node.id}:duplicate`, type: 'action', actionType: 'duplicate', parentNodeId: node.id, children: [] })
+      }
+      // Splice: only when promoting children won't create invalid structure
+      if (canSplice(model, node.id)) {
+        actionItems.push({ id: `${node.id}:splice`, type: 'action', actionType: 'splice', parentNodeId: node.id, children: [] })
+      }
+      // Delete available on non-root nodes
+      if (!isRoot) {
+        actionItems.push({ id: `${node.id}:delete`, type: 'action', actionType: 'delete', parentNodeId: node.id, children: [] })
       }
       const actionChildren = [{
         id: `${node.id}:actions`,
@@ -104,7 +215,7 @@ function App() {
     const parentId = menu.nodeId
     setModel((prev) => addNode(prev, parentId, nodeType))
     setMenu(null)
-    setHoveredId(parentId)
+    setHoveredId(null)
     setKeySelectedId(parentId)
     setAnnouncement(`${nodeType === 'management' ? 'Management unit' : 'Operation'} added`)
     requestAnimationFrame(() => {
@@ -132,22 +243,14 @@ function App() {
   const handleDoubleClick = useCallback((nodeId) => {
     const node = findNode(tree, nodeId)
     if (!node) return
-    const center = toWorld(node.x, getNodeCenterY(node), node.layer)
-
     const label = node.type === 'operation' ? 'Operation' : 'Unit'
     const short = node.id.slice(0, 5)
     if (focusedId === nodeId && paneId == null) {
-      setCameraTarget({
-        position: [center[0], center[1] + PANE_DISTANCE, center[2]],
-        lookAt: center, up: [0, 0, -1],
-      })
+      setCameraTarget(paneTarget(node))
       setPaneId(nodeId)
       setAnnouncement(`Detail view: ${label} ${short}. Enter on a system to open it.`)
     } else {
-      setCameraTarget({
-        position: [center[0] + FOCUS_DISTANCE, center[1] + FOCUS_DISTANCE, center[2] + FOCUS_DISTANCE],
-        lookAt: center, up: [0, 1, 0],
-      })
+      setCameraTarget(focusTarget(node))
       setFocusedId(nodeId)
       setPaneId(null)
       setAnnouncement(`Focused: ${label} ${short}`)
@@ -158,11 +261,7 @@ function App() {
   const navigateToPane = useCallback((nodeId) => {
     const node = findNode(tree, nodeId)
     if (!node) return
-    const center = toWorld(node.x, getNodeCenterY(node), node.layer)
-    setCameraTarget({
-      position: [center[0], center[1] + PANE_DISTANCE, center[2]],
-      lookAt: center, up: [0, 0, -1],
-    })
+    setCameraTarget(paneTarget(node))
     const label = node.type === 'operation' ? 'Operation' : 'Unit'
     setFocusedId(nodeId)
     setPaneId(nodeId)
@@ -176,11 +275,7 @@ function App() {
     const node = findNode(tree, nodeId)
     if (!node) return
 
-    const pos = getSystemPanePosition(node, systemKey)
-    setCameraTarget({
-      position: [pos[0], pos[1] + SYSTEM_VIEW_DISTANCE, pos[2]],
-      lookAt: pos, up: [0, 0, -1],
-    })
+    setCameraTarget(systemTarget(node, systemKey))
 
     setSystemView({ nodeId, systemKey })
     setAnnouncement(`Opened ${systemKey.toUpperCase()} configuration`)
@@ -205,39 +300,36 @@ function App() {
   const navigateToSystem = useCallback((nodeId, systemKey) => {
     const node = findNode(tree, nodeId)
     if (!node) return
-    const center = toWorld(node.x, getNodeCenterY(node), node.layer)
-    setCameraTarget({
-      position: [center[0], center[1] + PANE_DISTANCE, center[2]],
-      lookAt: center, up: [0, 0, -1],
-    })
+    setCameraTarget(paneTarget(node))
     setFocusedId(nodeId)
     setPaneId(nodeId)
     setKeySelectedId(null)
     setKeySelectedSystem(null)
-    // Enter system after pane state is set
     setTimeout(() => handleSystemClick(nodeId, systemKey), 50)
   }, [tree, handleSystemClick])
+
+  const handleOpenProcessor = useCallback((nodeId, systemKey, instanceId) => {
+    setProcessorView({ nodeId, systemKey, instanceId })
+    setAnnouncement('Opened processor')
+  }, [])
+
+  const handleProcessorBack = useCallback(() => {
+    setProcessorView(null)
+    setAnnouncement('Returned to room')
+  }, [])
 
   const handleSystemBack = useCallback(() => {
     const { nodeId, systemKey } = systemView
     const node = findNode(tree, nodeId)
     if (!node) return
 
-    const pos = getSystemPanePosition(node, systemKey)
-    setCameraTarget({
-      position: [pos[0], pos[1] + SYSTEM_VIEW_DISTANCE, pos[2]],
-      lookAt: pos, up: [0, 0, -1], instant: true,
-    })
+    setCameraTarget({ ...systemTarget(node, systemKey), instant: true })
 
     if (epilepsy) {
       setCanvasOpacity(1)
       setSystemPageOpacity(0)
       setSystemView(null)
-      const center = toWorld(node.x, getNodeCenterY(node), node.layer)
-      setCameraTarget({
-        position: [center[0], center[1] + PANE_DISTANCE, center[2]],
-        lookAt: center, up: [0, 0, -1], instant: true,
-      })
+      setCameraTarget({ ...paneTarget(node), instant: true })
     } else {
       setTransitioning(true)
       setCanvasOpacity(1)
@@ -247,11 +339,7 @@ function App() {
 
         setTimeout(() => {
           setSystemView(null)
-          const center = toWorld(node.x, getNodeCenterY(node), node.layer)
-          setCameraTarget({
-            position: [center[0], center[1] + PANE_DISTANCE, center[2]],
-            lookAt: center, up: [0, 0, -1],
-          })
+          setCameraTarget(paneTarget(node))
           setTimeout(() => setTransitioning(false), TRANSITION.fadeBack)
         }, TRANSITION.fadeBack)
       })
@@ -261,13 +349,7 @@ function App() {
   const handleBack = useCallback(() => {
     if (paneId != null) {
       const node = findNode(tree, paneId)
-      if (node) {
-        const center = toWorld(node.x, getNodeCenterY(node), node.layer)
-        setCameraTarget({
-          position: [center[0] + FOCUS_DISTANCE, center[1] + FOCUS_DISTANCE, center[2] + FOCUS_DISTANCE],
-          lookAt: center, up: [0, 1, 0],
-        })
-      }
+      if (node) setCameraTarget(focusTarget(node))
       setPaneId(null)
       setAnnouncement('Returned to focus view')
     } else {
@@ -309,11 +391,11 @@ function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [transitioning, systemView, focusedId, paneId, handleBack])
 
-  // Agent API — uses refs to access live state
+  // Agent API — uses refs to access live state without retriggering the memo
   const modelRef = useRef(model)
-  modelRef.current = model
-  const navStateRef = useRef({})
-  navStateRef.current = { focusedId, paneId, systemView }
+  const navStateRef = useRef({ focusedId, paneId, systemView })
+  useEffect(() => { modelRef.current = model }, [model])
+  useEffect(() => { navStateRef.current = { focusedId, paneId, systemView } }, [focusedId, paneId, systemView])
 
   const agentAPI = useMemo(() => createAgentAPI({
     getModel: () => modelRef.current,
@@ -372,16 +454,53 @@ function App() {
         </Canvas>
       </div>
 
-      {systemView && (
+      {systemView && !processorView && (
         <div style={{
           position: 'absolute', inset: 0, zIndex: Z_INDEX.systemPage,
           opacity: systemPageOpacity,
           transition: `opacity ${TRANSITION.cssDuration} ease`,
           pointerEvents: systemPageOpacity > 0 ? 'auto' : 'none',
         }}>
-          <SystemPage nodeId={systemView.nodeId} systemKey={systemView.systemKey} onBack={handleSystemBack} />
+          <SystemPage
+            nodeId={systemView.nodeId}
+            nodeName={findNode(tree, systemView.nodeId)?.name}
+            node={findNode(tree, systemView.nodeId)}
+            tree={tree}
+            systemKey={systemView.systemKey}
+            processors={processors[`${systemView.nodeId}:${systemView.systemKey}`] || []}
+            onAddProcessor={(def) => addProcessor(systemView.nodeId, systemView.systemKey, def)}
+            onRemoveProcessor={(instanceId) => removeProcessor(systemView.nodeId, systemView.systemKey, instanceId)}
+            onUpdateProcessor={(instanceId, updates) => updateProcessor(systemView.nodeId, systemView.systemKey, instanceId, updates)}
+            onOpenProcessor={(instanceId) => handleOpenProcessor(systemView.nodeId, systemView.systemKey, instanceId)}
+            onBack={handleSystemBack}
+            onNavigate={(targetNodeId, targetSystemKey) => {
+              handleSystemBack()
+              setTimeout(() => navigateToSystem(targetNodeId, targetSystemKey), TRANSITION.fadeBack + 100)
+            }} />
         </div>
       )}
+
+      {processorView && (() => {
+        const pKey = `${processorView.nodeId}:${processorView.systemKey}`
+        const inst = (processors[pKey] || []).find(p => p.id === processorView.instanceId)
+        if (!inst) {
+          queueMicrotask(() => setProcessorView(null))
+          return null
+        }
+        return (
+          <div style={{ position: 'absolute', inset: 0, zIndex: Z_INDEX.systemPage + 1 }}>
+            <ProcessorPage
+              instance={inst}
+              nodeId={processorView.nodeId}
+              nodeName={findNode(tree, processorView.nodeId)?.name}
+              systemKey={processorView.systemKey}
+              roomInputs={topology[pKey] || []}
+              onUpdateInstance={(updates) => updateProcessor(processorView.nodeId, processorView.systemKey, processorView.instanceId, updates)}
+              onBack={handleProcessorBack}
+            />
+          </div>
+        )
+      })()}
 
       <TabSystem
         visible={!transitioning && !systemView}
@@ -398,17 +517,11 @@ function App() {
         requestOpenExplorer={explorerRequested}
         onNodeSelect={(id) => {
           if (id.includes(':')) {
-            // System selected — enter pane/detail mode on parent, highlight system
             const [nodeId, sysKey] = id.split(':')
             const node = findNode(tree, nodeId)
             if (!node) return
-            const center = toWorld(node.x, getNodeCenterY(node), node.layer)
-            // Enter pane mode if not already there for this node
             if (paneId !== nodeId) {
-              setCameraTarget({
-                position: [center[0], center[1] + PANE_DISTANCE, center[2]],
-                lookAt: center, up: [0, 0, -1],
-              })
+              setCameraTarget(paneTarget(node))
               setFocusedId(nodeId)
               setPaneId(nodeId)
             }
@@ -416,28 +529,38 @@ function App() {
             setKeySelectedSystem(sysKey)
             setHoveredId(nodeId)
           } else {
-            // Node selected — enter focus mode, exit pane if we were in it
             const node = findNode(tree, id)
             if (!node) return
-            const center = toWorld(node.x, getNodeCenterY(node), node.layer)
             if (paneId != null) {
               setPaneId(null)
-              setCameraTarget({
-                position: [center[0] + FOCUS_DISTANCE, center[1] + FOCUS_DISTANCE, center[2] + FOCUS_DISTANCE],
-                lookAt: center, up: [0, 1, 0],
-              })
+              setCameraTarget(focusTarget(node))
               setAnnouncement('Returned to focus view')
             } else if (focusedId !== id) {
-              setCameraTarget({
-                position: [center[0] + FOCUS_DISTANCE, center[1] + FOCUS_DISTANCE, center[2] + FOCUS_DISTANCE],
-                lookAt: center, up: [0, 1, 0],
-              })
+              setCameraTarget(focusTarget(node))
             }
             setFocusedId(id)
             setKeySelectedId(id)
             setKeySelectedSystem(null)
             setHoveredId(id)
           }
+        }}
+        onDeleteNode={(nodeId) => {
+          setModel(prev => removeNode(prev, nodeId))
+          // If we were focused/paned on the deleted node, back out
+          if (focusedId === nodeId || paneId === nodeId) handleBack()
+          setAnnouncement('Deleted')
+        }}
+        onMoveNode={(nodeId, parentId, insertIndex) => {
+          setModel(prev => moveNode(prev, nodeId, parentId, insertIndex))
+          setAnnouncement('Moved')
+        }}
+        onDuplicateNode={(nodeId, parentId, insertIndex) => {
+          setModel(prev => duplicateSubtree(prev, nodeId, parentId, insertIndex))
+          setAnnouncement('Duplicated')
+        }}
+        onSpliceNode={(nodeId) => {
+          setModel(prev => spliceNode(prev, nodeId))
+          setAnnouncement('Node removed, children promoted')
         }}
         onRenameNode={(nodeId, name) => {
           setModel(prev => renameNode(prev, nodeId, name))
@@ -455,11 +578,7 @@ function App() {
             // Stay in focus mode so tree is visible
             const node = findNode(tree, nodeId)
             if (node) {
-              const center = toWorld(node.x, getNodeCenterY(node), node.layer)
-              setCameraTarget({
-                position: [center[0] + FOCUS_DISTANCE, center[1] + FOCUS_DISTANCE, center[2] + FOCUS_DISTANCE],
-                lookAt: center, up: [0, 1, 0],
-              })
+              setCameraTarget(focusTarget(node))
               setFocusedId(nodeId)
               setPaneId(null)
             }
@@ -512,14 +631,45 @@ function App() {
       </div>
 
       {/* Context menu rendered at top level for z-index reliability */}
-      {menu && (
-        <ContextMenu
-          x={menu.x} y={menu.y}
-          onAddChild={canAddManagement(model, menu.nodeId) ? handleAddChild : null}
-          onAddOperation={canAddOperation(model, menu.nodeId) ? handleAddOperation : null}
-          onClose={handleCloseMenu}
-        />
-      )}
+      {menu && (() => {
+        const nid = menu.nodeId
+        const isRoot = nid === model.rootId
+        const isOp = model.entities[nid]?.type === 'operation'
+        const menuItems = []
+        if (canAddManagement(model, nid))
+          menuItems.push({ label: tr('menu.addManagement'), action: handleAddChild })
+        if (canAddOperation(model, nid))
+          menuItems.push({ label: tr('menu.addOperation'), action: handleAddOperation })
+        if (menuItems.length > 0)
+          menuItems.push({ separator: true })
+        if (!isRoot && !isOp)
+          menuItems.push({ label: tr('menu.duplicate'), action: () => {
+            const parentId = model.parents[nid]
+            if (parentId) { setModel(prev => duplicateSubtree(prev, nid, parentId)); setAnnouncement('Duplicated') }
+            setMenu(null); setHoveredId(null)
+          }})
+        if (canSplice(model, nid))
+          menuItems.push({ label: tr('menu.splice'), action: () => {
+            setModel(prev => spliceNode(prev, nid)); setAnnouncement('Node removed, children promoted')
+            setMenu(null); setHoveredId(null)
+          }})
+        if (!isRoot)
+          menuItems.push({ separator: true })
+        if (!isRoot)
+          menuItems.push({ label: tr('menu.delete'), danger: true, action: () => {
+            setModel(prev => removeNode(prev, nid))
+            if (focusedId === nid || paneId === nid) handleBack()
+            setAnnouncement('Deleted')
+            setMenu(null); setHoveredId(null)
+          }})
+        return (
+          <ContextMenu
+            x={menu.x} y={menu.y}
+            items={menuItems}
+            onClose={handleCloseMenu}
+          />
+        )
+      })()}
     </div>
   )
 }

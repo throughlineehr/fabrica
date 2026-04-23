@@ -6,6 +6,7 @@ import StyleGuide from './StyleGuide.jsx'
 import { AccessibilityProvider } from './accessibility.jsx'
 import { I18nProvider } from './i18n/index.jsx'
 import { AIConfigProvider } from './agent/config.jsx'
+import { BusProvider } from './signals/BusContext.jsx'
 
 const showStyleGuide = new URLSearchParams(window.location.search).has('styleguide')
 
@@ -14,7 +15,9 @@ createRoot(document.getElementById('root')).render(
     <I18nProvider>
       <AccessibilityProvider>
         <AIConfigProvider>
-          {showStyleGuide ? <StyleGuide /> : <App />}
+          <BusProvider>
+            {showStyleGuide ? <StyleGuide /> : <App />}
+          </BusProvider>
         </AIConfigProvider>
       </AccessibilityProvider>
     </I18nProvider>
