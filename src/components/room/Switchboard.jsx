@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react'
 import { Lightbulb, Plus, ChevronRight, Trash2, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react'
-import { color } from '../../styles'
+import { color, ui } from '../../styles'
 import { useA11yType } from '../../hooks/useA11yType'
 import { useTranslation } from '../../i18n/index.jsx'
 import { getProcessorDef, SIGNAL_TYPES } from '../../signals/library'
@@ -23,19 +23,19 @@ const WALL_ARROWS = {
   right: ArrowRight,
 }
 
-function TerminalDot({ terminal, active, onToggle, interactive = true, size = 14, showArrow = false }) {
+function TerminalDot({ terminal, active, onToggle, interactive = true, size = ui.checkbox.size, showArrow = false }) {
   const fill = color[terminal.colorKey]?.fill || color.border
   const ArrowIcon = showArrow ? WALL_ARROWS[terminal.wall] : null
   const arrowColor = active ? color.white : fill
   const common = {
     width: size, height: size, borderRadius: '50%',
-    border: `2px solid ${fill}`,
+    border: `${ui.checkbox.borderWidth}px solid ${fill}`,
     background: active ? fill : 'transparent',
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     verticalAlign: 'middle',
     flexShrink: 0,
   }
-  const arrow = ArrowIcon ? <ArrowIcon size={size - 6} strokeWidth={2.5} color={arrowColor} aria-hidden="true" /> : null
+  const arrow = ArrowIcon ? <ArrowIcon size={Math.max(10, size - 8)} strokeWidth={2.5} color={arrowColor} aria-hidden="true" /> : null
   if (!interactive) {
     return <span aria-hidden="true" title={terminal.terminalId} style={common}>{arrow}</span>
   }
@@ -73,7 +73,7 @@ function TerminalDotRow({ terminals, selected, onChange, disabled }) {
     onChange(next.length === terminals.length ? null : next)
   }
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: ui.checkbox.gap }}>
       {terminals.map(term => (
         <TerminalDot
           key={term.terminalId}

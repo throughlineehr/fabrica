@@ -201,16 +201,19 @@ export const ui = {
     borderLeftColor: color.muted,
   },
   // Checkbox tokens. Canonical pattern: hidden <input type="checkbox"> for
-  // keyboard/AT, visible square span for appearance. 14×14 square, 2px border,
-  // 2px corner radius. Filled with fillColor when checked; transparent with
-  // strokeColor border when unchecked. Opacity shift reinforces state without
-  // changing palette. Use the <Checkbox> component in src/components/Checkbox.jsx.
+  // keyboard/AT, visible square span for appearance. 20×20 square (WCAG 2.1 AA
+  // minimum target size is 24 px with separation, 20 px meets AA when our 8 px
+  // gap between dots is honored). 2 px border, 2 px corner radius. Filled with
+  // fillColor when checked; transparent with strokeColor border when unchecked.
+  // Opacity shift reinforces state without changing palette. Use the
+  // <Checkbox> component in src/components/Checkbox.jsx.
   checkbox: {
-    size: 14,
-    sizeColorBlind: 22,      // a11y mode — bigger target + pattern fill
+    size: 20,
+    sizeColorBlind: 28,      // a11y mode — bigger target + pattern fill
     borderWidth: 2,
     borderRadius: 2,
     opacityChecked: 0.85,
     opacityUnchecked: 0.35,
+    gap: 8,                  // minimum gap between adjacent dots for AA target separation
   },
 }

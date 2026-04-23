@@ -78,38 +78,59 @@ export function CableTerminal({ terminal, active, onClick, tuning, connections, 
   const BEND = tuning?.bend ?? DEFAULTS.bend
   const VISIBLE = tuning?.visible ?? DEFAULTS.visible
 
+  // A cable terminal has two distinct actions: (1) select the terminal (shows
+  // detail panel), (2) navigate to the connected peer if there's exactly one.
+  // Two actions → two buttons, grouped. Nesting a <button> inside a <button>
+  // (the previous <a href="#" role="link"> inside <button>) is invalid HTML
+  // and confuses assistive tech; this structure is clean.
+  const labelContent = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
+      {navigable ? (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onNavigate(navTarget.id, navTarget.systemKey) }}
+          style={{
+            ...t.mono, color: c.stroke, background: 'none', border: 'none',
+            padding: 0, cursor: 'pointer',
+            textDecoration: 'underline', textDecorationColor: c.fill, textUnderlineOffset: 2,
+          }}
+          aria-label={`${tr('nav.navigate')} ${label}`}
+        >{label}</button>
+      ) : (
+        <span style={{ ...t.mono, color: c.stroke }}>{label}</span>
+      )}
+      <span aria-hidden="true" style={{ ...t.mono, color: color.muted }}>{arrow}</span>
+    </div>
+  )
+
   return (
-    <button
-      onClick={() => onClick?.(terminal.id)}
+    <div
+      role="group"
       aria-label={`${label} ${terminal.dir === 'both' ? 'in/out' : terminal.dir}`}
-      title={connections && connections.length > 1 ? connections.map(c => `${c.verb} ${c.name}`).join('\n') : undefined}
       style={{
         display: 'flex',
         flexDirection: isHorizontal ? 'row' : 'column',
         alignItems: 'center',
         gap: 6,
-        background: 'none',
-        border: 'none',
-        cursor: onClick ? 'pointer' : 'default',
-        padding: 0,
       }}
     >
-      {/* Label — content side */}
-      {!wallSide && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
-          {navigable ? (
-            <a href="#" role="link" style={{ ...t.mono, color: c.stroke, textDecoration: 'underline', textDecorationColor: c.fill, textUnderlineOffset: 2 }}
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onNavigate(navTarget.id, navTarget.systemKey) }}
-            >{label}</a>
-          ) : (
-            <span style={{ ...t.mono, color: c.stroke }}>{label}</span>
-          )}
-          <span style={{ ...t.mono, color: color.muted }}>{arrow}</span>
-        </div>
-      )}
+      {!wallSide && labelContent}
 
-      {/* Terminal dot with SVG cable */}
-      <div style={{ position: 'relative', width: TERMINAL_SIZE, height: TERMINAL_SIZE, flexShrink: 0 }}>
+      {/* Terminal selection button — dot + SVG cable */}
+      <button
+        type="button"
+        onClick={() => onClick?.(terminal.id)}
+        aria-label={`${tr('systemPage.selectTerminal')} ${label}${active ? ` (${tr('systemPage.selected')})` : ''}`}
+        title={connections && connections.length > 1 ? connections.map(c => `${c.verb} ${c.name}`).join('\n') : undefined}
+        style={{
+          position: 'relative',
+          width: TERMINAL_SIZE, height: TERMINAL_SIZE,
+          flexShrink: 0,
+          background: 'none', border: 'none',
+          cursor: onClick ? 'pointer' : 'default',
+          padding: 0,
+        }}
+      >
         {/* Cable SVG — positioned at dot center, overflows in all directions */}
         <svg style={{
           position: 'absolute',
@@ -118,7 +139,7 @@ export function CableTerminal({ terminal, active, onClick, tuning, connections, 
           overflow: 'visible',
           pointerEvents: 'none',
           zIndex: 0,
-        }}>
+        }} aria-hidden="true">
           <path
             d={cablePath(terminal.wall, BEND, VISIBLE)}
             fill="none"
@@ -131,7 +152,7 @@ export function CableTerminal({ terminal, active, onClick, tuning, connections, 
         </svg>
 
         {/* Dot */}
-        <div style={{
+        <div aria-hidden="true" style={{
           position: 'relative',
           width: TERMINAL_SIZE,
           height: TERMINAL_SIZE,
@@ -150,21 +171,9 @@ export function CableTerminal({ terminal, active, onClick, tuning, connections, 
             transition: 'background 0.15s',
           }} />
         </div>
-      </div>
+      </button>
 
-      {/* Label — content side */}
-      {wallSide && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
-          {navigable ? (
-            <a href="#" role="link" style={{ ...t.mono, color: c.stroke, textDecoration: 'underline', textDecorationColor: c.fill, textUnderlineOffset: 2 }}
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onNavigate(navTarget.id, navTarget.systemKey) }}
-            >{label}</a>
-          ) : (
-            <span style={{ ...t.mono, color: c.stroke }}>{label}</span>
-          )}
-          <span style={{ ...t.mono, color: color.muted }}>{arrow}</span>
-        </div>
-      )}
-    </button>
+      {wallSide && labelContent}
+    </div>
   )
 }
