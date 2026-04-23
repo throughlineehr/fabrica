@@ -20,7 +20,15 @@ export function buildRoomTerminals(node, systemKey, tree) {
   const mgmtChildren = children.filter(c => c.type === 'management')
   const opChildren = children.filter(c => c.type === 'operation')
   const hasOp = opChildren.length > 0
-  const siblings = parent ? parent.children.filter(c => c.type === 'management' && c.id !== node.id) : []
+
+  // Adjacent-neighbor sibling model: at most one sibling on each side.
+  // We chain only immediate neighbors (by children-array order), not all
+  // siblings at once. So a middle-of-three unit has left + right; endpoints
+  // have one neighbor; only children have none.
+  const mgmtOrder = parent ? parent.children.filter(c => c.type === 'management') : []
+  const myIdx = mgmtOrder.findIndex(c => c.id === node.id)
+  const leftSibling = myIdx > 0 ? mgmtOrder[myIdx - 1] : null
+  const rightSibling = myIdx >= 0 && myIdx < mgmtOrder.length - 1 ? mgmtOrder[myIdx + 1] : null
 
   const terminals = []
 
@@ -36,16 +44,25 @@ export function buildRoomTerminals(node, systemKey, tree) {
       break
     }
     case 's2': {
+      // Parent S2 — the CRC chain extends up through recursion.
+      if (parent && parent.type === 'management' && nodeHasS2(parent)) {
+        terminals.push({ id: 's2-parent', wall: 'top', colorKey: 's2', dir: 'both', labelKey: 'systems.s2' })
+      }
       if (hasOp) {
         terminals.push({ id: 's1-in', wall: 'bottom', colorKey: 's1', dir: 'both', labelKey: 'systems.s1' })
       }
+      // Children S2s — CRC chain extending down.
+      const s2Children = mgmtChildren.filter(c => nodeHasS2(c))
+      if (s2Children.length > 0) {
+        terminals.push({ id: 's2-children', wall: 'bottom', colorKey: 's2', dir: 'both', labelKey: 'systems.s2' })
+      }
       terminals.push({ id: 's3-out', wall: 'left', colorKey: 's3', dir: 'both', labelKey: 'systems.s3' })
-      if (siblings.length === 1) {
-        terminals.push({ id: 's2-chain', wall: 'right', colorKey: 's2', dir: 'both', labelKey: 'systems.s2' })
-      } else if (siblings.length >= 2) {
-        // Even with 2+ siblings we still treat this as a single bidirectional chain,
-        // because the chain is always "I talk to each sibling S2 and they talk to me".
-        terminals.push({ id: 's2-chain', wall: 'right', colorKey: 's2', dir: 'both', labelKey: 'systems.s2' })
+      // Adjacent siblings: one on left, one on right (if they exist).
+      if (leftSibling) {
+        terminals.push({ id: 's2-sibling-left', wall: 'left', colorKey: 's2', dir: 'both', labelKey: 'systems.s2' })
+      }
+      if (rightSibling) {
+        terminals.push({ id: 's2-sibling-right', wall: 'right', colorKey: 's2', dir: 'both', labelKey: 'systems.s2' })
       }
       break
     }
@@ -97,7 +114,12 @@ export function resolveTerminalConnections(node, systemKey, tree, tr) {
   const children = node.children || []
   const mgmtChildren = children.filter(c => c.type === 'management')
   const opChildren = children.filter(c => c.type === 'operation')
-  const siblings = parent ? parent.children.filter(c => c.type === 'management' && c.id !== node.id) : []
+
+  // Adjacent-neighbor sibling lookup — must match buildRoomTerminals exactly.
+  const mgmtOrder = parent ? parent.children.filter(c => c.type === 'management') : []
+  const myIdx = mgmtOrder.findIndex(c => c.id === node.id)
+  const leftSibling = myIdx > 0 ? mgmtOrder[myIdx - 1] : null
+  const rightSibling = myIdx >= 0 && myIdx < mgmtOrder.length - 1 ? mgmtOrder[myIdx + 1] : null
 
   const verb = (sysKey) => tr(`systems.${sysKey}verb`)
   const label = (n) => n.name || `${tr('nav.unit')} ${n.id.slice(0, 5)}`
@@ -113,11 +135,15 @@ export function resolveTerminalConnections(node, systemKey, tree, tr) {
       break
     }
     case 's2': {
-      if (opChildren.length) connections['s1-in'] = opChildren.map(c => entry(c, 's1'))
-      connections['s3-out'] = [entry(node, 's3')]
-      if (siblings.length >= 1) {
-        connections['s2-chain'] = siblings.map(c => entry(c, 's2'))
+      if (parent && parent.type === 'management' && nodeHasS2(parent)) {
+        connections['s2-parent'] = [entry(parent, 's2')]
       }
+      if (opChildren.length) connections['s1-in'] = opChildren.map(c => entry(c, 's1'))
+      const s2Children = mgmtChildren.filter(c => nodeHasS2(c))
+      if (s2Children.length > 0) connections['s2-children'] = s2Children.map(c => entry(c, 's2'))
+      connections['s3-out'] = [entry(node, 's3')]
+      if (leftSibling) connections['s2-sibling-left'] = [entry(leftSibling, 's2')]
+      if (rightSibling) connections['s2-sibling-right'] = [entry(rightSibling, 's2')]
       break
     }
     case 's3': {

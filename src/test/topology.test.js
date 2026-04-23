@@ -185,6 +185,92 @@ describe('computeRoomSubscriptions', () => {
   })
 })
 
+describe('S2 topology — CRC chain + adjacent siblings', () => {
+  function twoChildrenTree() {
+    // Root(mgmt) → [A(mgmt) → op1, B(mgmt) → op2]
+    let m = createModel('management')
+    m = addNode(m, m.rootId, 'management')
+    const aId = m.children[m.rootId][0]
+    m = addNode(m, m.rootId, 'management')
+    const bId = m.children[m.rootId][1]
+    m = addNode(m, aId, 'operation')
+    m = addNode(m, bId, 'operation')
+    return { tree: buildRenderTree(m), rootId: m.rootId, aId, bId }
+  }
+
+  function threeChildrenTree() {
+    // Root → [A, B, C] each with an op
+    let m = createModel('management')
+    m = addNode(m, m.rootId, 'management')
+    m = addNode(m, m.rootId, 'management')
+    m = addNode(m, m.rootId, 'management')
+    const [aId, bId, cId] = m.children[m.rootId]
+    m = addNode(m, aId, 'operation')
+    m = addNode(m, bId, 'operation')
+    m = addNode(m, cId, 'operation')
+    return { tree: buildRenderTree(m), rootId: m.rootId, aId, bId, cId }
+  }
+
+  it('s2-parent exists when parent management has S2', async () => {
+    const { buildRoomTerminals } = await import('../signals/topology')
+    const { tree, aId } = twoLevelTree()  // Root → A(mgmt) → op1
+    const aNode = tree.children.find(c => c.id === aId)
+    const s2Terminals = buildRoomTerminals(aNode, 's2', tree)
+    expect(s2Terminals.some(t => t.id === 's2-parent')).toBe(true)
+  })
+
+  it('s2-children exists when a direct mgmt child has S2', async () => {
+    const { buildRoomTerminals } = await import('../signals/topology')
+    const { tree } = twoLevelTree()
+    const rootS2 = buildRoomTerminals(tree, 's2', tree)
+    expect(rootS2.some(t => t.id === 's2-children')).toBe(true)
+  })
+
+  it('one sibling: first child has right only, last child has left only', async () => {
+    const { buildRoomTerminals } = await import('../signals/topology')
+    const { tree, aId, bId } = twoChildrenTree()
+    const aNode = tree.children.find(c => c.id === aId)
+    const bNode = tree.children.find(c => c.id === bId)
+    const aS2 = buildRoomTerminals(aNode, 's2', tree)
+    const bS2 = buildRoomTerminals(bNode, 's2', tree)
+    expect(aS2.some(t => t.id === 's2-sibling-left')).toBe(false)
+    expect(aS2.some(t => t.id === 's2-sibling-right')).toBe(true)
+    expect(bS2.some(t => t.id === 's2-sibling-left')).toBe(true)
+    expect(bS2.some(t => t.id === 's2-sibling-right')).toBe(false)
+  })
+
+  it('three siblings: middle child has both left and right, endpoints have one each', async () => {
+    const { buildRoomTerminals } = await import('../signals/topology')
+    const { tree, aId, bId, cId } = threeChildrenTree()
+    const [aNode, bNode, cNode] = [aId, bId, cId].map(id => tree.children.find(c => c.id === id))
+    const aS2 = buildRoomTerminals(aNode, 's2', tree)
+    const bS2 = buildRoomTerminals(bNode, 's2', tree)
+    const cS2 = buildRoomTerminals(cNode, 's2', tree)
+    // A: endpoint left, only right
+    expect(aS2.some(t => t.id === 's2-sibling-left')).toBe(false)
+    expect(aS2.some(t => t.id === 's2-sibling-right')).toBe(true)
+    // B: middle, both
+    expect(bS2.some(t => t.id === 's2-sibling-left')).toBe(true)
+    expect(bS2.some(t => t.id === 's2-sibling-right')).toBe(true)
+    // C: endpoint right, only left
+    expect(cS2.some(t => t.id === 's2-sibling-left')).toBe(true)
+    expect(cS2.some(t => t.id === 's2-sibling-right')).toBe(false)
+  })
+
+  it('sibling wiring is symmetric: A.right peer === B, B.left peer === A', async () => {
+    const { buildRoomTerminals, resolveTerminalConnections } = await import('../signals/topology')
+    const { tree, aId, bId } = twoChildrenTree()
+    const aNode = tree.children.find(c => c.id === aId)
+    const bNode = tree.children.find(c => c.id === bId)
+    const identityTr = (k) => k
+    void buildRoomTerminals(aNode, 's2', tree)
+    const aConn = resolveTerminalConnections(aNode, 's2', tree, identityTr)
+    const bConn = resolveTerminalConnections(bNode, 's2', tree, identityTr)
+    expect(aConn['s2-sibling-right']?.[0]?.id).toBe(bId)
+    expect(bConn['s2-sibling-left']?.[0]?.id).toBe(aId)
+  })
+})
+
 describe('invertSubscriptions', () => {
   it('returns per-source lists of who subscribes to that source', () => {
     const { tree, rootId, aId } = twoLevelTree()

@@ -170,7 +170,7 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
               <span style={t.monoBold}><KeyLabel shortcut="F">{tr('tabs.filter')}</KeyLabel></span>
             </button>
           )}
-          <FilterBar open={filterOpen} onClose={() => setFilterOpen(false)} t={t} tr={tr} visibleSystems={visibleSystems} onToggleSystem={onToggleSystem} />
+          <FilterBar open={filterOpen} onClose={() => setFilterOpen(false)} tr={tr} visibleSystems={visibleSystems} onToggleSystem={onToggleSystem} />
         </>
       )}
 

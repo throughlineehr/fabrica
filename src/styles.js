@@ -200,4 +200,17 @@ export const ui = {
     color: color.secondary,
     borderLeftColor: color.muted,
   },
+  // Checkbox tokens. Canonical pattern: hidden <input type="checkbox"> for
+  // keyboard/AT, visible square span for appearance. 14×14 square, 2px border,
+  // 2px corner radius. Filled with fillColor when checked; transparent with
+  // strokeColor border when unchecked. Opacity shift reinforces state without
+  // changing palette. Use the <Checkbox> component in src/components/Checkbox.jsx.
+  checkbox: {
+    size: 14,
+    sizeColorBlind: 22,      // a11y mode — bigger target + pattern fill
+    borderWidth: 2,
+    borderRadius: 2,
+    opacityChecked: 0.85,
+    opacityUnchecked: 0.35,
+  },
 }

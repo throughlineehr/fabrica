@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { type, color, ui } from './styles'
+import { Checkbox } from './components/Checkbox'
 
 const layout = {
   page: {
@@ -47,6 +49,8 @@ const systemColors = [
 ]
 
 export default function StyleGuide() {
+  const [demoChecked, setDemoChecked] = useState({ a: true, b: false, c: true, m: true, e: false, n: false, alertKey: true })
+  const set = (k) => (v) => setDemoChecked(prev => ({ ...prev, [k]: v }))
   return (
     <div style={layout.page}>
       <div style={layout.section}>
@@ -159,7 +163,48 @@ export default function StyleGuide() {
 
       <div style={layout.section}>
         <p style={type.label}>UI COMPONENTS</p>
-        <div style={{ display: 'flex', gap: '48px', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: '48px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div>
+            <p style={{ ...type.label, marginBottom: '8px' }}>CHECKBOX</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+              <div>
+                <p style={{ ...type.label, marginBottom: '6px' }}>DEFAULT — primary fill</p>
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                  <Checkbox label="Option A" checked={demoChecked.a} onChange={set('a')} />
+                  <Checkbox label="Option B" checked={demoChecked.b} onChange={set('b')} />
+                  <Checkbox label="Disabled" checked={true} onChange={() => {}} disabled />
+                </div>
+              </div>
+
+              <div>
+                <p style={{ ...type.label, marginBottom: '6px' }}>COMPACT LABELS — for dense rows (M/E/N/A)</p>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <Checkbox label="M" srLabel="metric" checked={demoChecked.m} onChange={set('m')} />
+                  <Checkbox label="E" srLabel="event" checked={demoChecked.e} onChange={set('e')} />
+                  <Checkbox label="N" srLabel="narrative" checked={demoChecked.n} onChange={set('n')} />
+                  <Checkbox label="A" srLabel="alert" checked={demoChecked.alertKey} onChange={set('alertKey')} />
+                </div>
+              </div>
+
+              <div>
+                <p style={{ ...type.label, marginBottom: '6px' }}>COLORED FILL — system variants</p>
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                  <Checkbox label="S5" checked={true} onChange={() => {}} fillColor={color.s5.fill} />
+                  <Checkbox label="S4" checked={true} onChange={() => {}} fillColor={color.s4.fill} />
+                  <Checkbox label="S3" checked={true} onChange={() => {}} fillColor={color.s3.fill} />
+                  <Checkbox label="S2" checked={true} onChange={() => {}} fillColor={color.s2.fill} />
+                  <Checkbox label="S1" checked={true} onChange={() => {}} fillColor={color.s1.fill} />
+                </div>
+              </div>
+
+              <p style={{ ...type.mono, color: color.muted, margin: 0, maxWidth: 380 }}>
+                Tokens in <code>styles.js → ui.checkbox</code>. Component in{' '}
+                <code>components/Checkbox.jsx</code>. Hidden native input handles
+                keyboard/AT; visible square carries the state via fill + opacity shift.
+              </p>
+            </div>
+          </div>
           <div>
             <p style={{ ...type.label, marginBottom: '8px' }}>CONTEXT MENU</p>
             <div style={ui.contextMenu.container}>

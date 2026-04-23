@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { Filter, X } from 'lucide-react'
 import { color, sizes, panel } from '../../styles'
-import { useAccessibility } from '../../accessibility'
 import { getPatternDataUrl } from '../../hooks/usePatternTexture'
+import { useAccessibility } from '../../accessibility'
+import { Checkbox } from '../Checkbox'
 
 const FILTER_HEIGHT = 48
 
@@ -17,7 +18,9 @@ const FILTERS = [
   { key: 'frame', label: 'Frame', c: color.metaUnit },
 ]
 
-export function FilterBar({ open, onClose, t, tr, visibleSystems = {}, onToggleSystem }) {
+export function FilterBar({ open, onClose, tr, visibleSystems = {}, onToggleSystem }) {
+  // colorBlind read only for selecting a pattern fill; the Checkbox component
+  // reads its own accessibility context for sizing.
   const { colorBlind } = useAccessibility()
   const barRef = useRef()
 
@@ -74,30 +77,15 @@ export function FilterBar({ open, onClose, t, tr, visibleSystems = {}, onToggleS
       {FILTERS.map((sys) => {
         const checked = visibleSystems[sys.key] !== false
         return (
-          <label key={sys.key} style={{
-            display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-            ...(checked ? t.monoActive : t.monoMuted),
-          }}>
-            <input
-              type="checkbox"
-              checked={checked}
-              onChange={() => onToggleSystem?.(sys.key)}
-              aria-label={`${sys.label} ${checked ? 'visible' : 'hidden'}`}
-              style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}
-            />
-            <span aria-hidden="true" style={{
-              width: colorBlind ? 22 : 14,
-              height: colorBlind ? 22 : 14,
-              border: `2px solid ${checked ? sys.c : color.border}`,
-              borderRadius: 2,
-              background: checked
-                ? (colorBlind ? `url(${getPatternDataUrl(sys.key, sys.c)})` : sys.c)
-                : 'transparent',
-              backgroundSize: colorBlind ? '8px 8px' : undefined,
-              opacity: checked ? 0.8 : 0.3,
-            }} />
-            {sys.label}
-          </label>
+          <Checkbox
+            key={sys.key}
+            checked={checked}
+            onChange={() => onToggleSystem?.(sys.key)}
+            label={sys.label}
+            srLabel={`${sys.label} ${checked ? 'visible' : 'hidden'}`}
+            fillColor={sys.c}
+            pattern={colorBlind ? `url(${getPatternDataUrl(sys.key, sys.c)})` : null}
+          />
         )
       })}
       <button

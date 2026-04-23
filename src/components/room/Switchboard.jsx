@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react'
-import { Lightbulb, Plus, ChevronRight, Trash2 } from 'lucide-react'
+import { Lightbulb, Plus, ChevronRight, Trash2, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react'
 import { color } from '../../styles'
 import { useA11yType } from '../../hooks/useA11yType'
 import { useTranslation } from '../../i18n/index.jsx'
 import { getProcessorDef, SIGNAL_TYPES } from '../../signals/library'
 import { defaultFilters } from '../../signals/filter'
+import { Checkbox } from '../Checkbox'
 import { ProcessorLibraryModal } from './ProcessorLibraryModal'
 
 // The switchboard shows one row per processor. Each row has a dot for every
@@ -12,18 +13,31 @@ import { ProcessorLibraryModal } from './ProcessorLibraryModal'
 // because every cable is bidirectional. Clicking a dot toggles whether this
 // processor reads (incoming) or writes (outgoing) via that cable.
 
-function TerminalDot({ terminal, active, onToggle, interactive = true, size = 14 }) {
+// Direction arrow icons by wall. Shown inside the dot ONLY when ambiguous
+// (multiple dots in a row share the same colorKey). Picks the icon from the
+// terminal's wall so a top-wall cable shows ↑, bottom shows ↓, etc.
+const WALL_ARROWS = {
+  top: ArrowUp,
+  bottom: ArrowDown,
+  left: ArrowLeft,
+  right: ArrowRight,
+}
+
+function TerminalDot({ terminal, active, onToggle, interactive = true, size = 14, showArrow = false }) {
   const fill = color[terminal.colorKey]?.fill || color.border
-  const stroke = color[terminal.colorKey]?.stroke || color.border
+  const ArrowIcon = showArrow ? WALL_ARROWS[terminal.wall] : null
+  const arrowColor = active ? color.white : fill
   const common = {
     width: size, height: size, borderRadius: '50%',
-    border: `2px solid ${stroke}`,
+    border: `2px solid ${fill}`,
     background: active ? fill : 'transparent',
-    display: 'inline-block', verticalAlign: 'middle',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    verticalAlign: 'middle',
     flexShrink: 0,
   }
+  const arrow = ArrowIcon ? <ArrowIcon size={size - 6} strokeWidth={2.5} color={arrowColor} aria-hidden="true" /> : null
   if (!interactive) {
-    return <span aria-hidden="true" title={terminal.terminalId} style={common} />
+    return <span aria-hidden="true" title={terminal.terminalId} style={common}>{arrow}</span>
   }
   return (
     <button
@@ -33,12 +47,21 @@ function TerminalDot({ terminal, active, onToggle, interactive = true, size = 14
       title={terminal.terminalId}
       onClick={(e) => { e.stopPropagation(); onToggle() }}
       style={{ ...common, padding: 0, cursor: 'pointer' }}
-    />
+    >{arrow}</button>
   )
 }
 
 function TerminalDotRow({ terminals, selected, onChange, disabled }) {
   const t = useA11yType()
+  // Which colorKeys appear more than once in this row? Those dots get arrows.
+  const ambiguousColors = useMemo(() => {
+    const counts = new Map()
+    for (const term of terminals) {
+      counts.set(term.colorKey, (counts.get(term.colorKey) || 0) + 1)
+    }
+    return new Set(Array.from(counts.entries()).filter(([, n]) => n > 1).map(([k]) => k))
+  }, [terminals])
+
   if (disabled || terminals.length === 0) {
     return <span style={t.monoMuted}>—</span>
   }
@@ -57,32 +80,10 @@ function TerminalDotRow({ terminals, selected, onChange, disabled }) {
           terminal={term}
           active={isActive(term.terminalId)}
           onToggle={() => toggle(term.terminalId)}
+          showArrow={ambiguousColors.has(term.colorKey)}
         />
       ))}
     </div>
-  )
-}
-
-function TypeChip({ signalType, active, onToggle }) {
-  const t = useA11yType()
-  return (
-    <button
-      type="button"
-      aria-label={`${signalType}${active ? ' (on)' : ' (off)'}`}
-      aria-pressed={active}
-      onClick={(e) => { e.stopPropagation(); onToggle() }}
-      style={{
-        ...t.mono,
-        padding: '2px 6px',
-        border: `1px solid ${color.border}`,
-        background: active ? color.primary : 'transparent',
-        color: active ? color.white : color.muted,
-        cursor: 'pointer',
-        marginRight: 4, marginBottom: 4,
-      }}
-    >
-      {signalType[0].toUpperCase()}
-    </button>
   )
 }
 
@@ -90,15 +91,23 @@ function TypeChipRow({ selected, onChange, disabled }) {
   const t = useA11yType()
   if (disabled) return <span style={t.monoMuted}>—</span>
   const isActive = (type) => (selected === null ? true : selected.includes(type))
-  const toggle = (type) => {
+  const toggle = (type, next) => {
     const current = selected === null ? [...SIGNAL_TYPES] : selected
-    const next = current.includes(type) ? current.filter(x => x !== type) : [...current, type]
-    onChange(next.length === SIGNAL_TYPES.length ? null : next)
+    const updated = next
+      ? (current.includes(type) ? current : [...current, type])
+      : current.filter(x => x !== type)
+    onChange(updated.length === SIGNAL_TYPES.length ? null : updated)
   }
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
       {SIGNAL_TYPES.map(st => (
-        <TypeChip key={st} signalType={st} active={isActive(st)} onToggle={() => toggle(st)} />
+        <Checkbox
+          key={st}
+          label={st[0].toUpperCase()}
+          srLabel={st}
+          checked={isActive(st)}
+          onChange={(next) => toggle(st, next)}
+        />
       ))}
     </div>
   )
@@ -157,9 +166,12 @@ export function Switchboard({
   const showAlgedonic = systemKey === 's5'
 
   // Every cable on the room's walls is bidirectional — same set for both
-  // Incoming and Outgoing columns.
+  // Incoming and Outgoing columns. Keep `wall` so the dot can render a
+  // direction arrow when the row has color collisions.
   const roomTerminals = useMemo(() => (
-    (terminals || []).map(term => ({ terminalId: term.id, colorKey: term.colorKey }))
+    (terminals || []).map(term => ({
+      terminalId: term.id, colorKey: term.colorKey, wall: term.wall,
+    }))
   ), [terminals])
 
   const enriched = useMemo(() => (

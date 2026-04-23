@@ -150,7 +150,7 @@ side, output routing on the other.
 The switch statement still encodes WHICH edges exist per system:
 
 - **S1 (operation):** talks to parent S3 (directive cable), parent S2 (coordination), parent S3 (audit).
-- **S2 (coordinator):** talks to direct child operations' S1, own S3, sibling S2s.
+- **S2 (regulator / Corporate Regulation Center):** talks to direct child operations' S1, own S3, adjacent sibling S2s (one on each side — `s2-sibling-left` / `s2-sibling-right`), parent's S2 via `s2-parent`, and direct management children's S2s via `s2-children`. The parent/children pair implements the CRC chain — each recursion level's S2 is the level-above's Corporate Regulation Center.
 - **S3 (regulator):** talks to parent S3, management children's S3, own S4/S5/S2, child operations and management children (audit, which also includes parent).
 - **S4 (intelligence):** talks to parent S4, own S3, management children's S4, own S5.
 - **S5 (identity):** talks to parent S5, own S3, own S4, management children's S5.
