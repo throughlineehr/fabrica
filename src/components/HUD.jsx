@@ -1,4 +1,3 @@
-import { color } from '../styles'
 import { Z_INDEX } from '../constants'
 import { useA11yType } from '../hooks/useA11yType'
 import { useTranslation } from '../i18n/index.jsx'

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createModel, addNode, moveNode, insertParent, spliceNode, duplicateSubtree, detachNode } from '../tree/model'
+import { createModel, addNode, moveNode, insertParent, spliceNode, duplicateSubtree, detachNode, canSplice } from '../tree/model'
 
 function buildTree() {
   // Root -> [A(mgmt), B(mgmt)]
@@ -82,10 +82,7 @@ describe('spliceNode', () => {
   it('removes node and promotes children', () => {
     // Root -> B -> [D, E]
     // After flattening B: Root -> [A, D, E]
-    const { m, bId, dId, eId } = buildTree()
-    // First remove A to simplify (A has operation, would conflict)
-    let m2 = { ...m }
-    // Actually let's build a clean tree
+    // Build a clean tree inline (buildTree fixture has unrelated constraints)
     let clean = createModel('management')
     clean = addNode(clean, clean.rootId, 'management') // X
     const xId = clean.children[clean.rootId][0]
@@ -120,6 +117,61 @@ describe('spliceNode', () => {
     // Root -> X -> [op1, mgmt1] — can't flatten X because parent would get mixed types
     // But wait, X can't have both op and mgmt — our validation prevents it
     // So flattening should generally work unless the parent already has something incompatible
+  })
+})
+
+describe('canSplice', () => {
+  it('allows splice when children are all management', () => {
+    // Root -> B -> [D, E]  — splicing B promotes D,E to Root (all management)
+    const { m, bId } = buildTree()
+    expect(canSplice(m, bId)).toBe(true)
+  })
+
+  it('blocks splice on root', () => {
+    const { m } = buildTree()
+    expect(canSplice(m, m.rootId)).toBe(false)
+  })
+
+  it('blocks splice on operation', () => {
+    const { m, cId } = buildTree()
+    expect(canSplice(m, cId)).toBe(false)
+  })
+
+  it('blocks splice on leaf management (no children to promote)', () => {
+    const { m, dId } = buildTree()
+    expect(canSplice(m, dId)).toBe(false)
+  })
+
+  it('blocks splice when operation child would gain siblings', () => {
+    // Root -> [A, B] — A has operation C
+    // If we wrap C's parent differently: Root -> X -> [op] alongside Y
+    // Splicing X would put op next to Y — blocked
+    let m2 = createModel('management')
+    m2 = addNode(m2, m2.rootId, 'management') // X
+    m2 = addNode(m2, m2.rootId, 'management') // Y (sibling)
+    const xId = m2.children[m2.rootId][0]
+    m2 = addNode(m2, xId, 'operation') // op under X
+    expect(canSplice(m2, xId)).toBe(false)
+  })
+
+  it('allows splice when operation child becomes sole child of grandparent', () => {
+    // Root -> X -> [op] — no siblings of X
+    let m2 = createModel('management')
+    m2 = addNode(m2, m2.rootId, 'management') // X
+    const xId = m2.children[m2.rootId][0]
+    m2 = addNode(m2, xId, 'operation') // op under X
+    expect(canSplice(m2, xId)).toBe(true)
+  })
+
+  it('blocks splice when parent already has an operation', () => {
+    // Root -> [op, X -> [mgmt]]  (draft mode allows this state)
+    // Splicing X would put mgmt next to op — blocked
+    let m2 = createModel('management')
+    m2 = addNode(m2, m2.rootId, 'operation') // op
+    m2 = addNode(m2, m2.rootId, 'management') // X (draft mode allows mixed)
+    const xId = m2.children[m2.rootId][1]
+    m2 = addNode(m2, xId, 'management') // mgmt under X
+    expect(canSplice(m2, xId)).toBe(false)
   })
 })
 
@@ -188,5 +240,16 @@ describe('duplicateSubtree', () => {
     const result = duplicateSubtree(m, aId, m.rootId)
     const copyId = result.children[m.rootId].find(id => id !== aId)
     expect(copyId).not.toBe(aId)
+  })
+
+  it('cannot duplicate into self', () => {
+    const { m, aId } = buildTree()
+    expect(duplicateSubtree(m, aId, aId)).toBe(m)
+  })
+
+  it('cannot duplicate into own descendant', () => {
+    const { m, bId, dId } = buildTree()
+    // B -> [D, E], duplicating B into D would be recursive
+    expect(duplicateSubtree(m, bId, dId)).toBe(m)
   })
 })

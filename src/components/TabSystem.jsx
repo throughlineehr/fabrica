@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Eye, EyeOff, Filter, FolderTree, Wrench, Settings, Bot, X } from 'lucide-react'
 import { color, sizes, panel } from '../styles'
 import { Z_INDEX } from '../constants'
-import { useAccessibility } from '../accessibility'
 import { useA11yType } from '../hooks/useA11yType'
 import { useTranslation } from '../i18n/index.jsx'
 import { ExplorerTree } from './ExplorerTree'
@@ -37,17 +36,19 @@ function StubContent({ sections, t, tr }) {
   )
 }
 
-function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onRenameNode, onBack, onAnnounce, agentAPI }) {
+function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onRenameNode, onDeleteNode, onMoveNode, onDuplicateNode, onSpliceNode, onBack, onAnnounce, agentAPI }) {
   if (tabKey === 'S') return <SettingsPanel t={t} tr={tr} />
   if (tabKey === 'E' && tree) return (
     <ExplorerTree tree={tree} selectedId={selectedId} paneId={paneId} focusedId={focusedId}
-      onSelect={onNodeSelect} onActivate={onNodeActivate} onAddNode={onAddNode} onRenameNode={onRenameNode} onBack={onBack} onAnnounce={onAnnounce} />
+      onSelect={onNodeSelect} onActivate={onNodeActivate} onAddNode={onAddNode} onRenameNode={onRenameNode}
+      onDeleteNode={onDeleteNode} onMoveNode={onMoveNode} onDuplicateNode={onDuplicateNode} onSpliceNode={onSpliceNode}
+      onBack={onBack} onAnnounce={onAnnounce} />
   )
   if (tabKey === 'A') return <AgentPanel agentAPI={agentAPI} />
   return <StubContent sections={tabKey === 'T' ? ['Node', 'Listen', 'Users'] : []} t={t} tr={tr} />
 }
 
-export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onRenameNode, onBack, onAnnounce, onExplorerClose, visibleSystems, onToggleSystem, agentAPI, requestOpenExplorer = false }) {
+export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onRenameNode, onDeleteNode, onMoveNode, onDuplicateNode, onSpliceNode, onBack, onAnnounce, onExplorerClose, visibleSystems, onToggleSystem, agentAPI, requestOpenExplorer = false }) {
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const [activeTab, setActiveTab] = useState(null)
@@ -56,8 +57,8 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
   const [resizing, setResizing] = useState(false)
   const [tabsHidden, setTabsHidden] = useState(false)
 
-  // Open Explorer when requested externally
-  // Only open explorer on rising edge of requestOpenExplorer
+  // Open Explorer when requested externally — rising edge of requestOpenExplorer.
+  // prevRequested gates re-entry so other deps changing mid-request is a no-op.
   const prevRequested = useRef(false)
   useEffect(() => {
     if (requestOpenExplorer && !prevRequested.current && activeTab !== 'E' && !tabsHidden) {
@@ -65,7 +66,7 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
       onPanelWidthChange?.(panelWidth)
     }
     prevRequested.current = requestOpenExplorer
-  }, [requestOpenExplorer])
+  }, [requestOpenExplorer, activeTab, tabsHidden, panelWidth, onPanelWidthChange])
 
   const toggleSide = useCallback((key) => {
     setActiveTab(prev => {
@@ -82,6 +83,8 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
     const handler = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
       if (tabsHidden) return
+      // Don't intercept modifier combos (Cmd+X, Ctrl+C, etc.) — those are clipboard/system shortcuts
+      if (e.metaKey || e.ctrlKey || e.altKey) return
       // Don't intercept navigation keys inside the Explorer tree — but still handle tab-switching keys
       const upper = e.key.toUpperCase()
       const isTabKey = upper === 'F' || SIDE_TABS.some(s => s.key === upper)
@@ -122,7 +125,7 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
     window.addEventListener('mousemove', handleMove)
     window.addEventListener('mouseup', handleUp)
     return () => { window.removeEventListener('mousemove', handleMove); window.removeEventListener('mouseup', handleUp) }
-  }, [resizing])
+  }, [resizing, onPanelWidthChange])
 
   if (!visible) return null
 
@@ -147,8 +150,8 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
         </button>
       )}
 
-      {/* Filter */}
-      {!tabsHidden && (
+      {/* Filter — hidden in detail/pane view */}
+      {!tabsHidden && paneId == null && (
         <>
           {!filterOpen && (
             <button
@@ -246,7 +249,9 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
             <PanelContent tabKey={activeTab} t={t} tr={tr} tree={tree} selectedId={selectedId}
               paneId={paneId} focusedId={focusedId}
               onNodeSelect={onNodeSelect} onNodeActivate={onNodeActivate}
-              onAddNode={onAddNode} onRenameNode={onRenameNode} onBack={onBack} onAnnounce={onAnnounce} agentAPI={agentAPI} />
+              onAddNode={onAddNode} onRenameNode={onRenameNode}
+              onDeleteNode={onDeleteNode} onMoveNode={onMoveNode} onDuplicateNode={onDuplicateNode} onSpliceNode={onSpliceNode}
+              onBack={onBack} onAnnounce={onAnnounce} agentAPI={agentAPI} />
           </div>
         </div>
       )}

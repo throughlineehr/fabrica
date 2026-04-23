@@ -4,7 +4,7 @@ import { color, sizes } from '../../styles'
 import { MAX_TREE_DEPTH } from '../../constants'
 import { useAccessibility } from '../../accessibility'
 import { getPatternDataUrl } from '../../hooks/usePatternTexture'
-import { nodeLabel, shortId } from '../../utils/nodeLabel'
+import { nodeLabel } from '../../utils/nodeLabel'
 import { Breadcrumb } from './Breadcrumb'
 
 function countDescendants(node) {

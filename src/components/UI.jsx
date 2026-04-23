@@ -4,7 +4,7 @@ import { Z_INDEX } from '../constants'
 import { useTranslation } from '../i18n/index.jsx'
 import { Keycap } from './Keycap'
 
-export function ContextMenu({ x, y, onAddChild, onAddOperation, onClose, accentColor = color.metaUnit }) {
+export function ContextMenu({ x, y, items, onClose, accentColor = color.metaUnit }) {
   const { t: tr } = useTranslation()
   const menuRef = useRef()
 
@@ -22,11 +22,6 @@ export function ContextMenu({ x, y, onAddChild, onAddOperation, onClose, accentC
     const firstBtn = menuRef.current?.querySelector('button[data-menu-item]')
     firstBtn?.focus()
   }, [])
-
-  const items = [
-    onAddChild && { label: tr('menu.addManagement'), action: onAddChild, key: 'M' },
-    onAddOperation && { label: tr('menu.addOperation'), action: onAddOperation, key: 'O' },
-  ].filter(Boolean)
 
   const handleKeyDown = (e) => {
     if (e.key === 'Escape') {
@@ -62,18 +57,26 @@ export function ContextMenu({ x, y, onAddChild, onAddOperation, onClose, accentC
     >
       <div style={ui.contextMenu.header}>{tr('menu.actions')}</div>
       {items.map((item, i) => (
-        <button
-          key={i}
-          role="menuitem"
-          data-menu-item
-          onClick={item.action}
-          style={{ ...ui.contextMenu.item, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}
-          onMouseEnter={(e) => e.currentTarget.style.background = color.hoverBg}
-          onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
-        >
-          <span>{item.label}</span>
-          <Keycap>{item.key}</Keycap>
-        </button>
+        item.separator ? (
+          <div key={i} style={{ height: 1, background: color.border, margin: '4px 0' }} />
+        ) : (
+          <button
+            key={i}
+            role="menuitem"
+            data-menu-item
+            onClick={item.action}
+            style={{
+              ...ui.contextMenu.item,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+              color: item.danger ? color.s2.stroke : undefined,
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = color.hoverBg}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+          >
+            <span>{item.label}</span>
+            {item.key && <Keycap color={item.danger ? color.s2.stroke : undefined}>{item.key}</Keycap>}
+          </button>
+        )
       ))}
     </div>
   )

@@ -1,5 +1,12 @@
 // Entity model — flat stores, CRUD commands, validation
 
+function isDescendant(model, id, targetId) {
+  for (const cid of (model.children[id] || [])) {
+    if (cid === targetId || isDescendant(model, cid, targetId)) return true
+  }
+  return false
+}
+
 export function createModel(rootType = 'management') {
   const rootId = crypto.randomUUID()
   return {
@@ -26,6 +33,36 @@ export function canAddManagement(model, parentId) {
   if (!parent || parent.type !== 'management') return false
   const childIds = model.children[parentId] || []
   if (childIds.some(id => model.entities[id]?.type === 'operation')) return false
+  return true
+}
+
+// Can this node be spliced (removed with children promoted to parent)?
+// Blocked when promoting children would create mixed-type siblings or orphan operations.
+export function canSplice(model, nodeId) {
+  if (!model.entities[nodeId]) return false
+  if (nodeId === model.rootId) return false
+  if (model.entities[nodeId].type !== 'management') return false
+  const parentId = model.parents[nodeId]
+  if (!parentId) return false
+  const nodeChildren = model.children[nodeId] || []
+  if (nodeChildren.length === 0) return false
+
+  const parentChildren = model.children[parentId] || []
+  const siblingCount = parentChildren.length - 1 // excluding this node
+
+  const hasOpChildren = nodeChildren.some(id => model.entities[id]?.type === 'operation')
+
+  // Operations must be sole children — can't promote them alongside siblings
+  if (hasOpChildren) {
+    if (siblingCount > 0) return false // would mix with existing siblings
+    if (nodeChildren.length > 1) return false // multiple children can't all be ops
+  }
+
+  // Parent already has an operation — can't add more children
+  if (parentChildren.some(id => id !== nodeId && model.entities[id]?.type === 'operation')) {
+    return false
+  }
+
   return true
 }
 
@@ -76,29 +113,35 @@ export function removeNode(model, nodeId) {
 }
 
 // Move a node to a new parent. Detaches from current parent, attaches to new.
+// Optional insertIndex places at a specific position in the new parent's children.
 // Cannot move root. Cannot move into own descendants. Cannot create invalid structures.
-export function moveNode(model, nodeId, newParentId) {
+export function moveNode(model, nodeId, newParentId, insertIndex) {
   if (!model.entities[nodeId] || !model.entities[newParentId]) return model
   if (nodeId === model.rootId) return model
-  if (newParentId === model.parents[nodeId]) return model // already there
-  // Can't move into own subtree
-  const isDescendant = (id, targetId) => {
-    for (const cid of (model.children[id] || [])) {
-      if (cid === targetId || isDescendant(cid, targetId)) return true
-    }
-    return false
-  }
-  if (isDescendant(nodeId, newParentId)) return model
+  // No-op if already at destination and no specific position requested
+  if (model.parents[nodeId] === newParentId && insertIndex == null) return model
+  if (isDescendant(model, nodeId, newParentId)) return model
   // Can't move into an operation (operations are leaves)
   if (model.entities[newParentId].type === 'operation') return model
 
   const oldParentId = model.parents[nodeId]
+  const oldSiblings = model.children[oldParentId].filter(id => id !== nodeId)
+  const newSiblings = oldParentId === newParentId
+    ? [...oldSiblings] // same parent — work from filtered list
+    : [...(model.children[newParentId] || [])]
+
+  if (insertIndex != null && insertIndex >= 0 && insertIndex <= newSiblings.length) {
+    newSiblings.splice(insertIndex, 0, nodeId)
+  } else {
+    newSiblings.push(nodeId)
+  }
+
   return {
     ...model,
     children: {
       ...model.children,
-      [oldParentId]: model.children[oldParentId].filter(id => id !== nodeId),
-      [newParentId]: [...(model.children[newParentId] || []), nodeId],
+      [oldParentId]: oldSiblings,
+      [newParentId]: newSiblings,
     },
     parents: { ...model.parents, [nodeId]: newParentId },
   }
@@ -172,27 +215,39 @@ export function spliceNode(model, nodeId) {
 
 // Duplicate a subtree under a new parent (or same parent).
 // Deep copies all nodes with new IDs. Names are preserved.
-export function duplicateSubtree(model, nodeId, targetParentId) {
+// Optional insertIndex places the copy at a specific position.
+export function duplicateSubtree(model, nodeId, targetParentId, insertIndex) {
   if (!model.entities[nodeId] || !model.entities[targetParentId]) return model
   if (model.entities[targetParentId].type === 'operation') return model // can't add under operations
+  if (nodeId === targetParentId) return model
+  if (isDescendant(model, nodeId, targetParentId)) return model
 
   const entities = { ...model.entities }
   const children = { ...model.children }
   const parents = { ...model.parents }
+  children[targetParentId] = [...(children[targetParentId] || [])]
 
-  function copyNode(sourceId, parentId) {
+  function copyNode(sourceId, newParentId) {
     const newId = crypto.randomUUID()
     entities[newId] = { ...model.entities[sourceId], name: model.entities[sourceId].name ? model.entities[sourceId].name + ' (copy)' : '' }
     children[newId] = []
-    parents[newId] = parentId
-    children[parentId].push(newId)
+    parents[newId] = newParentId
+    children[newParentId].push(newId)
     for (const childId of (model.children[sourceId] || [])) {
       copyNode(childId, newId)
     }
     return newId
   }
 
+  // For insertIndex, we build the copy then move it into position
   const newRootId = copyNode(nodeId, targetParentId)
+  if (insertIndex != null && insertIndex >= 0) {
+    // copyNode appended to end — move to correct position
+    const arr = children[targetParentId]
+    arr.splice(arr.length - 1, 1) // remove from end
+    arr.splice(insertIndex, 0, newRootId) // insert at position
+  }
+
   return { ...model, entities, children, parents }
 }
 

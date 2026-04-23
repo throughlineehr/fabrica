@@ -25,6 +25,10 @@ export const color = {
   s2: { fill: '#d45a52', stroke: '#c0392b' },   // fill 3.9:1 ✓, stroke 5.4:1 ✓
   s1: { fill: '#4a8a44', stroke: '#2e7d32' },   // fill 4.2:1 ✓, stroke 5.1:1 ✓
 
+  // Cable / channel colors — for system room terminals
+  audit: { fill: '#c9a800', stroke: '#8a7400' },     // S3* yellow — fill 3.1:1 ✓, stroke 5.0:1 ✓
+  algedonic: { fill: '#e03030', stroke: '#a01010' },  // emergency red — fill 4.0:1 ✓, stroke 7.5:1 ✓
+
   metaUnit: '#000',        // 21.0:1 ✓ AAA
   focus: '#2563eb',        //  5.2:1 ✓ AA, ≥3:1 on all backgrounds
 }

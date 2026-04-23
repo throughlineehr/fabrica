@@ -8,8 +8,9 @@ import ja from './ja'
 import zh from './zh'
 import hi from './hi'
 import id from './id'
+import ru from './ru'
 
-const translations = { en, es, fr, it, ar, ja, zh, hi, id }
+const translations = { en, es, fr, it, ar, ja, zh, hi, id, ru }
 
 export const LANGUAGES = [
   { code: 'en', label: 'English', flag: '🇺🇸' },
@@ -21,6 +22,7 @@ export const LANGUAGES = [
   { code: 'zh', label: '中文', flag: '🇨🇳' },
   { code: 'hi', label: 'हिन्दी', flag: '🇮🇳' },
   { code: 'id', label: 'Bahasa Indonesia', flag: '🇮🇩' },
+  { code: 'ru', label: 'Русский', flag: '🇷🇺' },
 ]
 
 const I18nContext = createContext({

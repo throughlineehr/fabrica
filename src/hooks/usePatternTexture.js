@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useRef } from 'react'
+import { useMemo, useEffect } from 'react'
 import * as THREE from 'three'
 
 const PATTERNS = {
@@ -72,7 +72,7 @@ function drawVerticalLines(ctx, fg) {
   }
 }
 
-function makeTexture(systemKey, bg, fg) {
+function makeTexture(systemKey, bg) {
   const canvas = document.createElement('canvas')
   canvas.width = SIZE
   canvas.height = SIZE
@@ -81,7 +81,6 @@ function makeTexture(systemKey, bg, fg) {
   ctx.fillStyle = bg
   ctx.fillRect(0, 0, SIZE, SIZE)
 
-  // Use dark version of stroke for maximum contrast
   ctx.globalAlpha = 0.7
   const draw = PATTERNS[systemKey]
   if (draw) draw(ctx, '#000000')
@@ -108,27 +107,13 @@ export function getPatternDataUrl(systemKey, bg) {
   return canvas.toDataURL()
 }
 
-export function usePatternTexture(systemKey, fillColor, strokeColor, enabled) {
-  const texRef = useRef(null)
+export function usePatternTexture(systemKey, fillColor, enabled) {
+  const tex = useMemo(
+    () => (enabled && systemKey ? makeTexture(systemKey, fillColor) : null),
+    [systemKey, fillColor, enabled],
+  )
 
-  useMemo(() => {
-    if (texRef.current) {
-      texRef.current.dispose()
-      texRef.current = null
-    }
-    if (enabled && systemKey) {
-      texRef.current = makeTexture(systemKey, fillColor, strokeColor)
-    }
-  }, [systemKey, fillColor, strokeColor, enabled])
+  useEffect(() => () => tex?.dispose(), [tex])
 
-  useEffect(() => {
-    return () => {
-      if (texRef.current) {
-        texRef.current.dispose()
-        texRef.current = null
-      }
-    }
-  }, [])
-
-  return enabled ? texRef.current : null
+  return tex
 }

@@ -30,19 +30,19 @@ export function AIConfigProvider({ children }) {
   const setProvider = useCallback((id) => {
     setProviderOverride(id)
     setModelOverride('')
-    try { if (id) localStorage.setItem('fabrica_ai_provider', id); else localStorage.removeItem('fabrica_ai_provider') } catch {}
+    try { if (id) localStorage.setItem('fabrica_ai_provider', id); else localStorage.removeItem('fabrica_ai_provider') } catch { /* localStorage unavailable (private mode) */ }
   }, [])
 
   const setEndpoint = useCallback((url) => {
     setEndpointState(url)
-    try { if (url) localStorage.setItem('fabrica_ai_endpoint', url); else localStorage.removeItem('fabrica_ai_endpoint') } catch {}
+    try { if (url) localStorage.setItem('fabrica_ai_endpoint', url); else localStorage.removeItem('fabrica_ai_endpoint') } catch { /* localStorage unavailable (private mode) */ }
   }, [])
 
   const setApiKey = useCallback((key) => {
     setApiKeyState(key)
     setModelOverride('')
     setProviderOverride('')
-    try { if (key) localStorage.setItem('fabrica_ai_key', key); else localStorage.removeItem('fabrica_ai_key') } catch {}
+    try { if (key) localStorage.setItem('fabrica_ai_key', key); else localStorage.removeItem('fabrica_ai_key') } catch { /* localStorage unavailable (private mode) */ }
   }, [])
 
   const setModel = useCallback((m) => {

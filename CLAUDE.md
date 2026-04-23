@@ -29,8 +29,10 @@ src/
     useNodeOpacity.js    <- 3D shape opacity (handles epilepsy: highlight vs dim)
     useA11yType.js       <- Modified type tokens (handles fontVisibility + dyslexia)
     usePatternTexture.js <- Color-blind pattern textures for 3D shapes
+    useTreeKeyboard.js   <- Explorer keyboard handler (nav, cut/copy/paste, delete, rename)
   utils/
     nodeLabel.js         <- Shared node label formatting (name or fallback)
+    resolveColor.js      <- Maps colorKey to {fill, stroke} pair (used by all room components)
   i18n/
     index.jsx            <- I18n context + useTranslation hook
     en.js + 8 languages  <- Translation files
@@ -47,9 +49,15 @@ src/
     Keycap.jsx           <- Keyboard shortcut indicator (<kbd>)
     HUD.jsx              <- Composition: breadcrumbs, detail panels, instructions
     UI.jsx               <- ContextMenu (3D right-click)
-    SystemPage.jsx       <- Full-page system detail
+    SystemPage.jsx       <- System room entry point, routes to RoomShell + Switchboard
     TabSystem.jsx        <- Panel orchestrator (Settings, Explorer, Tools, Agent, Filter)
-    ExplorerTree.jsx     <- DOM tree view (keyboard nav, inline actions)
+    ExplorerTree.jsx     <- DOM tree view (keyboard nav, drag-drop, cut/copy/paste, inline actions, delete confirm)
+    room/
+      RoomShell.jsx      <- Universal system room container: fixed-position cable terminals on edges, content center
+      CableTerminal.jsx  <- Cable terminal button: SVG path with 45° bend, hollow dot, navigable labels
+      Switchboard.jsx    <- Processor table: inputs/outputs with colored dots, filter, pagination, add button
+      TerminalDetail.jsx <- Detail view of selected terminal's connections (clickable navigation)
+      resolveTerminals.js <- Maps terminal IDs to connected tree nodes based on VSM wiring rules
     hud/
       Breadcrumb.jsx     <- Navigation breadcrumb
       DetailPanel.jsx    <- Compact + expanded detail views (with editable name)
@@ -86,6 +94,7 @@ State is `model = { entities, children, parents, rootId }`:
 - `duplicateSubtree(nodeId, targetParentId)` — deep copy with new IDs
 - `createOrphan(model, type, name)` — create standalone unattached node
 - `renameNode(nodeId, name)` — set/change name
+- `canSplice(model, nodeId)` — checks if splice won't create mixed-type siblings
 
 ### Draft/Validate model:
 - **Draft mode** (default): relaxed rules, mixed types allowed, orphans allowed
@@ -123,12 +132,42 @@ Global context with three modes:
 
 ## Tab system (TabSystem.jsx)
 - **S** = Settings (accessibility toggles, display, account stubs)
-- **E** = Explorer (stub)
+- **E** = Explorer (full tree view with keyboard nav, drag-drop, cut/copy/paste)
 - **T** = Tools (node, listen, users stubs)
 - **F** = Filter bar (top-center, system color checkboxes)
 - Escape closes active panel (captures before HUD's escape handler)
 - Eye icon top-right hides/shows all tabs
 - Panels are resizable, frosted glass background
+
+## Explorer tree (ExplorerTree.jsx + useTreeKeyboard.js)
+- Full file-system-style keyboard navigation
+- **Arrows**: Navigate nodes (Up/Down move focus, Right expands or enters, Left collapses or goes to parent)
+- **Enter/Space**: Activate node (focus/pane for data nodes, open system page for system nodes)
+- **Cmd/Ctrl+X/C/V**: Cut/copy/paste with interleaved position selector (arrow up/down alternates between "on node" highlight and "between nodes" line)
+- **Delete/Backspace**: Delete with inline confirmation (Delete again or Enter confirms, Escape cancels)
+- **F2**: Inline rename
+- **Escape**: Cancel clipboard → back navigation (priority order)
+- **Home/End**: Jump to first/last node
+- **Drag and drop**: Data nodes draggable (except root). Drop zones: upper 65% = drop INTO, lower 35% = drop AFTER
+- Actions group per node: Rename, Add management, Add operation, Duplicate, Splice, Delete (availability gated by canAddManagement/canAddOperation/canSplice)
+- Systems (S1-S5) in tree enter pane/detail view on selection, Enter opens system page
+- Action nodes focus their parent meta-unit in 3D
+- All screen reader announcements translated via i18n
+
+## 3D context menu (UI.jsx)
+- Right-click on any node shows applicable commands
+- Items: Add management, Add operation, Duplicate, Splice, Delete (red, danger style)
+- Separator between add and destructive actions
+- Keyboard navigable (arrows + Enter), Escape closes
+
+## System rooms (room/)
+- Each system (S1-S5) opens into a full-viewport room via SystemPage → RoomShell
+- Cable terminals are fixed-position at viewport edges, SVG paths with 45° bends clipped at screen edge
+- Terminal labels show connected node names (resolved from tree), clickable to navigate along the cable
+- Switchboard is an accessible `<table role="grid">` showing processors: inputs (colored dots + type), name, outputs, status
+- ROOM_TERMINALS in constants.js defines per-system-type terminal configs (wall, color, direction)
+- `resolveColor()` shared utility in `utils/resolveColor.js` — never duplicate
+- Tuning constants in RoomShell (edgeOffset, tuning objects) — set DEV_TUNING=true to re-enable interactive sliders
 
 ## Style rules
 - Swiss modernism. No decoration. No emoji. No rounded corners on menus.
@@ -158,7 +197,9 @@ All magic numbers live here in named groups:
 - Geometry: ELLIPSE_RADIUS, TRIANGLE_SIZE_RATIO, ROUNDED_RECT_*, CONNECTION_DOT_RADIUS
 - A11y: FONT_VISIBILITY_SCALE, FONT_VISIBILITY_WEIGHT_BOOST
 - Z-Index: Z_INDEX.systemPage/hud/menu
+- Explorer: EXPLORER.indent/iconSize/rowMinHeight/dropLineHeight/pasteHighlightAlpha
 - Helpers: toWorld(), getNodeCenterY(), getSystemPanePosition()
+- Camera presets: focusTarget(node), paneTarget(node), systemTarget(node, systemKey)
 
 ## Running
 ```

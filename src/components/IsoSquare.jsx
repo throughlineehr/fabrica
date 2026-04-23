@@ -10,7 +10,7 @@ export function IsoSquare({ color, strokeColor, coords, systemKey, onContextMenu
   const pos = toWorld(...coords)
   const [fillOp, strokeOp] = useNodeOpacity(dimmed, highlighted)
   const { colorBlind } = useAccessibility()
-  const patternTex = usePatternTexture(systemKey, color, strokeColor, colorBlind)
+  const patternTex = usePatternTexture(systemKey, color, colorBlind)
   const matRef = useRef()
 
   useEffect(() => {

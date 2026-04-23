@@ -5,7 +5,7 @@ import { useA11yType } from '../../hooks/useA11yType'
 import { useTranslation } from '../../i18n/index.jsx'
 import { useAIConfig } from '../../agent/config.jsx'
 import { AGENT_DSL } from '../../agent/commands'
-import { exportModelCompact, importModel, parseShorthand } from '../../tree/index'
+import { importModel, parseShorthand } from '../../tree/index'
 
 export function AgentPanel({ agentAPI }) {
   const t = useA11yType()
@@ -24,7 +24,7 @@ export function AgentPanel({ agentAPI }) {
   // Set intro message when language changes
   useEffect(() => {
     setMessages([{ role: 'agent', text: tr('agent.intro') }])
-  }, [lang])
+  }, [lang, tr])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -157,7 +157,6 @@ export function AgentPanel({ agentAPI }) {
 
   const callAI = async (userMsg) => {
     // Build system prompt with current model state
-    const modelYaml = agentAPI ? agentAPI.read().yaml : ''
     const stateInfo = agentAPI ? JSON.stringify(agentAPI.getState()) : '{}'
     const nodeList = agentAPI ? agentAPI.listNodes() : { nodes: [] }
     const nodeTable = nodeList.nodes?.map(n => `${n.id} (${n.fullId}) ${n.type} children:${n.children}`).join('\n') || 'empty'

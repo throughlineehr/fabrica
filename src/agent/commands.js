@@ -3,7 +3,7 @@
 // The agent operates the application through structured commands.
 // Each command returns a result describing what happened.
 
-import { addNode, removeNode, renameNode, moveNode, insertParent, spliceNode, detachNode, duplicateSubtree, createOrphan, validateModel, canAddManagement, canAddOperation, exportModelCompact } from '../tree/index'
+import { addNode, removeNode, renameNode, moveNode, insertParent, spliceNode, detachNode, duplicateSubtree, validateModel, exportModelCompact } from '../tree/index'
 
 export function createAgentAPI({ getModel, setModel, getNavState, navigate, panels, filters, announce }) {
   return {

@@ -47,6 +47,16 @@ export const OPACITY = {
   strokeHighlighted: 1,
   outlineDimmed: 0.1,
   connectionDimmed: 0.1,
+  cutNode: 0.4,
+}
+
+// --- Explorer Tree ---
+export const EXPLORER = {
+  indent: 16,
+  iconSize: 12,
+  rowMinHeight: 28,
+  dropLineHeight: 3,
+  pasteHighlightAlpha: '40', // hex alpha for paste-into tint
 }
 
 // --- Animation Timings (ms) ---
@@ -102,4 +112,20 @@ export function getSystemPanePosition(node, systemKey) {
     y = SYSTEMS.s3.yOffset
   }
   return toWorld(x, y, node.layer)
+}
+
+// Camera target presets — reduce boilerplate in App.jsx
+export function focusTarget(node) {
+  const c = toWorld(node.x, getNodeCenterY(node), node.layer)
+  return { position: [c[0] + FOCUS_DISTANCE, c[1] + FOCUS_DISTANCE, c[2] + FOCUS_DISTANCE], lookAt: c, up: [0, 1, 0] }
+}
+
+export function paneTarget(node) {
+  const c = toWorld(node.x, getNodeCenterY(node), node.layer)
+  return { position: [c[0], c[1] + PANE_DISTANCE, c[2]], lookAt: c, up: [0, 0, -1] }
+}
+
+export function systemTarget(node, systemKey) {
+  const pos = getSystemPanePosition(node, systemKey)
+  return { position: [pos[0], pos[1] + SYSTEM_VIEW_DISTANCE, pos[2]], lookAt: pos, up: [0, 0, -1] }
 }

@@ -1,11 +1,14 @@
 import { useCallback, useState, useEffect, useRef } from 'react'
-import { ChevronRight, ChevronDown, Circle, SquarePlus, CirclePlus, MoreHorizontal } from 'lucide-react'
-import { color, sizes } from '../styles'
+import { ChevronRight, ChevronDown, Circle, SquarePlus, CirclePlus, MoreHorizontal, Trash2, Scissors, Copy } from 'lucide-react'
+import { color } from '../styles'
+import { EXPLORER, OPACITY } from '../constants'
 import { useA11yType } from '../hooks/useA11yType'
 import { useTranslation } from '../i18n/index.jsx'
+import { findNode, findParent } from '../tree/queries'
+import { useTreeKeyboard, isDataNodeId } from '../hooks/useTreeKeyboard'
+import { Keycap } from './Keycap'
 
-const ICON_SIZE = 12
-const INDENT = 16
+const { indent: INDENT, iconSize: ICON_SIZE, rowMinHeight: ROW_MIN_HEIGHT, dropLineHeight: DROP_LINE_HEIGHT, pasteHighlightAlpha: PASTE_ALPHA } = EXPLORER
 
 function shortId(id) { return id ? id.slice(0, 5) : '' }
 
@@ -13,25 +16,8 @@ const SYSTEM_COLORS = {
   s5: color.s5, s4: color.s4, s3: color.s3, s2: color.s2, s1: color.s1,
 }
 
-function findNodeInTree(root, id) {
-  if (root.id === id) return root
-  for (const child of root.children) {
-    const found = findNodeInTree(child, id)
-    if (found) return found
-  }
-  return null
-}
 
-function findParentInTree(root, targetId) {
-  for (const child of root.children) {
-    if (child.id === targetId) return root
-    const found = findParentInTree(child, targetId)
-    if (found) return found
-  }
-  return null
-}
-
-function TreeNode({ node, depth, expanded, onToggle, selectedId, renamingId, onSelect, onActivate, onAdd, onRename, onStartRename, t, tr, paneId }) {
+function TreeNode({ node, depth, expanded, onToggle, selectedId, renamingId, confirmDeleteId, cutNodeId, clipboardActive, pasteSlot, dragOverId, dragSlot, onSelect, onActivate, onAdd, onRename, onStartRename, onCancelRename, onDelete, onConfirmDelete, onCancelDelete, onSplice, onDuplicate, onDragBegin, onDragHover, onDrop, t, tr, paneId }) {
   const isSelected = selectedId === node.id
   const hasChildren = node.children.length > 0
   const isExpanded = expanded[node.id]
@@ -40,15 +26,25 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, renamingId, onS
   const isActionsGroup = node.type === 'actions-group'
   const isAction = node.type === 'action'
   const isRenameAction = isAction && node.actionType === 'rename'
+  const isDeleteAction = isAction && node.actionType === 'delete'
+  const isSpliceAction = isAction && node.actionType === 'splice'
+  const isDuplicateAction = isAction && node.actionType === 'duplicate'
   const isDataNode = !isSystem && !isActionsGroup && !isAction
+  const isCut = cutNodeId === node.id
 
   const editing = renamingId === node.id && isDataNode
   const [editName, setEditName] = useState('')
+  const [prevEditing, setPrevEditing] = useState(editing)
   const editRef = useRef()
+
+  // Reset edit field when editing starts (sync state to prop transition)
+  if (editing !== prevEditing) {
+    setPrevEditing(editing)
+    if (editing) setEditName(node.name || '')
+  }
 
   useEffect(() => {
     if (editing) {
-      setEditName(node.name || '')
       requestAnimationFrame(() => {
         editRef.current?.focus()
         editRef.current?.select()
@@ -61,6 +57,12 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, renamingId, onS
     label = tr('menu.actions')
   } else if (isRenameAction) {
     label = tr('menu.rename')
+  } else if (isDeleteAction) {
+    label = tr('menu.delete')
+  } else if (isSpliceAction) {
+    label = tr('menu.splice')
+  } else if (isDuplicateAction) {
+    label = tr('menu.duplicate')
   } else if (isAction) {
     label = node.actionType === 'management' ? tr('menu.addManagement') : tr('menu.addOperation')
   } else if (isSystem) {
@@ -80,7 +82,7 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, renamingId, onS
       btnRef.current.focus({ preventScroll: false })
       btnRef.current.scrollIntoView({ block: 'nearest' })
     }
-  }, [isSelected])
+  }, [isSelected, editing])
 
   const commitRename = () => {
     if (onRename) onRename(node.id, editName)
@@ -89,6 +91,12 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, renamingId, onS
   const handleClick = () => {
     if (isRenameAction) {
       onStartRename?.(node.parentNodeId)
+    } else if (isDeleteAction) {
+      onDelete?.(node.parentNodeId)
+    } else if (isSpliceAction) {
+      onSplice?.(node.parentNodeId)
+    } else if (isDuplicateAction) {
+      onDuplicate?.(node.parentNodeId)
     } else if (isAction) {
       onAdd(node.parentNodeId, node.actionType)
     } else {
@@ -102,10 +110,18 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, renamingId, onS
     }
   }
 
+  const showDeleteConfirm = confirmDeleteId === node.id && isDataNode
+
   // Determine icon
   let iconElement
   if (isActionsGroup) {
     iconElement = <MoreHorizontal size={8} strokeWidth={2} />
+  } else if (isDeleteAction) {
+    iconElement = <Trash2 size={8} strokeWidth={2} />
+  } else if (isSpliceAction) {
+    iconElement = <Scissors size={8} strokeWidth={2} />
+  } else if (isDuplicateAction) {
+    iconElement = <Copy size={8} strokeWidth={2} />
   } else if (isAction) {
     iconElement = node.actionType === 'management'
       ? <SquarePlus size={8} strokeWidth={2} />
@@ -127,68 +143,122 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, renamingId, onS
   }
 
   const isMuted = isActionsGroup || isAction
+  const isPasteTarget = isSelected && isDataNode && clipboardActive && !isCut
+  const isDragTarget = dragOverId === node.id && isDataNode
+
+  // Paste or drag indicator — drag takes priority when active
+  const activeSlot = isDragTarget ? dragSlot : isPasteTarget ? pasteSlot : null
+  const pasteLabel = activeSlot === 'in' ? `(${tr('menu.pasteInto')})` : activeSlot === 'after' ? `(${tr('menu.pasteBelow')})` : ''
 
   return (
     <li role="treeitem" aria-expanded={hasChildren ? isExpanded : undefined} aria-selected={isSelected}>
-      <button
-        ref={btnRef}
-        data-node-id={node.id}
-        onClick={handleClick}
-        onDoubleClick={handleDoubleClick}
-        tabIndex={isSelected ? 0 : -1}
-        aria-label={label}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          width: '100%',
-          paddingLeft: depth * INDENT + 4,
-          paddingTop: 4, paddingBottom: 4, paddingRight: 8,
-          minHeight: 28,
-          background: isSelected ? color.hoverBg : 'none',
-          border: 'none',
-          borderLeft: isSelected ? `2px solid ${color.focus}` : '2px solid transparent',
-          cursor: 'pointer', textAlign: 'left',
-          ...(isMuted ? t.monoMuted : (isSelected ? t.monoActive : t.mono)),
-        }}
-      >
-        {hasChildren ? (
-          <span
-            onClick={(e) => { e.stopPropagation(); onToggle(node.id) }}
-            role="button"
-            aria-label={isExpanded ? tr('nav.collapse') || 'Collapse' : tr('nav.expand') || 'Expand'}
-            tabIndex={-1}
-            style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-          >
-            {isExpanded
-              ? <ChevronDown size={ICON_SIZE} strokeWidth={1.5} />
-              : <ChevronRight size={ICON_SIZE} strokeWidth={1.5} />
-            }
-          </span>
-        ) : (
-          <span style={{ width: ICON_SIZE }} aria-hidden="true" />
+      <div style={{ position: 'relative' }}>
+        {activeSlot === 'after' && (
+          <div style={{ position: 'absolute', bottom: 0, left: depth * INDENT + 4, right: 8, height: DROP_LINE_HEIGHT, background: color.focus, zIndex: 1, borderRadius: 1 }} />
         )}
-        {iconElement}
-        {editing && isDataNode ? (
-          <input
-            ref={editRef}
-            type="text"
-            value={editName}
-            onChange={(e) => setEditName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitRename()
-              if (e.key === 'Escape') setEditing(false)
-              e.stopPropagation()
-            }}
-            onBlur={commitRename}
-            aria-label={tr('menu.rename')}
-            style={{
-              ...t.mono, color: color.primary,
-              border: `1px solid ${color.focus}`,
-              borderRadius: 2, padding: '1px 4px',
-              background: 'none', width: '100%',
-            }}
-          />
-        ) : label}
-      </button>
+        <button
+          ref={btnRef}
+          data-node-id={node.id}
+          draggable={isDataNode && depth > 0}
+          onDragStart={(e) => {
+            if (!isDataNode) { e.preventDefault(); return }
+            e.dataTransfer.effectAllowed = 'move'
+            e.dataTransfer.setData('text/plain', node.id)
+            onDragBegin?.(node.id)
+          }}
+          onDragOver={(e) => {
+            if (!isDataNode) return
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'move'
+            const rect = e.currentTarget.getBoundingClientRect()
+            const y = e.clientY - rect.top
+            const slot = y > rect.height * 0.65 ? 'after' : 'in'
+            onDragHover?.(node.id, slot)
+          }}
+          onDragLeave={() => onDragHover?.(null, null)}
+          onDrop={(e) => {
+            e.preventDefault()
+            if (!isDataNode) return
+            const rect = e.currentTarget.getBoundingClientRect()
+            const y = e.clientY - rect.top
+            const slot = y > rect.height * 0.65 ? 'after' : 'in'
+            onDrop?.(node.id, slot)
+          }}
+          onClick={handleClick}
+          onDoubleClick={handleDoubleClick}
+          tabIndex={isSelected ? 0 : -1}
+          aria-label={isCut ? `${label} (${tr('menu.cut')})` : isPasteTarget ? `${label} ${pasteLabel}` : label}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            width: '100%',
+            paddingLeft: depth * INDENT + 4,
+            paddingTop: 4, paddingBottom: 4, paddingRight: 8,
+            minHeight: ROW_MIN_HEIGHT,
+            opacity: isCut ? OPACITY.cutNode : 1,
+            background: activeSlot === 'in' ? `${color.focus}${PASTE_ALPHA}` : isSelected ? color.hoverBg : 'none',
+            border: 'none',
+            borderLeft: isSelected ? `2px solid ${color.focus}` : '2px solid transparent',
+            cursor: 'pointer', textAlign: 'left',
+            ...(isCut ? t.monoMuted : isMuted ? t.monoMuted : (isSelected ? t.monoActive : t.mono)),
+          }}
+        >
+          {hasChildren ? (
+            <span
+              onClick={(e) => { e.stopPropagation(); onToggle(node.id) }}
+              role="button"
+              aria-label={isExpanded ? tr('nav.collapse') || 'Collapse' : tr('nav.expand') || 'Expand'}
+              tabIndex={-1}
+              style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+            >
+              {isExpanded
+                ? <ChevronDown size={ICON_SIZE} strokeWidth={1.5} />
+                : <ChevronRight size={ICON_SIZE} strokeWidth={1.5} />
+              }
+            </span>
+          ) : (
+            <span style={{ width: ICON_SIZE }} aria-hidden="true" />
+          )}
+          {iconElement}
+          {editing && isDataNode ? (
+            <input
+              ref={editRef}
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename()
+                if (e.key === 'Escape') onCancelRename?.()
+                e.stopPropagation()
+              }}
+              onBlur={commitRename}
+              aria-label={tr('menu.rename')}
+              style={{
+                ...t.mono, color: color.primary,
+                border: `1px solid ${color.focus}`,
+                borderRadius: 2, padding: '1px 4px',
+                background: 'none', width: '100%',
+              }}
+            />
+          ) : label}
+        </button>
+      </div>
+      {showDeleteConfirm && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 4,
+          paddingLeft: depth * INDENT + 4 + ICON_SIZE + 6,
+          paddingTop: 4, paddingBottom: 8, paddingRight: 8,
+        }}>
+          <span style={t.monoMuted}>{tr('menu.deleteConfirm')}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span onClick={() => onConfirmDelete?.()} style={{ cursor: 'pointer' }}>
+              <Keycap color={color.s2.stroke}>{tr('menu.delete').toLowerCase()}</Keycap>
+            </span>
+            <span onClick={() => onCancelDelete?.()} style={{ cursor: 'pointer' }}>
+              <Keycap>{tr('nav.esc')}</Keycap>
+            </span>
+          </div>
+        </div>
+      )}
       {hasChildren && isExpanded && (
         <ul role="group" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {node.children.map(child => (
@@ -199,11 +269,26 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, renamingId, onS
               expanded={expanded}
               onToggle={onToggle}
               selectedId={selectedId}
+              confirmDeleteId={confirmDeleteId}
+              cutNodeId={cutNodeId}
+              clipboardActive={clipboardActive}
+              pasteSlot={pasteSlot}
+              dragOverId={dragOverId}
+              dragSlot={dragSlot}
               onSelect={onSelect}
               onActivate={onActivate}
               onAdd={onAdd}
               onRename={onRename}
               onStartRename={onStartRename}
+              onCancelRename={onCancelRename}
+              onDelete={onDelete}
+              onConfirmDelete={onConfirmDelete}
+              onCancelDelete={onCancelDelete}
+              onSplice={onSplice}
+              onDuplicate={onDuplicate}
+              onDragBegin={onDragBegin}
+              onDragHover={onDragHover}
+              onDrop={onDrop}
               renamingId={renamingId}
               paneId={paneId}
               t={t}
@@ -216,27 +301,36 @@ function TreeNode({ node, depth, expanded, onToggle, selectedId, renamingId, onS
   )
 }
 
-export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focusedId, onSelect, onActivate, onAddNode, onRenameNode, onBack, onAnnounce }) {
+export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focusedId, onSelect, onActivate, onAddNode, onRenameNode, onDeleteNode, onMoveNode, onDuplicateNode, onSpliceNode, onBack, onAnnounce }) {
   const selectedId = selectedIdProp ?? tree.id
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const treeRef = useRef()
-  const mounted = useRef(false)
   const [renamingId, setRenamingId] = useState(null)
+  const [clipboard, setClipboard] = useState(null) // { nodeId, mode: 'cut' | 'copy' }
+  const [confirmDelete, setConfirmDelete] = useState(null) // nodeId to confirm
+  const [pasteSlot, setPasteSlot] = useState('in') // 'in' = on node (highlight), 'after' = between nodes (line below)
+  const [dragSourceId, setDragSourceId] = useState(null)
+  const [dragOverId, setDragOverId] = useState(null)
+  const [dragSlot, setDragSlot] = useState(null) // 'in' | 'after'
 
+  // Focus the initially-selected node on mount (uses ref so we ignore later selectedId changes)
+  const initialSelectedIdRef = useRef(selectedId)
   useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true
-      requestAnimationFrame(() => {
-        const btn = treeRef.current?.querySelector(`button[data-node-id="${selectedId}"]`)
-        btn?.focus()
-      })
-    }
+    requestAnimationFrame(() => {
+      const btn = treeRef.current?.querySelector(`button[data-node-id="${initialSelectedIdRef.current}"]`)
+      btn?.focus()
+    })
   }, [])
 
   const [expanded, setExpanded] = useState(() => ({ [tree.id]: true }))
+  const [prevTree, setPrevTree] = useState(tree)
+  const [prevSelectedId, setPrevSelectedId] = useState(selectedId)
 
-  useEffect(() => {
+  // Sync expanded map when tree or selection changes (checked during render, not in effect)
+  if (tree !== prevTree || selectedId !== prevSelectedId) {
+    setPrevTree(tree)
+    setPrevSelectedId(selectedId)
     setExpanded(prev => {
       const next = { ...prev }
       const walk = (node) => {
@@ -256,7 +350,7 @@ export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focused
       }
       return next
     })
-  }, [tree, selectedId])
+  }
 
   const handleToggle = useCallback((id) => {
     setExpanded(prev => ({ ...prev, [id]: !prev[id] }))
@@ -265,6 +359,17 @@ export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focused
   const handleStartRename = useCallback((nodeId) => {
     setRenamingId(nodeId)
   }, [])
+
+  const handleCancelRename = useCallback(() => {
+    const id = renamingId
+    setRenamingId(null)
+    if (id) {
+      requestAnimationFrame(() => {
+        const btn = treeRef.current?.querySelector(`button[data-node-id="${id}"]`)
+        btn?.focus()
+      })
+    }
+  }, [renamingId])
 
   const handleCommitRename = useCallback((nodeId, name) => {
     if (onRenameNode) onRenameNode(nodeId, name)
@@ -276,101 +381,167 @@ export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focused
     })
   }, [onRenameNode])
 
+  const nodeLabel = useCallback((id) => {
+    const node = findNode(tree, id)
+    if (!node) return shortId(id)
+    if (node.name) return node.name
+    return node.type === 'operation' ? `Op ${shortId(id)}` : `Unit ${shortId(id)}`
+  }, [tree])
+
+  const modKey = navigator.platform?.includes('Mac') ? '⌘' : 'Ctrl+'
+
+  const handleCut = useCallback((nodeId) => {
+    setClipboard({ nodeId, mode: 'cut' })
+    setPasteSlot('in')
+    onAnnounce?.(`${tr('menu.cut')} ${nodeLabel(nodeId)}. ${tr('menu.cutHint')} ${modKey}V ${tr('menu.toPaste')}.`)
+  }, [onAnnounce, nodeLabel, tr, modKey])
+
+  const handleCopy = useCallback((nodeId) => {
+    setClipboard({ nodeId, mode: 'copy' })
+    setPasteSlot('in')
+    onAnnounce?.(`${tr('menu.copied')} ${nodeLabel(nodeId)}. ${tr('menu.cutHint')} ${modKey}V ${tr('menu.toPaste')}.`)
+  }, [onAnnounce, nodeLabel, tr, modKey])
+
+  const resolvePasteTarget = useCallback((targetId) => {
+    if (pasteSlot === 'in') {
+      return { parentId: targetId, insertIndex: undefined }
+    }
+    // 'after': insert as sibling after this node
+    const parent = findParent(tree, targetId)
+    if (!parent) return { parentId: targetId, insertIndex: undefined } // root fallback
+    const siblings = parent.children.filter(c => isDataNodeId(c.id))
+    const idx = siblings.findIndex(c => c.id === targetId)
+    if (idx < 0) return { parentId: targetId, insertIndex: undefined }
+    return { parentId: parent.id, insertIndex: idx + 1 }
+  }, [pasteSlot, tree])
+
+  const handlePaste = useCallback((targetId) => {
+    if (!clipboard) return
+    const srcLabel = nodeLabel(clipboard.nodeId)
+    const dstLabel = nodeLabel(targetId)
+    const { parentId, insertIndex } = resolvePasteTarget(targetId)
+    const posLabel = pasteSlot === 'in' ? tr('menu.into') : tr('menu.below')
+    if (clipboard.mode === 'cut') {
+      onMoveNode?.(clipboard.nodeId, parentId, insertIndex)
+      setClipboard(null)
+      setPasteSlot('in')
+      onAnnounce?.(`${tr('menu.moved')} ${srcLabel} ${posLabel} ${dstLabel}`)
+    } else {
+      onDuplicateNode?.(clipboard.nodeId, parentId, insertIndex)
+      onAnnounce?.(`${tr('menu.pastedCopy')} ${srcLabel} ${posLabel} ${dstLabel}`)
+    }
+  }, [clipboard, onMoveNode, onDuplicateNode, onAnnounce, nodeLabel, resolvePasteTarget, pasteSlot, tr])
+
+  const handleDelete = useCallback((nodeId) => {
+    // Don't allow delete on root
+    if (nodeId === tree.id) return
+    setConfirmDelete(nodeId)
+  }, [tree.id])
+
+  const confirmDeleteAction = useCallback(() => {
+    if (confirmDelete) {
+      const parent = findParent(tree, confirmDelete)
+      // Clear clipboard if we're deleting the cut/copied node
+      if (clipboard?.nodeId === confirmDelete) setClipboard(null)
+      onDeleteNode?.(confirmDelete)
+      setConfirmDelete(null)
+      onAnnounce?.(`${tr('menu.deleted')} ${nodeLabel(confirmDelete)}`)
+      if (parent) {
+        onSelect(parent.id)
+        requestAnimationFrame(() => {
+          const btn = treeRef.current?.querySelector(`button[data-node-id="${parent.id}"]`)
+          btn?.focus()
+        })
+      }
+    }
+  }, [confirmDelete, onDeleteNode, tree, onSelect, clipboard, onAnnounce, nodeLabel, tr])
+
+  const cancelDelete = useCallback(() => {
+    const id = confirmDelete
+    setConfirmDelete(null)
+    if (id) {
+      requestAnimationFrame(() => {
+        const btn = treeRef.current?.querySelector(`button[data-node-id="${id}"]`)
+        btn?.focus()
+      })
+    }
+  }, [confirmDelete])
+
+  const handleSplice = useCallback((nodeId) => {
+    if (nodeId === tree.id) return
+    const parent = findParent(tree, nodeId)
+    onSpliceNode?.(nodeId)
+    onAnnounce?.(tr('menu.childrenPromoted'))
+    if (parent) {
+      onSelect(parent.id)
+      requestAnimationFrame(() => {
+        const btn = treeRef.current?.querySelector(`button[data-node-id="${parent.id}"]`)
+        btn?.focus()
+      })
+    }
+  }, [tree, onSpliceNode, onSelect, onAnnounce, tr])
+
+  const handleDuplicate = useCallback((nodeId) => {
+    if (nodeId === tree.id) return
+    const node = findNode(tree, nodeId)
+    if (node?.type === 'operation') return // operations are sole children, can't duplicate
+    const parent = findParent(tree, nodeId)
+    if (parent) {
+      onDuplicateNode?.(nodeId, parent.id)
+      onAnnounce?.(tr('menu.subtreeDuplicated'))
+    }
+  }, [tree, onDuplicateNode, onAnnounce, tr])
+
+  // Drag and drop
+  const handleDragBegin = useCallback((nodeId) => {
+    if (nodeId === tree.id) return
+    setDragSourceId(nodeId)
+  }, [tree.id])
+
+  const handleDragHover = useCallback((nodeId, slot) => {
+    setDragOverId(nodeId)
+    setDragSlot(slot)
+  }, [])
+
+  const handleDrop = useCallback((targetId, slot) => {
+    if (!dragSourceId || dragSourceId === targetId) {
+      setDragSourceId(null); setDragOverId(null); setDragSlot(null)
+      return
+    }
+    if (slot === 'in') {
+      onMoveNode?.(dragSourceId, targetId)
+      onAnnounce?.(`${tr('menu.moved')} ${nodeLabel(dragSourceId)} ${tr('menu.into')} ${nodeLabel(targetId)}`)
+    } else {
+      // 'after': insert as sibling
+      const parent = findParent(tree, targetId)
+      if (parent) {
+        const siblings = parent.children.filter(c => isDataNodeId(c.id))
+        const idx = siblings.findIndex(c => c.id === targetId)
+        onMoveNode?.(dragSourceId, parent.id, idx + 1)
+        onAnnounce?.(`${tr('menu.moved')} ${nodeLabel(dragSourceId)} ${tr('menu.below')} ${nodeLabel(targetId)}`)
+      }
+    }
+    setDragSourceId(null); setDragOverId(null); setDragSlot(null)
+  }, [dragSourceId, tree, onMoveNode, onAnnounce, nodeLabel, tr])
+
   const handleAdd = useCallback((nodeId, type) => {
     if (onAddNode) {
       onAddNode(nodeId, type)
       setExpanded(prev => ({ ...prev, [nodeId]: true }))
-      onAnnounce?.(`${type === 'management' ? 'Management unit' : 'Operation'} added`)
+      onAnnounce?.(type === 'management' ? tr('menu.managementAdded') : tr('menu.operationAdded'))
     }
-  }, [onAddNode, onAnnounce])
+  }, [onAddNode, onAnnounce, tr])
 
   // Keyboard: use DOM order of all buttons in the tree
-  const handleKeyDown = useCallback((e) => {
-    if (e.key === 'Shift') return
-
-    const buttons = Array.from(treeRef.current?.querySelectorAll('button[data-node-id]') || [])
-    const currentIdx = buttons.indexOf(document.activeElement)
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      if (currentIdx < buttons.length - 1) {
-        const next = buttons[currentIdx + 1]
-        next.focus()
-        // Only update 3D selection for real nodes, not actions
-        const id = next.dataset.nodeId
-        if (id && !id.includes(':actions') && !id.includes(':add-')) onSelect(id)
-      }
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      if (currentIdx > 0) {
-        const prev = buttons[currentIdx - 1]
-        prev.focus()
-        const id = prev.dataset.nodeId
-        if (id && !id.includes(':actions') && !id.includes(':add-')) onSelect(id)
-      }
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault()
-      const id = document.activeElement?.dataset?.nodeId
-      if (id) {
-        const node = findNodeInTree(tree, id)
-        if (node?.children.length > 0 && !expanded[id]) {
-          handleToggle(id)
-        } else if (currentIdx < buttons.length - 1) {
-          const next = buttons[currentIdx + 1]
-          next.focus()
-          if (next.dataset.nodeId && !next.dataset.nodeId.includes(':actions') && !next.dataset.nodeId.includes(':add-')) onSelect(next.dataset.nodeId)
-        }
-      }
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault()
-      const id = document.activeElement?.dataset?.nodeId
-      if (id) {
-        const node = findNodeInTree(tree, id)
-        if (node?.children.length > 0 && expanded[id]) {
-          handleToggle(id)
-        } else {
-          const parent = findParentInTree(tree, id)
-          if (parent) {
-            const parentBtn = treeRef.current.querySelector(`button[data-node-id="${parent.id}"]`)
-            if (parentBtn) {
-              parentBtn.focus()
-              if (!parent.id.includes(':')) onSelect(parent.id)
-            }
-          }
-        }
-      }
-    } else if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      document.activeElement?.click()
-    } else if (e.key === 'Escape') {
-      if (paneId != null || focusedId != null) {
-        e.preventDefault()
-        e.stopPropagation()
-        e.stopImmediatePropagation()
-        onBack?.()
-      }
-    } else if (e.key === 'F2') {
-      e.preventDefault()
-      const id = document.activeElement?.dataset?.nodeId
-      if (id && !id.includes(':')) handleStartRename(id)
-    } else if (e.key === 'Home') {
-      e.preventDefault()
-      if (buttons[0]) { buttons[0].focus(); if (buttons[0].dataset.nodeId) onSelect(buttons[0].dataset.nodeId) }
-    } else if (e.key === 'End') {
-      e.preventDefault()
-      const last = buttons[buttons.length - 1]
-      if (last) { last.focus(); if (last.dataset.nodeId && !last.dataset.nodeId.includes(':')) onSelect(last.dataset.nodeId) }
-    }
-  }, [tree, expanded, onSelect, onBack, paneId, focusedId, handleToggle, handleStartRename])
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (!treeRef.current?.contains(document.activeElement)) return
-      handleKeyDown(e)
-    }
-    window.addEventListener('keydown', handler, true)
-    return () => window.removeEventListener('keydown', handler, true)
-  }, [handleKeyDown])
+  useTreeKeyboard({
+    treeRef, tree, expanded, clipboard, pasteSlot, confirmDelete,
+    paneId, focusedId,
+    onSelect, onActivate, onBack,
+    handleToggle, handleStartRename,
+    handleCut, handleCopy, handlePaste, handleDelete,
+    setPasteSlot, setClipboard,
+    confirmDeleteAction, cancelDelete,
+  })
 
   return (
     <ul
@@ -378,6 +549,7 @@ export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focused
       role="tree"
       aria-label={tr('tabs.explorer')}
       style={{ listStyle: 'none', padding: 0, margin: 0 }}
+      onDragEnd={() => { setDragSourceId(null); setDragOverId(null); setDragSlot(null) }}
     >
       <TreeNode
         node={tree}
@@ -385,11 +557,26 @@ export function ExplorerTree({ tree, selectedId: selectedIdProp, paneId, focused
         expanded={expanded}
         onToggle={handleToggle}
         selectedId={selectedId}
+        confirmDeleteId={confirmDelete}
+        cutNodeId={clipboard?.mode === 'cut' ? clipboard.nodeId : null}
+        clipboardActive={clipboard != null}
+        pasteSlot={pasteSlot}
+        dragOverId={dragOverId}
+        dragSlot={dragSlot}
         onSelect={onSelect}
         onActivate={onActivate}
         onAdd={handleAdd}
         onRename={handleCommitRename}
         onStartRename={handleStartRename}
+        onCancelRename={handleCancelRename}
+        onDelete={handleDelete}
+        onConfirmDelete={confirmDeleteAction}
+        onCancelDelete={cancelDelete}
+        onSplice={handleSplice}
+        onDuplicate={handleDuplicate}
+        onDragBegin={handleDragBegin}
+        onDragHover={handleDragHover}
+        onDrop={handleDrop}
         renamingId={renamingId}
         paneId={paneId}
         t={t}

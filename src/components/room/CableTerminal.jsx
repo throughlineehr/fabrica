@@ -1,0 +1,170 @@
+import { useState, useEffect, useRef } from 'react'
+import { color } from '../../styles'
+import { useA11yType } from '../../hooks/useA11yType'
+import { useTranslation } from '../../i18n/index.jsx'
+import { resolveColor } from '../../utils/resolveColor'
+
+// Defaults — overridden by tuning props when present
+const DEFAULTS = {
+  terminalSize: 29,
+  hollowSize: 15,
+  cableThickness: 23,
+  bend: 22,
+  visible: 60,
+}
+
+function dirArrow(dir, wall) {
+  if (dir === 'both') return '⇄'
+  if (dir === 'in') return ({ top: '↓', bottom: '↑', left: '→', right: '←' })[wall] || ''
+  if (dir === 'out') return ({ top: '↑', bottom: '↓', left: '←', right: '→' })[wall] || ''
+  return ''
+}
+
+// Path from (0,0) at terminal center: 45° bend then straight to wall edge
+function cablePath(wall, bend, visible) {
+  switch (wall) {
+    case 'left':   return `M 0,0 L ${-bend},${-bend} L ${-bend - visible},${-bend}`
+    case 'right':  return `M 0,0 L ${bend},${-bend} L ${bend + visible},${-bend}`
+    case 'top':    return `M 0,0 L ${bend},${-bend} L ${bend},${-bend - visible}`
+    case 'bottom': return `M 0,0 L ${-bend},${bend} L ${-bend},${bend + visible}`
+    default: return ''
+  }
+}
+
+export function CableTerminal({ terminal, active, onClick, tuning, connections, onNavigate, pulseCount = 0 }) {
+  const t = useA11yType()
+  const { t: tr } = useTranslation()
+  const c = resolveColor(terminal.colorKey)
+  const arrow = dirArrow(terminal.dir, terminal.wall)
+  const isHorizontal = terminal.wall === 'left' || terminal.wall === 'right'
+  const wallSide = terminal.wall === 'left' || terminal.wall === 'top'
+
+  // Pulse: brief brightness flash when pulseCount changes
+  const [pulsing, setPulsing] = useState(false)
+  const prevCount = useRef(pulseCount)
+  useEffect(() => {
+    if (pulseCount !== prevCount.current && pulseCount > 0) {
+      setPulsing(true)
+      const timer = setTimeout(() => setPulsing(false), 300)
+      prevCount.current = pulseCount
+      return () => clearTimeout(timer)
+    }
+  }, [pulseCount])
+
+  const cableColor = pulsing ? c.stroke : c.fill
+
+  // Build label from resolved connections
+  let label
+  if (connections && connections.length === 1) {
+    label = `${connections[0].verb} ${connections[0].name}`
+  } else if (connections && connections.length > 1) {
+    if (terminal.wall === 'bottom') {
+      label = `${connections[0].verb} ${tr('systemPage.subsystems')}`
+    } else {
+      label = `${connections.length} ${connections[0].verb.toLowerCase()}`
+    }
+  } else {
+    label = tr(terminal.labelKey)
+  }
+
+  // Navigable: single connection, not a subsystems group (bottom wall + multiple)
+  const isSubsystems = terminal.wall === 'bottom' && connections && connections.length > 1
+  const navigable = onNavigate && connections && connections.length === 1 && !isSubsystems
+  const navTarget = navigable ? connections[0] : null
+
+  const TERMINAL_SIZE = tuning?.terminalSize ?? DEFAULTS.terminalSize
+  const HOLLOW_SIZE = tuning?.hollowSize ?? DEFAULTS.hollowSize
+  const CABLE_THICKNESS = tuning?.cableThickness ?? DEFAULTS.cableThickness
+  const BEND = tuning?.bend ?? DEFAULTS.bend
+  const VISIBLE = tuning?.visible ?? DEFAULTS.visible
+
+  return (
+    <button
+      onClick={() => onClick?.(terminal.id)}
+      aria-label={`${label} ${terminal.dir === 'both' ? 'in/out' : terminal.dir}`}
+      title={connections && connections.length > 1 ? connections.map(c => `${c.verb} ${c.name}`).join('\n') : undefined}
+      style={{
+        display: 'flex',
+        flexDirection: isHorizontal ? 'row' : 'column',
+        alignItems: 'center',
+        gap: 6,
+        background: 'none',
+        border: 'none',
+        cursor: onClick ? 'pointer' : 'default',
+        padding: 0,
+      }}
+    >
+      {/* Label — content side */}
+      {!wallSide && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
+          {navigable ? (
+            <a href="#" role="link" style={{ ...t.mono, color: c.stroke, textDecoration: 'underline', textDecorationColor: c.fill, textUnderlineOffset: 2 }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onNavigate(navTarget.id, navTarget.systemKey) }}
+            >{label}</a>
+          ) : (
+            <span style={{ ...t.mono, color: c.stroke }}>{label}</span>
+          )}
+          <span style={{ ...t.mono, color: color.muted }}>{arrow}</span>
+        </div>
+      )}
+
+      {/* Terminal dot with SVG cable */}
+      <div style={{ position: 'relative', width: TERMINAL_SIZE, height: TERMINAL_SIZE, flexShrink: 0 }}>
+        {/* Cable SVG — positioned at dot center, overflows in all directions */}
+        <svg style={{
+          position: 'absolute',
+          left: 0, top: 0,
+          width: TERMINAL_SIZE, height: TERMINAL_SIZE,
+          overflow: 'visible',
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}>
+          <path
+            d={cablePath(terminal.wall, BEND, VISIBLE)}
+            fill="none"
+            stroke={cableColor}
+            strokeWidth={CABLE_THICKNESS}
+            strokeLinecap="butt"
+            strokeLinejoin="round"
+            transform={`translate(${TERMINAL_SIZE / 2}, ${TERMINAL_SIZE / 2})`}
+          />
+        </svg>
+
+        {/* Dot */}
+        <div style={{
+          position: 'relative',
+          width: TERMINAL_SIZE,
+          height: TERMINAL_SIZE,
+          borderRadius: '50%',
+          background: cableColor,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1,
+        }}>
+          <div style={{
+            width: HOLLOW_SIZE,
+            height: HOLLOW_SIZE,
+            borderRadius: '50%',
+            background: active ? cableColor : color.white,
+            transition: 'background 0.15s',
+          }} />
+        </div>
+      </div>
+
+      {/* Label — content side */}
+      {wallSide && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
+          {navigable ? (
+            <a href="#" role="link" style={{ ...t.mono, color: c.stroke, textDecoration: 'underline', textDecorationColor: c.fill, textUnderlineOffset: 2 }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onNavigate(navTarget.id, navTarget.systemKey) }}
+            >{label}</a>
+          ) : (
+            <span style={{ ...t.mono, color: c.stroke }}>{label}</span>
+          )}
+          <span style={{ ...t.mono, color: color.muted }}>{arrow}</span>
+        </div>
+      )}
+    </button>
+  )
+}

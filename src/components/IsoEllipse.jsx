@@ -21,7 +21,7 @@ export function IsoEllipse({ color, strokeColor, coords, systemKey = 's1', onCon
   const pos = toWorld(...coords)
   const [fillOp, strokeOp] = useNodeOpacity(dimmed, highlighted)
   const { colorBlind } = useAccessibility()
-  const patternTex = usePatternTexture(systemKey, color, strokeColor, colorBlind)
+  const patternTex = usePatternTexture(systemKey, color, colorBlind)
   const matRef = useRef()
 
   useEffect(() => {

@@ -21,7 +21,7 @@ export function IsoTriangle({ color, strokeColor, coords, systemKey = 's2', onCo
   const pos = toWorld(...coords)
   const [fillOp, strokeOp] = useNodeOpacity(dimmed, highlighted)
   const { colorBlind } = useAccessibility()
-  const patternTex = usePatternTexture(systemKey, color, strokeColor, colorBlind)
+  const patternTex = usePatternTexture(systemKey, color, colorBlind)
   const matRef = useRef()
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createModel, addNode } from '../tree/model'
-import { buildRenderTree, flattenTree, getTreeBounds } from '../tree/index'
+import { buildRenderTree, flattenTree } from '../tree/index'
 import { exportModel, importModel } from '../tree/serialize'
 
 describe('complexity / stress tests', () => {
@@ -71,7 +71,7 @@ describe('complexity / stress tests', () => {
       if (!layerPositions[key]) layerPositions[key] = []
       layerPositions[key].push(node.x)
     }
-    for (const [layer, positions] of Object.entries(layerPositions)) {
+    for (const positions of Object.values(layerPositions)) {
       const sorted = [...positions].sort((a, b) => a - b)
       for (let i = 1; i < sorted.length; i++) {
         expect(sorted[i] - sorted[i - 1]).toBeGreaterThan(0.5)

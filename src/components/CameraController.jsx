@@ -30,7 +30,7 @@ export function CameraController({ target, controlsRef }) {
         animating.current = true
       }
     }
-  }, [target, camera, epilepsy])
+  }, [target, camera, epilepsy, controlsRef])
 
   useEffect(() => {
     const cancel = () => { animating.current = false }

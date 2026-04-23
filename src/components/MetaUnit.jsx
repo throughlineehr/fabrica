@@ -111,7 +111,7 @@ export function MetaUnit({ x = 0, layer = 0, nodeId, onContextMenu, onDoubleClic
           <Connection
             from={[x, SYSTEMS.s3.yOffset, layer]}
             to={s2Coords}
-            color={isPaneView ? color.metaUnit : s2.strokeColor}
+            color={isPaneView ? EXTERNAL_SYSTEMS.s2.color : s2.strokeColor}
             dimmed={dimmed}
             style="elbow"
           />
