@@ -6,7 +6,7 @@ import {
   TRANSITION, Z_INDEX,
   focusTarget, paneTarget, systemTarget,
 } from './constants'
-import { createModel, addNode, removeNode, renameNode, moveNode, spliceNode, duplicateSubtree, canAddManagement, canAddOperation, canSplice, findNode, buildRenderTree, getTreeBounds, nodeHasS2 } from './tree/index'
+import { createModel, canAddManagement, canAddOperation, canSplice, findNode, buildRenderTree, getTreeBounds, nodeHasS2 } from './tree/index'
 import { CameraController } from './components/CameraController'
 import { MetaTree } from './components/MetaTree'
 import { ContextMenu } from './components/UI'
@@ -180,22 +180,6 @@ function App() {
       y: event.nativeEvent?.clientY ?? event.clientY,
     })
   }, [])
-
-  const addNodeOfType = useCallback((nodeType) => {
-    const parentId = menu.nodeId
-    setModel((prev) => addNode(prev, parentId, nodeType))
-    setMenu(null)
-    setHoveredId(null)
-    setKeySelectedId(parentId)
-    setAnnouncement(`${nodeType === 'management' ? 'Management unit' : 'Operation'} added`)
-    requestAnimationFrame(() => {
-      const btn = document.querySelector(`[role="tree"] button[data-node-id="${parentId}"]`)
-      btn?.focus()
-    })
-  }, [menu])
-
-  const handleAddChild = useCallback(() => addNodeOfType('management'), [addNodeOfType])
-  const handleAddOperation = useCallback(() => addNodeOfType('operation'), [addNodeOfType])
 
   const handleCloseMenu = useCallback(() => {
     const nodeId = menu?.nodeId
@@ -528,58 +512,52 @@ function App() {
           }
         }}
         onDeleteNode={(nodeId) => {
-          setModel(prev => removeNode(prev, nodeId))
+          agentAPI.removeNode(nodeId)
           // If we were focused/paned on the deleted node, back out
           if (focusedId === nodeId || paneId === nodeId) handleBack()
-          setAnnouncement('Deleted')
         }}
         onMoveNode={(nodeId, parentId, insertIndex) => {
-          setModel(prev => moveNode(prev, nodeId, parentId, insertIndex))
-          setAnnouncement('Moved')
+          agentAPI.moveNode(nodeId, parentId, insertIndex)
         }}
         onDuplicateNode={(nodeId, parentId, insertIndex) => {
-          setModel(prev => duplicateSubtree(prev, nodeId, parentId, insertIndex))
-          setAnnouncement('Duplicated')
+          agentAPI.duplicateSubtree(nodeId, parentId, insertIndex)
         }}
         onSpliceNode={(nodeId) => {
-          setModel(prev => spliceNode(prev, nodeId))
-          setAnnouncement('Node removed, children promoted')
+          agentAPI.spliceNode(nodeId)
         }}
         onRenameNode={(nodeId, name) => {
-          setModel(prev => renameNode(prev, nodeId, name))
-          setAnnouncement(name ? `Renamed to ${name}` : 'Name cleared')
+          agentAPI.renameNode(nodeId, name)
         }}
         onAddNode={(nodeId, nodeType) => {
-          setModel((prev) => {
-            const next = addNode(prev, nodeId, nodeType)
-            // Check if same action is still valid after adding
-            const actionId = `${nodeId}:add-${nodeType}`
-            const stillValid = nodeType === 'management'
-              ? canAddManagement(next, nodeId)
-              : canAddOperation(next, nodeId)
+          const result = nodeType === 'management'
+            ? agentAPI.addManagement(nodeId)
+            : agentAPI.addOperation(nodeId)
+          if (!result.ok) return
 
-            // Stay in focus mode so tree is visible
-            const node = findNode(tree, nodeId)
-            if (node) {
-              setCameraTarget(focusTarget(node))
-              setFocusedId(nodeId)
-              setPaneId(null)
+          // Keep the UI-side transitions (camera, focus, selection, refocus)
+          // that used to live inside the inline setModel. These are view
+          // effects of the mutation; they don't belong inside the agent
+          // command (the command mustn't touch camera/DOM).
+          const stillValid = nodeType === 'management'
+            ? canAddManagement(modelRef.current, nodeId)
+            : canAddOperation(modelRef.current, nodeId)
+          const node = findNode(tree, nodeId)
+          if (node) {
+            setCameraTarget(focusTarget(node))
+            setFocusedId(nodeId)
+            setPaneId(null)
+          }
+          setKeySelectedId(nodeId)
+          setHoveredId(nodeId)
+
+          const actionId = `${nodeId}:add-${nodeType}`
+          requestAnimationFrame(() => {
+            if (stillValid) {
+              const actionBtn = document.querySelector(`[role="tree"] button[data-node-id="${actionId}"]`)
+              if (actionBtn) { actionBtn.focus(); return }
             }
-            setKeySelectedId(nodeId)
-            setHoveredId(nodeId)
-            setAnnouncement(`${nodeType === 'management' ? 'Management unit' : 'Operation'} added`)
-
-            // Refocus: stay on action if still valid, otherwise go to parent
-            requestAnimationFrame(() => {
-              if (stillValid) {
-                const actionBtn = document.querySelector(`[role="tree"] button[data-node-id="${actionId}"]`)
-                if (actionBtn) { actionBtn.focus(); return }
-              }
-              const parentBtn = document.querySelector(`[role="tree"] button[data-node-id="${nodeId}"]`)
-              parentBtn?.focus()
-            })
-
-            return next
+            const parentBtn = document.querySelector(`[role="tree"] button[data-node-id="${nodeId}"]`)
+            parentBtn?.focus()
           })
         }}
         onNodeActivate={(id) => {
@@ -607,44 +585,47 @@ function App() {
       <div id="main-content">
         {!transitioning && !systemView && (
           <HUD node={activeNode} mode={hudMode} onBack={handleBack} onRename={(nodeId, name) => {
-            setModel(prev => renameNode(prev, nodeId, name))
-            setAnnouncement(name ? `Renamed to ${name}` : 'Name cleared')
+            agentAPI.renameNode(nodeId, name)
           }} />
         )}
       </div>
 
-      {/* Context menu rendered at top level for z-index reliability */}
+      {/* 3D right-click context menu. Every action invokes the agent API —
+          same chokepoint as the explorer-tree menu and the HUD rename. */}
       {menu && (() => {
         const nid = menu.nodeId
         const isRoot = nid === model.rootId
         const isOp = model.entities[nid]?.type === 'operation'
+        const closeAfter = (fn) => () => { fn(); setMenu(null); setHoveredId(null) }
         const menuItems = []
         if (canAddManagement(model, nid))
-          menuItems.push({ label: tr('menu.addManagement'), action: handleAddChild })
+          menuItems.push({ label: tr('menu.addManagement'), action: closeAfter(() => {
+            agentAPI.addManagement(nid)
+            setKeySelectedId(nid)
+            requestAnimationFrame(() => document.querySelector(`[role="tree"] button[data-node-id="${nid}"]`)?.focus())
+          }) })
         if (canAddOperation(model, nid))
-          menuItems.push({ label: tr('menu.addOperation'), action: handleAddOperation })
+          menuItems.push({ label: tr('menu.addOperation'), action: closeAfter(() => {
+            agentAPI.addOperation(nid)
+            setKeySelectedId(nid)
+            requestAnimationFrame(() => document.querySelector(`[role="tree"] button[data-node-id="${nid}"]`)?.focus())
+          }) })
         if (menuItems.length > 0)
           menuItems.push({ separator: true })
         if (!isRoot && !isOp)
-          menuItems.push({ label: tr('menu.duplicate'), action: () => {
+          menuItems.push({ label: tr('menu.duplicate'), action: closeAfter(() => {
             const parentId = model.parents[nid]
-            if (parentId) { setModel(prev => duplicateSubtree(prev, nid, parentId)); setAnnouncement('Duplicated') }
-            setMenu(null); setHoveredId(null)
-          }})
+            if (parentId) agentAPI.duplicateSubtree(nid, parentId)
+          }) })
         if (canSplice(model, nid))
-          menuItems.push({ label: tr('menu.splice'), action: () => {
-            setModel(prev => spliceNode(prev, nid)); setAnnouncement('Node removed, children promoted')
-            setMenu(null); setHoveredId(null)
-          }})
+          menuItems.push({ label: tr('menu.splice'), action: closeAfter(() => agentAPI.spliceNode(nid)) })
         if (!isRoot)
           menuItems.push({ separator: true })
         if (!isRoot)
-          menuItems.push({ label: tr('menu.delete'), danger: true, action: () => {
-            setModel(prev => removeNode(prev, nid))
+          menuItems.push({ label: tr('menu.delete'), danger: true, action: closeAfter(() => {
+            agentAPI.removeNode(nid)
             if (focusedId === nid || paneId === nid) handleBack()
-            setAnnouncement('Deleted')
-            setMenu(null); setHoveredId(null)
-          }})
+          }) })
         return (
           <ContextMenu
             x={menu.x} y={menu.y}
