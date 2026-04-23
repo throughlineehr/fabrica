@@ -53,11 +53,13 @@ src/
     TabSystem.jsx        <- Panel orchestrator (Settings, Explorer, Tools, Agent, Filter)
     ExplorerTree.jsx     <- DOM tree view (keyboard nav, drag-drop, cut/copy/paste, inline actions, delete confirm)
     room/
-      RoomShell.jsx      <- Universal system room container: fixed-position cable terminals on edges, content center
-      CableTerminal.jsx  <- Cable terminal button: SVG path with 45° bend, hollow dot, navigable labels
-      Switchboard.jsx    <- Processor table: inputs/outputs with colored dots, filter, pagination, add button
-      TerminalDetail.jsx <- Detail view of selected terminal's connections (clickable navigation)
-      resolveTerminals.js <- Maps terminal IDs to connected tree nodes based on VSM wiring rules
+      RoomShell.jsx              <- Universal system room container: fixed-position cable terminals on edges, content center
+      CableTerminal.jsx          <- Cable terminal button: SVG path with 45° bend, hollow dot, navigable labels
+      Switchboard.jsx            <- Processor row table: inline dots for in/out, type/tag filters, direction arrows on color collision
+      SignalFeed.jsx             <- Live log; aria-live=polite; renders hops per signal
+      ProcessorLibraryModal.jsx  <- Picker for processors from the library, filtered by room placement
+      TerminalDetail.jsx         <- Detail view of selected terminal's connections (clickable navigation)
+    (terminal topology and wiring rules live in src/signals/topology.js — the same module drives both the visual cables and the real subscriptions)
     hud/
       Breadcrumb.jsx     <- Navigation breadcrumb
       DetailPanel.jsx    <- Compact + expanded detail views (with editable name)

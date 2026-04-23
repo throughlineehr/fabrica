@@ -20,8 +20,8 @@
 import { roomChannel } from './bus'
 
 function wireForwarder(bus, sourceRoomKey, sourceTerminalId, targetRoomKey, targetTerminalId) {
-  const src = `room:${sourceRoomKey}`
-  return bus.subscribe(src, (signal) => {
+  const [srcNode, srcSys] = sourceRoomKey.split(':')
+  return bus.subscribe(roomChannel(srcNode, srcSys), (signal) => {
     // Output routing: if the signal says "only go out these terminals" and
     // this forwarder isn't one of them, skip.
     if (signal.outgoingTerminals && sourceTerminalId &&

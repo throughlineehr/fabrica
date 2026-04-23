@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createModel, addNode } from '../tree/model'
 import { buildRenderTree } from '../tree/index'
-import { computeRoomSubscriptions, invertSubscriptions, enumerateRooms, roomKey } from '../signals/topology'
+import { computeRoomSubscriptions, enumerateRooms, roomKey } from '../signals/topology'
 
 // Build a tree: Root(mgmt) → A(mgmt) → op1
 // Root has one management child A, A has one operation child op1.
@@ -271,13 +271,3 @@ describe('S2 topology — CRC chain + adjacent siblings', () => {
   })
 })
 
-describe('invertSubscriptions', () => {
-  it('returns per-source lists of who subscribes to that source', () => {
-    const { tree, rootId, aId } = twoLevelTree()
-    const topo = computeRoomSubscriptions(tree)
-    const inverted = invertSubscriptions(topo)
-    // A's S5 is subscribed-to by Root's S5 (s5-children terminal)
-    const aS5Subscribers = (inverted[`${aId}:s5`] || []).map(e => e.targetRoomKey)
-    expect(aS5Subscribers).toContain(`${rootId}:s5`)
-  })
-})

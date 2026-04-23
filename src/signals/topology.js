@@ -267,23 +267,3 @@ export function computeRoomSubscriptions(tree) {
 
   return subs
 }
-
-// Invert: for each source, which rooms subscribe to it?
-// Each entry's `terminalId` is the SOURCE-side (OUT) terminal — the one you'd
-// see on the wall of the source room. Colors are taken from the target's
-// matching terminal since that's what the target renders; source-side
-// terminal color is the same in every VSM edge we define.
-export function invertSubscriptions(subscriptions) {
-  const inverted = {}
-  for (const [targetKey, sources] of Object.entries(subscriptions)) {
-    for (const src of sources) {
-      if (!inverted[src.sourceRoomKey]) inverted[src.sourceRoomKey] = []
-      inverted[src.sourceRoomKey].push({
-        targetRoomKey: targetKey,
-        terminalId: src.sourceTerminalId || src.terminalId,
-        colorKey: src.colorKey,
-      })
-    }
-  }
-  return inverted
-}
