@@ -22,7 +22,7 @@ import { useBus } from './signals/BusContext.jsx'
 import { getProcessorDef } from './signals/library'
 import { computeRoomSubscriptions, enumerateRooms, roomKey as makeRoomKey } from './signals/topology'
 import { wireTopology } from './signals/wiring'
-import { defaultFilters } from './signals/filter'
+import { defaultFilters } from './signals/filter' // used by runtime effect for instances without filters set
 
 function App() {
   const { epilepsy } = useAccessibility()
@@ -106,38 +106,8 @@ function App() {
     return () => running.forEach(h => h.stop())
   }, [bus, processors])
 
-  const addProcessor = useCallback((nodeId, systemKey, def) => {
-    const roomKey = `${nodeId}:${systemKey}`
-    const instance = {
-      id: crypto.randomUUID(),
-      defId: def.id,
-      config: { ...(def.defaultConfig || {}) },
-      filters: defaultFilters(),
-    }
-    setProcessors(prev => ({
-      ...prev,
-      [roomKey]: [...(prev[roomKey] || []), instance],
-    }))
-    setAnnouncement(`${def.name} added`)
-  }, [])
-
-  const removeProcessor = useCallback((nodeId, systemKey, instanceId) => {
-    const roomKey = `${nodeId}:${systemKey}`
-    setProcessors(prev => ({
-      ...prev,
-      [roomKey]: (prev[roomKey] || []).filter(i => i.id !== instanceId),
-    }))
-  }, [])
-
-  const updateProcessor = useCallback((nodeId, systemKey, instanceId, updates) => {
-    const roomKey = `${nodeId}:${systemKey}`
-    setProcessors(prev => ({
-      ...prev,
-      [roomKey]: (prev[roomKey] || []).map(inst =>
-        inst.id === instanceId ? { ...inst, ...updates } : inst
-      ),
-    }))
-  }, [])
+  // Processor CRUD flows through the agent API (agentAPI.addProcessor /
+  // removeProcessor / updateProcessorFilters). See SystemPage render below.
 
   // Build explorer tree with system children
   const explorerTree = useMemo(() => {
@@ -391,21 +361,27 @@ function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [transitioning, systemView, focusedId, paneId, handleBack])
 
-  // Agent API — uses refs to access live state without retriggering the memo
+  // Agent API — the single mutation surface for both AI agent and UI handlers.
+  // Refs expose live state to commands without retriggering the memo.
   const modelRef = useRef(model)
-  const navStateRef = useRef({ focusedId, paneId, systemView })
+  const processorsRef = useRef(processors)
+  const navStateRef = useRef({ focusedId, paneId, systemView, processorView })
   useEffect(() => { modelRef.current = model }, [model])
-  useEffect(() => { navStateRef.current = { focusedId, paneId, systemView } }, [focusedId, paneId, systemView])
+  useEffect(() => { processorsRef.current = processors }, [processors])
+  useEffect(() => { navStateRef.current = { focusedId, paneId, systemView, processorView } }, [focusedId, paneId, systemView, processorView])
 
   const agentAPI = useMemo(() => createAgentAPI({
     getModel: () => modelRef.current,
     setModel,
+    getProcessors: () => processorsRef.current,
+    setProcessors,
     getNavState: () => navStateRef.current,
     navigate: {
       overview: handleBack, // repeated until overview
       focus: (nodeId) => { handleDoubleClick(nodeId) },
       detail: (nodeId) => { navigateToPane(nodeId) },
       openSystem: (nodeId, systemKey) => { navigateToSystem(nodeId, systemKey) },
+      openProcessor: (nodeId, systemKey, instanceId) => { handleOpenProcessor(nodeId, systemKey, instanceId) },
       back: handleBack,
     },
     panels: {
@@ -416,7 +392,7 @@ function App() {
       set: (key, visible) => setVisibleSystems(prev => ({ ...prev, [key]: visible })),
     },
     announce: setAnnouncement,
-  }), [handleBack, handleDoubleClick, navigateToPane, navigateToSystem])
+  }), [handleBack, handleDoubleClick, navigateToPane, navigateToSystem, handleOpenProcessor])
 
   // Clear keyboard selection when mouse takes over
   const handleMouseMove = useCallback(() => {
@@ -468,10 +444,14 @@ function App() {
             tree={tree}
             systemKey={systemView.systemKey}
             processors={processors[`${systemView.nodeId}:${systemView.systemKey}`] || []}
-            onAddProcessor={(def) => addProcessor(systemView.nodeId, systemView.systemKey, def)}
-            onRemoveProcessor={(instanceId) => removeProcessor(systemView.nodeId, systemView.systemKey, instanceId)}
-            onUpdateProcessor={(instanceId, updates) => updateProcessor(systemView.nodeId, systemView.systemKey, instanceId, updates)}
-            onOpenProcessor={(instanceId) => handleOpenProcessor(systemView.nodeId, systemView.systemKey, instanceId)}
+            onAddProcessor={(def) => agentAPI.addProcessor(systemView.nodeId, systemView.systemKey, def.id)}
+            onRemoveProcessor={(instanceId) => agentAPI.removeProcessor(systemView.nodeId, systemView.systemKey, instanceId)}
+            onUpdateProcessor={(instanceId, updates) => {
+              // Switchboard sends { filters: {...} } patches when rows change.
+              if (updates?.filters) agentAPI.updateProcessorFilters(systemView.nodeId, systemView.systemKey, instanceId, updates.filters)
+              if (updates?.config) agentAPI.updateProcessorConfig(systemView.nodeId, systemView.systemKey, instanceId, updates.config)
+            }}
+            onOpenProcessor={(instanceId) => agentAPI.openProcessor(systemView.nodeId, systemView.systemKey, instanceId)}
             onBack={handleSystemBack}
             onNavigate={(targetNodeId, targetSystemKey) => {
               handleSystemBack()
@@ -495,7 +475,10 @@ function App() {
               nodeName={findNode(tree, processorView.nodeId)?.name}
               systemKey={processorView.systemKey}
               roomInputs={topology[pKey] || []}
-              onUpdateInstance={(updates) => updateProcessor(processorView.nodeId, processorView.systemKey, processorView.instanceId, updates)}
+              onUpdateInstance={(updates) => {
+                if (updates?.filters) agentAPI.updateProcessorFilters(processorView.nodeId, processorView.systemKey, processorView.instanceId, updates.filters)
+                if (updates?.config) agentAPI.updateProcessorConfig(processorView.nodeId, processorView.systemKey, processorView.instanceId, updates.config)
+              }}
               onBack={handleProcessorBack}
             />
           </div>
