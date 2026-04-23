@@ -17,6 +17,7 @@ import { TabSystem } from './components/TabSystem'
 import { color } from './styles'
 import { useAccessibility } from './accessibility'
 import { useTranslation } from './i18n/index.jsx'
+import { useAIConfig } from './agent/config.jsx'
 import { createAgentAPI } from './agent/commands'
 import { useBus } from './signals/BusContext.jsx'
 import { getProcessorDef } from './signals/library'
@@ -25,8 +26,9 @@ import { wireTopology } from './signals/wiring'
 import { defaultFilters } from './signals/filter' // used by runtime effect for instances without filters set
 
 function App() {
-  const { epilepsy } = useAccessibility()
-  const { t: tr } = useTranslation()
+  const { epilepsy, toggleEpilepsy, toggleDyslexia, toggleColorBlind, setFontVisibility } = useAccessibility()
+  const { t: tr, setLang } = useTranslation()
+  const { setApiKey, setProvider: setAIProvider, setModel: setAIModel, setEndpoint: setAIEndpoint } = useAIConfig()
   const [model, setModel] = useState(() => createModel('management'))
   const [menu, setMenu] = useState(null)
   const [focusedId, setFocusedId] = useState(null)
@@ -375,8 +377,19 @@ function App() {
     filters: {
       set: (key, visible) => setVisibleSystems(prev => ({ ...prev, [key]: visible })),
     },
+    accessibility: {
+      toggleEpilepsy, toggleDyslexia, toggleColorBlind, setFontVisibility,
+    },
+    language: { set: setLang },
+    aiConfig: {
+      setApiKey, setProvider: setAIProvider, setModel: setAIModel, setEndpoint: setAIEndpoint,
+    },
     announce: setAnnouncement,
-  }), [handleBack, handleDoubleClick, navigateToPane, navigateToSystem, handleOpenProcessor])
+  }), [
+    handleBack, handleDoubleClick, navigateToPane, navigateToSystem, handleOpenProcessor,
+    toggleEpilepsy, toggleDyslexia, toggleColorBlind, setFontVisibility,
+    setLang, setApiKey, setAIProvider, setAIModel, setAIEndpoint,
+  ])
 
   // Clear keyboard selection when mouse takes over
   const handleMouseMove = useCallback(() => {

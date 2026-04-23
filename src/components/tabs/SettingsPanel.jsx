@@ -83,9 +83,13 @@ function AccordionSection({ label, children, t, defaultOpen = false }) {
   )
 }
 
-export function SettingsPanel({ t, tr }) {
-  const { epilepsy, toggleEpilepsy, fontVisibility, setFontVisibility, dyslexia, toggleDyslexia, colorBlind, toggleColorBlind } = useAccessibility()
-  const { lang, setLang } = useTranslation()
+export function SettingsPanel({ t, tr, agentAPI }) {
+  // Context hooks provide READ access to the current values; mutations
+  // go through the agent API so audit log / undo / sync see them.
+  const { epilepsy, fontVisibility, dyslexia, colorBlind } = useAccessibility()
+  const { lang } = useTranslation()
+  // Fallback if agentAPI isn't wired yet (e.g., during tests or storybook)
+  const api = agentAPI || { setLanguage: () => {}, toggleAccessibility: () => {}, setFontVisibility: () => {} }
   return (
     <div style={{ padding: '16px' }}>
       <AccordionSection label={tr('settings.language')} t={t}>
@@ -93,7 +97,7 @@ export function SettingsPanel({ t, tr }) {
           {LANGUAGES.map((l) => (
             <button
               key={l.code}
-              onClick={() => setLang(l.code)}
+              onClick={() => api.setLanguage(l.code)}
               aria-current={lang === l.code ? 'true' : undefined}
               style={{
                 ...(lang === l.code ? t.monoActive : t.monoMuted),
@@ -113,15 +117,15 @@ export function SettingsPanel({ t, tr }) {
       </AccordionSection>
 
       <AccordionSection label={tr('settings.accessibility')} t={t}>
-        <Toggle label={tr('settings.epilepsyMode')} value={epilepsy} onChange={toggleEpilepsy} t={t} />
+        <Toggle label={tr('settings.epilepsyMode')} value={epilepsy} onChange={() => api.toggleAccessibility('epilepsy')} t={t} />
         <div style={{ borderTop: `1px solid ${color.borderLight}` }}>
-          <Slider label={tr('settings.fontVisibility')} value={fontVisibility} onChange={setFontVisibility} t={t} />
+          <Slider label={tr('settings.fontVisibility')} value={fontVisibility} onChange={(v) => api.setFontVisibility(v)} t={t} />
         </div>
         <div style={{ borderTop: `1px solid ${color.borderLight}` }}>
-          <Toggle label={tr('settings.dyslexiaFont')} value={dyslexia} onChange={toggleDyslexia} t={t} />
+          <Toggle label={tr('settings.dyslexiaFont')} value={dyslexia} onChange={() => api.toggleAccessibility('dyslexia')} t={t} />
         </div>
         <div style={{ borderTop: `1px solid ${color.borderLight}` }}>
-          <Toggle label={tr('settings.colorBlindMode')} value={colorBlind} onChange={toggleColorBlind} t={t} />
+          <Toggle label={tr('settings.colorBlindMode')} value={colorBlind} onChange={() => api.toggleAccessibility('colorBlind')} t={t} />
         </div>
         <div style={{ borderTop: `1px solid ${color.borderLight}` }}>
           <Toggle label={`${tr('settings.screenReader')} (${tr('settings.notImplemented')})`} value={false} onChange={() => {}} t={t} />
@@ -137,14 +141,20 @@ export function SettingsPanel({ t, tr }) {
       </AccordionSection>
 
       <AccordionSection label={`${tr('tools.agent')} ${tr('agent.apiKey')}`} t={t}>
-        <AIKeyConfig t={t} tr={tr} />
+        <AIKeyConfig t={t} tr={tr} agentAPI={agentAPI} />
       </AccordionSection>
     </div>
   )
 }
 
-function AIKeyConfig({ t, tr }) {
-  const { apiKey, provider, model, endpoint, setApiKey, setProvider, setModel, setEndpoint, isConnected } = useAIConfig()
+function AIKeyConfig({ t, tr, agentAPI }) {
+  // Reads stay via context; writes go through agentAPI.setAIConfig.
+  const { apiKey, provider, model, endpoint, isConnected } = useAIConfig()
+  const api = agentAPI || { setAIConfig: () => {} }
+  const setApiKey = (v) => api.setAIConfig({ apiKey: v })
+  const setProvider = (v) => api.setAIConfig({ provider: v })
+  const setModel = (v) => api.setAIConfig({ model: v })
+  const setEndpoint = (v) => api.setAIConfig({ endpoint: v })
   const [inputKey, setInputKey] = useState(apiKey ? '••••••••' + apiKey.slice(-4) : '')
   const [editing, setEditing] = useState(!apiKey)
 

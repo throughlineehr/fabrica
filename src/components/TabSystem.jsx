@@ -37,7 +37,7 @@ function StubContent({ sections, t, tr }) {
 }
 
 function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onRenameNode, onDeleteNode, onMoveNode, onDuplicateNode, onSpliceNode, onBack, onAnnounce, agentAPI }) {
-  if (tabKey === 'S') return <SettingsPanel t={t} tr={tr} />
+  if (tabKey === 'S') return <SettingsPanel t={t} tr={tr} agentAPI={agentAPI} />
   if (tabKey === 'E' && tree) return (
     <ExplorerTree tree={tree} selectedId={selectedId} paneId={paneId} focusedId={focusedId}
       onSelect={onNodeSelect} onActivate={onNodeActivate} onAddNode={onAddNode} onRenameNode={onRenameNode}
