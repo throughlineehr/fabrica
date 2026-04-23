@@ -1,10 +1,10 @@
 # Fabrica — VPAT 2.5 (WCAG 2.1 Level AA)
 
 **Product:** Fabrica Viable System Model Visualization
-**Version:** 0.1.0
-**Date:** 2026-04-21
+**Version:** 0.2.0
+**Date:** 2026-04-23
 **Contact:** thirdcreed@gmail.com
-**Notes:** This VPAT covers the web application interface. The 3D canvas view is supplemented by a fully accessible DOM-based Explorer tree.
+**Notes:** This VPAT covers the web application interface. The 3D canvas view is supplemented by a fully accessible DOM-based Explorer tree. Revision covers the processor/signal subsystem added in v0.2 (Switchboard, ProcessorPage, ProcessorLibraryModal, SignalFeed, CableTerminal, TerminalDetail, Checkbox) — the surfaces that weren't present when v2.4 of this VPAT was written.
 
 ---
 
@@ -23,17 +23,17 @@
 
 | Criterion | Conformance | Remarks |
 |-----------|-------------|---------|
-| **1.1.1 Non-text Content** | Supports | All icons use aria-hidden with text alternatives. System color indicators paired with text labels. 3D canvas has aria-label and describedby. |
+| **1.1.1 Non-text Content** | Supports | All icons use aria-hidden with text alternatives. System color indicators paired with text labels. 3D canvas has aria-label and describedby. New (v0.2): SignalFeed icons paired with sr-only type labels; TerminalDot aria-label includes wall direction when visual arrow is rendered for color disambiguation; CableTerminal SVG cable and hollow dot marked aria-hidden, button label carries the meaning. |
 | **1.2.1 Audio-only / Video-only** | Not Applicable | No audio or video content. |
 | **1.2.2 Captions** | Not Applicable | No audio or video content. |
 | **1.2.3 Audio Description** | Not Applicable | No audio or video content. |
-| **1.3.1 Info and Relationships** | Supports | Semantic HTML: headings (h1-h3), tree (role=tree, treeitem), menu (role=menu, menuitem), switch (role=switch), toolbar (role=toolbar). ARIA expanded/selected/checked states. |
+| **1.3.1 Info and Relationships** | Supports | Semantic HTML: headings (h1-h3), tree (role=tree, treeitem), menu (role=menu, menuitem), switch (role=switch), toolbar (role=toolbar). ARIA expanded/selected/checked states. New (v0.2): Switchboard uses role=grid with aria-rowcount/aria-colcount and aria-rowindex/aria-colindex on cells; empty padding rows marked aria-hidden + role=presentation. TerminalDetail connections use <ul>/<li> with aria-label. RoomShell heading hierarchy corrected to h2/h3 for sub-pages. |
 | **1.3.2 Meaningful Sequence** | Supports | DOM order matches visual order. Explorer tree mirrors 3D hierarchy. |
 | **1.3.3 Sensory Characteristics** | Supports | Instructions do not rely solely on shape, size, or location. Keyboard shortcuts documented in text. |
-| **1.4.1 Use of Color** | Supports | System colors always paired with text labels (S1-S5). Color-blind mode adds patterns. Shapes differ (diamond, circle, triangle). |
+| **1.4.1 Use of Color** | Supports | System colors always paired with text labels (S1-S5). Color-blind mode adds patterns. Shapes differ (diamond, circle, triangle). New (v0.2): Terminal-dot state (on/off) conveyed by fill-vs-outline + aria-pressed + (when color-ambiguous) a direction arrow inside the dot. Signal type conveyed by icon + sr-only type label, not color alone. |
 | **1.4.2 Audio Control** | Not Applicable | No audio content. |
-| **2.1.1 Keyboard** | Supports | All functionality available via keyboard. Explorer tree: arrow keys, Enter, Escape, Home, End. Filter bar: arrow keys, Space. Tab panels: letter shortcuts with keycap indicators. |
-| **2.1.2 No Keyboard Trap** | Supports | Escape closes any panel. Tab moves between regions. No traps identified. |
+| **2.1.1 Keyboard** | Supports | All functionality available via keyboard. Explorer tree: arrow keys, Enter, Escape, Home, End. Filter bar: arrow keys, Space. Tab panels: letter shortcuts with keycap indicators. New (v0.2): Switchboard rows are tabIndex=0 with Enter/Space to open the processor, ArrowUp/Down to navigate between rows, Home/End to jump, Delete/Backspace to remove. Processor ops go through the agent API — AI agent parity with human UI. CableTerminal now uses <button> elements instead of anchors-as-buttons. |
+| **2.1.2 No Keyboard Trap** | Supports | Escape closes any panel. Tab moves between regions. No traps identified. New (v0.2): ProcessorLibraryModal implements a proper focus trap — Tab and Shift+Tab wrap within the dialog's focusable elements; focus is restored to the opener on close. |
 | **2.1.4 Character Key Shortcuts** | Supports | Single-key shortcuts (E, S, T, F) only activate when no text input is focused. Can be closed with Escape. |
 | **2.2.1 Timing Adjustable** | Not Applicable | No time limits. |
 | **2.2.2 Pause, Stop, Hide** | Supports | Epilepsy mode disables all animation. prefers-reduced-motion respected. Camera lerp cancellable via user input. |
@@ -62,22 +62,22 @@
 |-----------|-------------|---------|
 | **1.3.4 Orientation** | Supports | No orientation restrictions. Works in both portrait and landscape. |
 | **1.3.5 Identify Input Purpose** | Not Applicable | No personal data input fields. |
-| **1.4.3 Contrast (Minimum)** | Supports | All text colors documented with contrast ratios in styles.js. Minimum: muted text 4.5:1 (#767676 on white). All verified against WCAG checker. |
+| **1.4.3 Contrast (Minimum)** | Supports | All text colors documented with contrast ratios in styles.js. Minimum: muted text 4.5:1 (#767676 on white). All verified against WCAG checker. v0.2 fixes: SignalFeed hops-arrow color moved from #b5b5b5 (2.1:1) to color.muted (4.5:1). |
 | **1.4.4 Resize Text** | Partially Supports | Font visibility slider scales text up to 140%. Browser zoom tested informally. Minimum font size: 12px. Needs formal 200% zoom verification. |
 | **1.4.5 Images of Text** | Supports | No images of text. All text is real text. |
 | **1.4.10 Reflow** | Partially Supports | Layout uses flexible positioning. Needs formal 400% at 1280px testing. |
-| **1.4.11 Non-text Contrast** | Supports | UI boundaries: border color #8a8a8a (3.5:1). Focus ring: #2563eb (5.2:1). System shape strokes all ≥3:1. |
+| **1.4.11 Non-text Contrast** | Supports | UI boundaries: border color #8a8a8a (3.5:1). Focus ring: #2563eb (5.2:1). System shape strokes all ≥3:1. v0.2 fix: Checkbox unchecked border now stays at full opacity (was being dimmed with opacity: 0.35 giving effective ~1.9:1); opacity applies only to fill when checked and to disabled state. |
 | **1.4.12 Text Spacing** | Supports | Line heights ≥1.5 on all body text. No overflow:hidden on text containers. Custom spacing overrides not blocked. |
 | **1.4.13 Content on Hover/Focus** | Supports | Hover shows detail panel (dismissible, persistent while hovered). No content covers other content permanently. |
 | **2.4.5 Multiple Ways** | Supports | Two parallel navigation paths: 3D canvas (mouse) and Explorer tree (keyboard). Both provide full access to all nodes. |
 | **2.4.6 Headings and Labels** | Supports | Descriptive headings (h1-h3) in detail panel, system page, and settings. Labels describe purpose. |
 | **2.4.7 Focus Visible** | Supports | Global :focus-visible outline (2px solid #2563eb, 2px offset). Keyboard focus ring on 3D nodes (blue rectangle/circle). Explorer tree: blue left border on selected. |
-| **3.1.2 Language of Parts** | Supports | 9 languages supported. html lang updates on change. RTL direction supported for Arabic (within text containers). |
+| **3.1.2 Language of Parts** | Supports | 10 languages supported (en, ar, es, fr, hi, id, it, ja, ru, zh). html lang updates on change. RTL direction supported for Arabic (within text containers). Core nav keys (back/close/navigate) translated across all locales; new processor/signal UI keys fall back to English via the i18n resolve chain (see DEBT.md for translation backfill). |
 | **3.2.3 Consistent Navigation** | Supports | Navigation elements (tab bar, filter, HUD) in consistent positions across all views. |
 | **3.2.4 Consistent Identification** | Supports | Same icons and labels used for same functions throughout (Keycap component, system color indicators). |
 | **3.3.3 Error Suggestion** | Not Applicable | No user input that could produce errors. |
 | **3.3.4 Error Prevention** | Not Applicable | No legal, financial, or data-deletion actions. |
-| **4.1.3 Status Messages** | Supports | Live region (role=status, aria-live=polite) announces: view changes, node additions, navigation state. Screen reader receives all state updates without focus change. |
+| **4.1.3 Status Messages** | Supports | Live region (role=status, aria-live=polite) announces: view changes, node additions, navigation state. Screen reader receives all state updates without focus change. New (v0.2): every processor mutation (add/remove/filter-update/config-update) goes through the agent API which announces through the same live region. SignalFeed itself uses role=log aria-live=polite for streaming signal content. |
 
 ---
 
@@ -89,10 +89,11 @@
 | Color-blind Mode | Pattern fills on 3D shapes (diagonal, crosshatch, horizontal, dots, vertical). Distinct patterns per system. Filter bar swatches also show patterns. |
 | Dyslexia Font | Lexend font toggle. Applied via useA11yType hook to all text. |
 | Font Visibility | 0-100% slider scales font size (up to 40% larger) and weight (up to +200). |
-| Internationalization | 9 languages: English, Spanish, French, Italian, Arabic (RTL), Japanese, Chinese, Hindi, Indonesian. All UI strings translated. |
-| Screen Reader Announcements | Live region announces: focus/pane/system view changes, node additions, navigation returns. Canvas instructions read on focus. |
+| Internationalization | 10 languages: English, Spanish, French, Italian, Arabic (RTL), Japanese, Russian, Chinese, Hindi, Indonesian. Core UI strings translated. |
+| Screen Reader Announcements | Live region announces: focus/pane/system view changes, node additions, navigation returns, processor add/remove/filter changes. Canvas instructions read on focus. |
 | Parallel DOM View | Explorer tree provides full keyboard-navigable DOM equivalent of the 3D canvas. All nodes, systems, and actions accessible. |
 | Skip Link | Skip-to-content link visible on Tab focus, bypasses 3D canvas. |
+| CQRS Command Surface | Every human-triggerable mutation (tree, processors, settings) flows through a single agent API. AI agent parity with human UI means screen-reader users have identical capability to mouse users via voice commands. |
 
 ---
 
@@ -117,6 +118,9 @@
 2. **Screen reader mode toggle is a stub.** The toggle exists in settings but is not yet functional. Core screen reader support (live regions, ARIA) works without it.
 3. **200% and 400% zoom testing** is informal. Formal verification with documented screenshots is pending.
 4. **Some hover states use imperative style changes** (onMouseEnter/onMouseLeave) rather than CSS pseudo-classes. Functionally equivalent but harder to override with user stylesheets.
+5. **Terminal dots / Checkbox are 20×20 px** — above AA minimum of 24×24 *when the honored 8 px gap between dots is considered as separation*. Not AAA's 44×44. Enlarging further requires a density trade-off the design hasn't committed to yet.
+6. **Non-English translation backfill for new processor/signal UI keys.** Core nav translated across 10 locales; processor-specific keys (e.g. systemPage.selectTerminal, systemPage.openProcessor, systemPage.noSignalsYet) fall back to English when the active locale doesn't provide them. Tracked in DEBT.md.
+7. **SignalFeed announcement rate** is bounded by `aria-live=polite` queuing but is not debounced. A fast-emitting heartbeat can cause queue backlog on some screen readers. Upcoming work will debounce announcements.
 
 ---
 
