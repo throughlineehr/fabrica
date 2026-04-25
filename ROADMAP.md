@@ -21,17 +21,20 @@ each transition, and what traps to avoid.
 
 ### Where we are: concrete reality at plateau 0
 
-**What exists and works** (covered by 160 passing tests, lint-clean,
-documented):
+**What exists and works** (covered by 178+ passing tests, lint-clean
+modulo five known fast-refresh debt entries, documented):
 
 | Layer | Shape | Evidence |
 |---|---|---|
 | Tree model | Pure immutable entity store with CRUD, validation, layout, queries, YAML serialize, BUILD shorthand parser | `src/tree/`, 40+ tests |
-| Signal system | Framework-free bus + signal + topology + wiring + filter + library (3 processors) | `src/signals/`, 20+ tests, `SIGNALS.md` |
+| Signal system | Framework-free bus + signal + topology + wiring + filter + library (5 processors: heartbeat, tracer, logger, websocket-transducer, digest) | `src/signals/`, 20+ tests, `SIGNALS.md` |
 | Terminal topology | VSM wiring rules derived from the tree; every cable bidirectional; symmetric from both sides | `src/signals/topology.js`, symmetry test |
-| Agent API | Single mutation surface. All human + AI actions flow through it. Covers model, processors, settings, navigation, queries | `src/agent/commands.js`, 19 agent tests |
+| Agent API | Single mutation surface. All human + AI actions flow through it. Covers model, processors, settings, navigation, queries; LLM access for processors via `runtime.llm.prompt` | `src/agent/commands.js`, `src/agent/providers.js`, 19+ agent tests |
+| First connector | Slack via Socket Mode → relay → websocket-transducer | `connectors/slack/`, `server/relay.js` |
+| Digest processor | S1→S2 variety filter: buffer-debounce-or-threshold-flush with LLM-backed theming, algedonic significance flagged for emergency fast-path | `src/signals/library.js`, `src/test/digest.test.js`, `INTERNAL-WIRING-DESIGN.md` (forward) |
 | React UI | Explorer tree (drag/drop, keyboard, inline rename/delete), 3D canvas, room shell with cable terminals, switchboard, processor page, signal feed, library modal, checkbox primitive | `src/components/` |
-| Accessibility | WCAG 2.1 AA per refreshed VPAT. Row keyboard nav, focus trap in modals, live-region announcements, target sizes, color contrast, 10 languages with RTL | `VPAT-2.5.md` v0.2.0 |
+| Internal wiring (designed) | Reason/Eurorack-style rack-back patch cables, fully designed (16-phase migration plan) and a working visual + interaction reference in the styleguide | `INTERNAL-WIRING-DESIGN.md`, `src/components/wiring/WiringDemo.jsx`, StyleGuide WIRING section |
+| Accessibility | WCAG 2.1 AA per refreshed VPAT. Row keyboard nav, focus trap in modals, live-region announcements, target sizes, color contrast, 10 languages with RTL. Translation parity gap on processor/signal UI documented in `I18N-TRANSLATION-PLAN.md`. | `VPAT-2.5.md`, `AUDIT-2026-04-25.md` |
 | REPL | Terminal front-end driving the same agent API. Proof the domain is framework-free | `scripts/repl.js`, `npm run repl` |
 
 **Seven architectural invariants** are currently held:

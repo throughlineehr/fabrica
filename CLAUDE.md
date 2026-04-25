@@ -68,6 +68,8 @@ src/
       FilterBar.jsx      <- System visibility filter
       SettingsPanel.jsx  <- Accessibility, language, AI config
       AgentPanel.jsx     <- AI chat with voice I/O, command execution
+    wiring/
+      WiringDemo.jsx     <- Working visual + interaction reference for the rack-back patch cable view (used by StyleGuide; future home of the production primitives per INTERNAL-WIRING-DESIGN.md)
   test/
     setup.js
     tree-model.test.js

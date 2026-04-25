@@ -110,7 +110,11 @@ listed below.
 - [ ] DEV_TUNING panel still in RoomShell.jsx behind flag — remove
   before production
 - [ ] Camera position helpers (focusTarget, paneTarget) don't account
-  for tree bounds — could position off-screen for large trees
+  for tree bounds — could position off-screen for large trees.
+  Investigated 2026-04-25: not reproducible without a concrete large
+  tree; "off-screen" requires choosing what to scale (FOCUS_DISTANCE?
+  clamp to scene bounds? "fit-to-tree" preset?). Needs a symptom +
+  design decision before fixing.
 - [ ] No port declarations on processors yet (per
   `INTERNAL-WIRING-DESIGN.md` §13 step 1) — five built-in processors
   + `digest` need explicit `ports: { inputs, outputs }` annotation

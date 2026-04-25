@@ -1,10 +1,10 @@
 # Fabrica — VPAT 2.5 (WCAG 2.1 Level AA)
 
 **Product:** Fabrica Viable System Model Visualization
-**Version:** 0.2.0
-**Date:** 2026-04-23
+**Version:** 0.2.1
+**Date:** 2026-04-25
 **Contact:** thirdcreed@gmail.com
-**Notes:** This VPAT covers the web application interface. The 3D canvas view is supplemented by a fully accessible DOM-based Explorer tree. Revision covers the processor/signal subsystem added in v0.2 (Switchboard, ProcessorPage, ProcessorLibraryModal, SignalFeed, CableTerminal, TerminalDetail, Checkbox) — the surfaces that weren't present when v2.4 of this VPAT was written.
+**Notes:** This VPAT covers the web application interface. The 3D canvas view is supplemented by a fully accessible DOM-based Explorer tree. v0.2.0 (2026-04-23) covered the processor/signal subsystem added in v0.2 (Switchboard, ProcessorPage, ProcessorLibraryModal, SignalFeed, CableTerminal, TerminalDetail, Checkbox). v0.2.1 (2026-04-25) reflects two follow-up fixes from `AUDIT-2026-04-25.md`: RoomShell back-button label-in-name alignment (2.5.3) and SignalFeed locale-aware time formatting (3.1.2).
 
 ---
 
@@ -44,7 +44,7 @@
 | **2.4.4 Link Purpose** | Supports | All interactive elements have descriptive labels. No ambiguous "click here" text. |
 | **2.5.1 Pointer Gestures** | Supports | No multipoint or path-based gestures required. All actions available via single click/tap. |
 | **2.5.2 Pointer Cancellation** | Supports | Actions fire on click (up event), not mousedown. |
-| **2.5.3 Label in Name** | Supports | Visible labels match accessible names. |
+| **2.5.3 Label in Name** | Supports | Visible labels match accessible names. v0.2.1 fix: RoomShell back button visible text now matches its `aria-label` (was "esc" / "Back"; now "← Back" / "Back"). |
 | **2.5.4 Motion Actuation** | Not Applicable | No motion-triggered features. |
 | **3.1.1 Language of Page** | Supports | html lang attribute set dynamically on language change. 9 languages supported. |
 | **3.2.1 On Focus** | Supports | No context changes on focus. |
@@ -72,7 +72,7 @@
 | **2.4.5 Multiple Ways** | Supports | Two parallel navigation paths: 3D canvas (mouse) and Explorer tree (keyboard). Both provide full access to all nodes. |
 | **2.4.6 Headings and Labels** | Supports | Descriptive headings (h1-h3) in detail panel, system page, and settings. Labels describe purpose. |
 | **2.4.7 Focus Visible** | Supports | Global :focus-visible outline (2px solid #2563eb, 2px offset). Keyboard focus ring on 3D nodes (blue rectangle/circle). Explorer tree: blue left border on selected. |
-| **3.1.2 Language of Parts** | Supports | 10 languages supported (en, ar, es, fr, hi, id, it, ja, ru, zh). html lang updates on change. RTL direction supported for Arabic (within text containers). Core nav keys (back/close/navigate) translated across all locales; new processor/signal UI keys fall back to English via the i18n resolve chain (see DEBT.md for translation backfill). |
+| **3.1.2 Language of Parts** | Partially Supports | 10 languages supported (en, ar, es, fr, hi, id, it, ja, ru, zh). html lang updates on change. RTL direction supported for Arabic (within text containers). Core nav keys (back/close/navigate) translated across all locales. v0.2.1 fix: SignalFeed time format now passes the active locale to `toLocaleTimeString`. **Outstanding (`I18N-TRANSLATION-PLAN.md`):** ~50 processor/signal UI keys per non-English locale ship as English stubs and require a speaker pass. The system gracefully falls back to English; the user-facing surface for those keys is currently English in 9 locales. |
 | **3.2.3 Consistent Navigation** | Supports | Navigation elements (tab bar, filter, HUD) in consistent positions across all views. |
 | **3.2.4 Consistent Identification** | Supports | Same icons and labels used for same functions throughout (Keycap component, system color indicators). |
 | **3.3.3 Error Suggestion** | Not Applicable | No user input that could produce errors. |

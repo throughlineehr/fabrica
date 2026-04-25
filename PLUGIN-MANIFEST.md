@@ -221,6 +221,9 @@ repo) and the manifest (one JSON file).
   - **Transducers**: websocket, http-poll, http-webhook (P1+), mqtt,
     file-watch (with local daemon)
   - **Effectors**: http-post, websocket-send, file-write
+  - **S1→S2 transducers** (variety filters): digest (LLM-backed buffer
+    + theming), and statistical equivalents (Welford / sigma /
+    trend / CUSUM) per `fabrica_subsystem_references`.
   - **Processors**: heartbeat, tracer, logger, filter, mapper, debouncer,
     counter, threshold (the Counter/Tagger track from earlier)
 - The relay (server-side, P0)
