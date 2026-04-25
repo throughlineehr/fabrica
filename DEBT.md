@@ -50,21 +50,15 @@ listed below.
 
 ### Open
 
-- [ ] **Translation parity for processor/signal UI keys.** Nine non-
-  English locales fall back to English for ~50 keys per locale
-  (mostly `systemPage.*` — addProcessor, processors, processorLibrary,
-  noProcessors, inputs, outputs, filterTypes, etc.). Real translations
-  needed for ar, es, fr, hi, id, it, ja, ru, zh. Mechanical work; needs
-  speakers, not heuristics. (Criterion: 3.1.2.)
-- [ ] **`settings.colorBlindMode` translated only in Russian.** All
-  other locales contain the English string under the key. Same
-  observation as above — translation work. (Criterion: 3.1.2.)
-- [ ] **Russian agent.* truncated.** `ru.js` shows `agent.intro`
-  partially in English and several `agent.*` keys (cannotAddOperation,
-  cannotRemoveRoot, wentBack) appear cut off. Verify and complete.
+- [ ] **Translation parity gap on processor/signal UI** (criterion
+  3.1.2). Full plan + per-language speaker checklist in
+  `I18N-TRANSLATION-PLAN.md`. Not urgent; activate when a speaker
+  is available for a given language or when plateau 1 procurement
+  readiness pressures it.
 - [ ] **No axe-core integration in vitest.** Component tests don't
   automatically check WCAG. Adding axe-core for Switchboard,
-  ProcessorPage, ProcessorLibraryModal, SignalFeed catches regressions.
+  ProcessorPage, ProcessorLibraryModal, SignalFeed catches
+  regressions.
 
 ### Pre-existing (still applies)
 
