@@ -98,3 +98,18 @@ export function getProviderById(id) {
   const p = PROVIDERS[id]
   return p ? { id, ...p } : null
 }
+
+// Pure call surface for non-UI callers (e.g. processors). Resolves to the
+// parsed text or throws.
+export async function callProvider({ provider, apiKey, model, endpoint, messages }) {
+  if (!provider) throw new Error('No provider configured')
+  if (provider.id !== 'ollama' && !apiKey) throw new Error('No API key configured')
+  const req = provider.buildRequest(messages, model || provider.defaultModel, apiKey, endpoint)
+  const res = await fetch(req.url, { method: 'POST', headers: req.headers, body: req.body })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`${provider.id} ${res.status}: ${body.slice(0, 200)}`)
+  }
+  const data = await res.json()
+  return provider.parseResponse(data)
+}

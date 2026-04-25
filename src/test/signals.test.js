@@ -78,7 +78,7 @@ describe('signal', () => {
 
 describe('library metadata', () => {
   it('exports the expected library', () => {
-    expect(PROCESSOR_LIBRARY.map(p => p.id).sort()).toEqual(['heartbeat', 'logger', 'tracer', 'websocket-transducer'])
+    expect(PROCESSOR_LIBRARY.map(p => p.id).sort()).toEqual(['digest', 'heartbeat', 'logger', 'tracer', 'websocket-transducer'])
   })
 
   it('getProcessorDef returns by id', () => {

@@ -18,6 +18,7 @@ import { color } from './styles'
 import { useAccessibility } from './accessibility'
 import { useTranslation } from './i18n/index.jsx'
 import { useAIConfig } from './agent/config.jsx'
+import { callProvider } from './agent/providers'
 import { createAgentAPI } from './agent/commands'
 import { useBus } from './signals/BusContext.jsx'
 import { getProcessorDef } from './signals/library'
@@ -28,7 +29,7 @@ import { defaultFilters } from './signals/filter' // used by runtime effect for 
 function App() {
   const { epilepsy, toggleEpilepsy, toggleDyslexia, toggleColorBlind, setFontVisibility } = useAccessibility()
   const { t: tr, setLang } = useTranslation()
-  const { setApiKey, setProvider: setAIProvider, setModel: setAIModel, setEndpoint: setAIEndpoint } = useAIConfig()
+  const { apiKey, provider, model: aiModel, endpoint: aiEndpoint, setApiKey, setProvider: setAIProvider, setModel: setAIModel, setEndpoint: setAIEndpoint } = useAIConfig()
   const [model, setModel] = useState(() => createModel('management'))
   const [menu, setMenu] = useState(null)
   const [focusedId, setFocusedId] = useState(null)
@@ -56,6 +57,16 @@ function App() {
   // Processor instances keyed by "${nodeId}:${systemKey}".
   // Shape: { id, defId, config }
   const [processors, setProcessors] = useState({})
+
+  // LLM hook for processors. Ref pattern so config changes don't restart
+  // running processors — they read the latest config at call time.
+  const aiConfigRef = useRef({ apiKey, provider, model: aiModel, endpoint: aiEndpoint })
+  useEffect(() => {
+    aiConfigRef.current = { apiKey, provider, model: aiModel, endpoint: aiEndpoint }
+  }, [apiKey, provider, aiModel, aiEndpoint])
+  const llm = useMemo(() => ({
+    prompt: (messages) => callProvider({ ...aiConfigRef.current, messages }),
+  }), [])
 
   // Compute channel topology from the tree (which rooms subscribe to which).
   const topology = useMemo(() => computeRoomSubscriptions(tree), [tree])
@@ -100,13 +111,14 @@ function App() {
           roomNodeId: nodeId,
           roomSystemKey: systemKey,
           filters: inst.filters || defaultFilters(),
+          llm,
         })
         handle.start()
         running.push(handle)
       }
     }
     return () => running.forEach(h => h.stop())
-  }, [bus, processors])
+  }, [bus, processors, llm])
 
   // Processor CRUD flows through the agent API (agentAPI.addProcessor /
   // removeProcessor / updateProcessorFilters). See SystemPage render below.
