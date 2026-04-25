@@ -27,6 +27,12 @@ const HEARTBEAT = {
   description: 'Emits a metric signal on a regular interval. Source only — no inputs.',
   hasInputs: false,
   hasOutputs: true,
+  ports: {
+    inputs: [],
+    outputs: [
+      { id: 'pulse', label: 'pulse', emits: { types: ['metric'], tags: [] } },
+    ],
+  },
   placement: 'any',
   defaultConfig: { intervalMs: 3000 },
   create(config, runtime) {
@@ -67,6 +73,14 @@ const TRACER = {
   description: 'Stamps passing signals with this room and timestamp, then forwards. Skips signals it has already traced.',
   hasInputs: true,
   hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'in', label: 'in', accepts: { types: null, tags: null } },
+    ],
+    outputs: [
+      { id: 'out', label: 'out', emits: { types: null, tags: [] } },
+    ],
+  },
   placement: 'any',
   defaultConfig: {},
   create(_config, runtime) {
@@ -101,6 +115,12 @@ const LOGGER = {
   description: 'Records every signal it sees. Sink only — no outputs.',
   hasInputs: true,
   hasOutputs: false,
+  ports: {
+    inputs: [
+      { id: 'in', label: 'in', accepts: { types: null, tags: null } },
+    ],
+    outputs: [],
+  },
   placement: 'any',
   defaultConfig: {},
   create(_config, runtime) {
@@ -134,6 +154,12 @@ const WEBSOCKET_TRANSDUCER = {
   description: 'Connects to an external WebSocket URL and emits each incoming message as a signal in this room. Auto-reconnects with exponential backoff.',
   hasInputs: false,
   hasOutputs: true,
+  ports: {
+    inputs: [],
+    outputs: [
+      { id: 'out', label: 'out', emits: { types: null, tags: ['transducer', 'websocket'] } },
+    ],
+  },
   placement: ['s1'],
   role: 'transducer',
   externalRequests: ['ws://*', 'wss://*'],
@@ -274,6 +300,15 @@ const DIGEST = {
   description: 'S1→S2 variety filter. Buffers incoming signals, then asks an LLM to extract themes (what is new or anomalous). Emits one narrative signal per theme. Fires after 10s of silence since the last input or when the buffer reaches 5, whichever comes first.',
   hasInputs: true,
   hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'in', label: 'in', accepts: { types: null, tags: null } },
+    ],
+    outputs: [
+      { id: 'themes', label: 'themes', emits: { types: ['narrative'], tags: ['digest', 'theme'] } },
+      { id: 'alerts', label: 'alerts', emits: { types: ['alert'],     tags: ['digest', 'alert'] } },
+    ],
+  },
   placement: ['s1'],
   role: 's1-transducer',
   defaultConfig: {

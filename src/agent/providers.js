@@ -1,5 +1,16 @@
 // AI Provider configurations
-// Each provider defines how to call its API with the AGENT_DSL prompt
+//
+// Each provider defines how to call its API with the AGENT_DSL prompt.
+// Two consumers:
+//   1. AgentPanel — uses PROVIDERS + getProviderForKey/getProviderById
+//      to render the chat UI and resolve the active provider from the
+//      AIConfig context.
+//   2. Processors — call `callProvider(...)` (pure async, no React)
+//      via `runtime.llm.prompt(messages)` which App.jsx injects with
+//      a snapshot of the current AIConfig.
+//
+// The split exists so processors can stay framework-free: they get a
+// pure function call, not a React context.
 
 export const PROVIDERS = {
   anthropic: {
@@ -99,8 +110,30 @@ export function getProviderById(id) {
   return p ? { id, ...p } : null
 }
 
-// Pure call surface for non-UI callers (e.g. processors). Resolves to the
-// parsed text or throws.
+/**
+ * Pure call surface for non-UI callers (processors, REPL, server-side
+ * agents). Builds the right request shape per provider, fetches, parses,
+ * and returns the response text.
+ *
+ * Inputs:
+ *   - provider: an object from PROVIDERS / getProviderForKey / getProviderById
+ *               (must include `id`, `buildRequest`, `parseResponse`, `defaultModel`).
+ *   - apiKey:   string, required for non-Ollama providers.
+ *   - model:    optional override; falls back to provider.defaultModel.
+ *   - endpoint: optional, used by Ollama for self-hosted base URL.
+ *   - messages: array of { role: 'system'|'user'|'assistant', content: string }.
+ *
+ * Returns: parsed response text (string).
+ *
+ * Throws on:
+ *   - missing provider
+ *   - missing apiKey for a provider that requires one
+ *   - non-OK HTTP status (message includes provider id, status, and a
+ *     truncated body for diagnostics)
+ *
+ * No retries, no streaming. The first 200 chars of an error body are
+ * surfaced verbatim.
+ */
 export async function callProvider({ provider, apiKey, model, endpoint, messages }) {
   if (!provider) throw new Error('No provider configured')
   if (provider.id !== 'ollama' && !apiKey) throw new Error('No API key configured')

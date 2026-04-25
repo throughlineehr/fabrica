@@ -322,6 +322,11 @@ export function Switchboard({
                   role="row"
                   tabIndex={0}
                   aria-rowindex={idx + 2}
+                  onFocus={(e) => {
+                    if (e.target === e.currentTarget) {
+                      e.currentTarget.scrollIntoView({ block: 'nearest' })
+                    }
+                  }}
                   aria-label={`${displayName} processor row. Enter to open, arrow keys to move, Delete to remove.`}
                   ref={(el) => { if (el) rowRefs.current[inst.id] = el; else delete rowRefs.current[inst.id] }}
                   onKeyDown={handleRowKeyDown}

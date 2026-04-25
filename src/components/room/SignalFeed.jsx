@@ -78,6 +78,7 @@ export function SignalFeed({ signals, label }) {
               </div>
               {signal.hops && signal.hops.length > 0 && (
                 <div
+                  role="group"
                   style={{ ...t.monoMuted, paddingLeft: 24, marginTop: 2 }}
                   aria-label={`${tr('systemPage.hops')} ${signal.hops.map(formatHop).join(', ')}`}
                 >

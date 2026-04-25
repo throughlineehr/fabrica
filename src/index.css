@@ -46,3 +46,11 @@ button, [role="button"], [role="tab"], [role="checkbox"] {
   min-height: 24px;
   min-width: 24px;
 }
+
+/* Cable terminal: the button sits inside its own SVG cable stub graphic.
+   Push the focus ring outward so it doesn't sit on top of the colored
+   cable extension and lose contrast. */
+.cable-terminal-button:focus-visible {
+  outline-offset: 5px;
+  border-radius: 50%;
+}

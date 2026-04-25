@@ -6,7 +6,12 @@ import { useTranslation } from '../../i18n/index.jsx'
 import { CableTerminal } from './CableTerminal'
 import { buildRoomTerminals, resolveTerminalConnections } from '../../signals/topology'
 
-const DEV_TUNING = false
+// Terminal layout tuning constants. The earlier dev sliders panel was
+// removed once these settled; values are baked in. To revisit:
+// promote `edgeOffset` and `tuning` back to useState and restore the
+// slider grid (see git history for the panel markup).
+const EDGE_OFFSET = { top: 43, bottom: 41, left: 44, right: 39 }
+const TUNING = { terminalSize: 29, hollowSize: 15, bend: 22, cableThickness: 23 }
 
 export function RoomShell({ systemKey, nodeId, nodeName, node, tree, onBack, onNavigate, children }) {
   const t = useA11yType()
@@ -14,9 +19,8 @@ export function RoomShell({ systemKey, nodeId, nodeName, node, tree, onBack, onN
   const terminals = buildRoomTerminals(node, systemKey, tree || node)
   const [activeTerminal, setActiveTerminal] = useState(null)
 
-  // Tuning constants — to re-enable interactive tuning, switch back to useState
-  const edgeOffset = { top: 43, bottom: 41, left: 44, right: 39 }
-  const tuning = { terminalSize: 29, hollowSize: 15, bend: 22, cableThickness: 23 }
+  const edgeOffset = EDGE_OFFSET
+  const tuning = TUNING
 
   const topTerminals = terminals.filter(t => t.wall === 'top')
   const bottomTerminals = terminals.filter(t => t.wall === 'bottom')
@@ -142,36 +146,6 @@ export function RoomShell({ systemKey, nodeId, nodeName, node, tree, onBack, onN
         </div>
       )}
 
-      {/* Dev tuning panel — to re-enable, switch edgeOffset/tuning back to useState
-         and restore setter functions (setEdgeTop, setTerminalSize, etc.) */}
-      {DEV_TUNING && (
-        <div style={{
-          position: 'fixed', top: '50%', left: '50%',
-          transform: 'translate(-50%, -50%)',
-          background: color.white, border: `1px solid ${color.border}`,
-          padding: 20, zIndex: 10,
-          display: 'grid', gridTemplateColumns: '120px 200px 50px', gap: '6px 12px',
-          fontFamily: 'monospace', fontSize: 12,
-        }}>
-          {[
-            ['Top offset', edgeOffset.top, null, 0, 300],
-            ['Bottom offset', edgeOffset.bottom, null, 0, 300],
-            ['Left offset', edgeOffset.left, null, 0, 300],
-            ['Right offset', edgeOffset.right, null, 0, 300],
-            ['Circle size', tuning.terminalSize, null, 6, 60],
-            ['Hollow size', tuning.hollowSize, null, 0, 30],
-            ['Bend point', tuning.bend, null, 0, 80],
-            ['Cable width', tuning.cableThickness, null, 2, 30],
-          ].map(([label, value, setter, min, max]) => (
-            <label key={label} style={{ display: 'contents' }}>
-              <span>{label}</span>
-              <input type="range" min={min} max={max} value={value}
-                onChange={e => setter?.(Number(e.target.value))} />
-              <span>{value}</span>
-            </label>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

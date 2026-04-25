@@ -119,6 +119,7 @@ export function CableTerminal({ terminal, active, onClick, tuning, connections, 
       {/* Terminal selection button — dot + SVG cable */}
       <button
         type="button"
+        className="cable-terminal-button"
         onClick={() => onClick?.(terminal.id)}
         aria-label={`${tr('systemPage.selectTerminal')} ${label}${active ? ` (${tr('systemPage.selected')})` : ''}`}
         title={connections && connections.length > 1 ? connections.map(c => `${c.verb} ${c.name}`).join('\n') : undefined}
@@ -129,6 +130,7 @@ export function CableTerminal({ terminal, active, onClick, tuning, connections, 
           background: 'none', border: 'none',
           cursor: onClick ? 'pointer' : 'default',
           padding: 0,
+          borderRadius: '50%',
         }}
       >
         {/* Cable SVG — positioned at dot center, overflows in all directions */}

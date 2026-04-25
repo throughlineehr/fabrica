@@ -1,8 +1,23 @@
 // Entity model — flat stores, CRUD commands, validation
+import { MAX_TREE_DEPTH } from '../constants'
+
+// Iterative descendant check. The previous recursive version could
+// stack-overflow on pathological trees; this version is bounded by
+// MAX_TREE_DEPTH * 2 (depth + breadth slack) and throws on overflow
+// rather than returning a wrong answer.
+const ISDESCENDANT_LIMIT = MAX_TREE_DEPTH * 2
 
 function isDescendant(model, id, targetId) {
-  for (const cid of (model.children[id] || [])) {
-    if (cid === targetId || isDescendant(model, cid, targetId)) return true
+  const stack = [...(model.children[id] || [])]
+  let visited = 0
+  while (stack.length > 0) {
+    if (++visited > ISDESCENDANT_LIMIT * 1000) {
+      throw new Error(`isDescendant: traversal exceeded ${ISDESCENDANT_LIMIT * 1000} nodes — tree may be cyclic or pathological`)
+    }
+    const cid = stack.pop()
+    if (cid === targetId) return true
+    const kids = model.children[cid]
+    if (kids) for (const k of kids) stack.push(k)
   }
   return false
 }
