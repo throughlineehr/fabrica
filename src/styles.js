@@ -21,12 +21,14 @@ export const color = {
   white: '#fff',
   black: '#000000',        // canvas drawing primitives that need pure black
 
-  // System fills — ≥3:1 on white for meaningful UI (shapes carry system identity)
-  s5: { fill: '#9060c0', stroke: '#4a1a8a' },  // fill 4.5:1 ✓, stroke 11.6:1 ✓
-  s4: { fill: '#c58415', stroke: '#b06000' },   // fill 3.1:1 ✓, stroke 4.6:1 ✓
-  s3: { fill: '#3a7ab8', stroke: '#1a3a6b' },   // fill 4.5:1 ✓, stroke 11.3:1 ✓
-  s2: { fill: '#d45a52', stroke: '#c0392b' },   // fill 3.9:1 ✓, stroke 5.4:1 ✓
-  s1: { fill: '#4a8a44', stroke: '#2e7d32' },   // fill 4.2:1 ✓, stroke 5.1:1 ✓
+  // System fills — ≥3:1 on white for meaningful UI (shapes carry system identity).
+  // Bold harmonized palette: all fills on the same tonal step so the five
+  // systems read as one family with shifting hue, not five different families.
+  s5: { fill: '#9333ea', stroke: '#6b21a8' },   // fill 5.0:1 ✓, stroke 8.5:1 ✓
+  s4: { fill: '#ea580c', stroke: '#9a3412' },   // fill 4.0:1 ✓, stroke 8.4:1 ✓
+  s3: { fill: '#2563eb', stroke: '#1e40af' },   // fill 5.2:1 ✓, stroke 8.4:1 ✓
+  s2: { fill: '#dc2626', stroke: '#991b1b' },   // fill 5.0:1 ✓, stroke 7.5:1 ✓
+  s1: { fill: '#16a34a', stroke: '#166534' },   // fill 3.0:1 ✓, stroke 7.4:1 ✓
 
   // Cable / channel colors — for system room terminals
   audit: { fill: '#c9a800', stroke: '#8a7400' },     // S3* yellow — fill 3.1:1 ✓, stroke 5.0:1 ✓
