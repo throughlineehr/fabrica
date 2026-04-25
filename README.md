@@ -49,20 +49,27 @@ npm run build              # production build
 
 Living docs at the project root:
 
-- `CLAUDE.md` — architecture overview, contribution guide
-- `SIGNALS.md` — signal wiring layer in depth
-- `ROADMAP.md` — plateau-by-plateau path from personal tool to
-  Cybersyn-class infrastructure
-- `ARCHITECTURE-NEXT.md` — designs not yet built (plugin contract,
-  governance, federation)
-- `INTERNAL-WIRING-DESIGN.md` — Reason/Eurorack-style internal wiring
-  (the rack-flip view, planned)
-- `PLUGIN-MANIFEST.md` — plugin extension surface
-- `DESIGN-OPERATIONS.md` — spatial grammar, cable colors, app contract
-- `COMPLIANCE-ROADMAP.md` — accessibility, security, ethics, certifications
-- `DEBT.md` — living debt list
-- `VPAT-2.5.md` — accessibility conformance report
-- `AUDIT-*.md` — periodic audit snapshots
+- [`CLAUDE.md`](./CLAUDE.md) — architecture overview, contribution guide
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — onboarding for new contributors
+- [`SIGNALS.md`](./SIGNALS.md) — signal wiring layer in depth
+- [`ROADMAP.md`](./ROADMAP.md) — plateau-by-plateau path from personal
+  tool to Cybersyn-class infrastructure
+- [`ARCHITECTURE-NEXT.md`](./ARCHITECTURE-NEXT.md) — designs not yet
+  built (plugin contract, governance, federation)
+- [`INTERNAL-WIRING-DESIGN.md`](./INTERNAL-WIRING-DESIGN.md) —
+  Reason/Eurorack-style internal wiring (the rack-flip view)
+- [`PLUGIN-MANIFEST.md`](./PLUGIN-MANIFEST.md) — plugin extension surface
+- [`DESIGN-OPERATIONS.md`](./DESIGN-OPERATIONS.md) — spatial grammar,
+  cable colors, app contract
+- [`COMPLIANCE-ROADMAP.md`](./COMPLIANCE-ROADMAP.md) — accessibility,
+  security, ethics, certifications
+- [`KEYBOARD-SHORTCUTS.md`](./KEYBOARD-SHORTCUTS.md) — every hotkey
+- [`I18N-TRANSLATION-PLAN.md`](./I18N-TRANSLATION-PLAN.md) — translation
+  parity gap + per-language speaker checklist
+- [`DEBT.md`](./DEBT.md) — living debt list
+- [`CHANGELOG.md`](./CHANGELOG.md) — release notes
+- [`VPAT-2.5.md`](./VPAT-2.5.md) — accessibility conformance report
+- `AUDIT-2026-04-23.md`, `AUDIT-2026-04-25.md` — periodic audit snapshots
 
 ## License
 

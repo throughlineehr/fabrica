@@ -817,10 +817,11 @@ Tests added to `tree-validate.test.js`.
 The existing five processors and any tests run through broadcast.
 Internal wiring lands incrementally without breaking them.
 
-1. **Annotate ports**. Add `ports` declaration to heartbeat, tracer,
-   logger, websocket-transducer, digest. Each gets a single `in`
-   and/or `out` port (matching `hasInputs`/`hasOutputs`). No
-   behavior change.
+1. **Annotate ports** — ✅ **DONE 2026-04-25**. Added `ports`
+   declarations to heartbeat (one `pulse` output), tracer (`in`/`out`),
+   logger (`in` only), websocket-transducer (one `out`), digest
+   (`in`, `themes`, `alerts`). Mechanical, no behavior change. See
+   `src/signals/library.js`.
 2. **Add the `cables` state and runtime**. Without UI yet, build the
    dispatcher: when a room has no cables, behave as broadcast. When
    it has cables, route via the cable graph.

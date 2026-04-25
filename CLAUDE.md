@@ -210,3 +210,19 @@ All magic numbers live here in named groups:
 npm run dev          # localhost:5173
 ?styleguide          # style guide page
 ```
+
+## Working with Caleb (letterrip mode)
+
+If Caleb signals he's stepping away ("I'm leaving," "going to lay
+down," "logging off," etc.), enter **letterrip mode** for the agreed
+task batch: execute every item without per-item confirmation, pick
+defensible defaults for ambiguities and document them in the commit,
+and don't pad with "want me to X next?" prompts. Still pause for
+destructive git operations, side effects outside the repo, and
+genuine product-direction questions. Default outside letterrip is
+normal collaborative cadence with brief check-ins at meaningful
+boundaries. Triggered by him stating he's away — never enter
+preemptively.
+
+(Same rule lives in `~/CLAUDE.md` global; this section ensures
+project-scoped sessions inherit it.)
