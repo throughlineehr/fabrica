@@ -36,6 +36,7 @@ const DEFAULT_TUNING = {
   ghostDashOn: 0,       // 0 on either dash slider → solid ghost
   ghostDashOff: 0,
   endpointRadius: 13,
+  endpointHole: 5,      // white donut hole on the cable plug — echoes jack hole
   cableOpacity: 0.92,
   // Processor jacks
   jackVisual: 22,
@@ -547,26 +548,55 @@ export function WiringDemo() {
                     setAnnounce(`Cable selected. Press Delete to remove.`)
                   }}
                 />
-                {a && <circle cx={a.x} cy={a.y} r={tuning.endpointRadius} fill={stroke} />}
-                {b && <circle cx={b.x} cy={b.y} r={tuning.endpointRadius} fill={stroke} />}
+                {a && (
+                  <>
+                    <circle cx={a.x} cy={a.y} r={tuning.endpointRadius} fill={stroke} />
+                    <circle cx={a.x} cy={a.y} r={tuning.endpointHole} fill={color.white} />
+                  </>
+                )}
+                {b && (
+                  <>
+                    <circle cx={b.x} cy={b.y} r={tuning.endpointRadius} fill={stroke} />
+                    <circle cx={b.x} cy={b.y} r={tuning.endpointHole} fill={color.white} />
+                  </>
+                )}
               </g>
             )
           })}
 
           {frame.ghostPath && (
-            <path
-              d={frame.ghostPath}
-              fill="none"
-              stroke={ghostColor}
-              strokeWidth={tuning.ghostStroke}
-              strokeOpacity={0.55}
-              strokeDasharray={
-                tuning.ghostDashOn === 0 || tuning.ghostDashOff === 0
-                  ? undefined
-                  : `${tuning.ghostDashOn} ${tuning.ghostDashOff}`
-              }
-              strokeLinecap="round"
-            />
+            <>
+              <path
+                d={frame.ghostPath}
+                fill="none"
+                stroke={ghostColor}
+                strokeWidth={tuning.ghostStroke}
+                strokeOpacity={0.55}
+                strokeDasharray={
+                  tuning.ghostDashOn === 0 || tuning.ghostDashOff === 0
+                    ? undefined
+                    : `${tuning.ghostDashOn} ${tuning.ghostDashOff}`
+                }
+                strokeLinecap="round"
+              />
+              {patching?.cursor && (
+                <>
+                  <circle
+                    cx={patching.cursor.x}
+                    cy={patching.cursor.y}
+                    r={tuning.endpointRadius}
+                    fill={ghostColor}
+                    fillOpacity={0.55}
+                  />
+                  <circle
+                    cx={patching.cursor.x}
+                    cy={patching.cursor.y}
+                    r={tuning.endpointHole}
+                    fill={color.white}
+                  />
+                </>
+              )}
+            </>
           )}
         </svg>
 
