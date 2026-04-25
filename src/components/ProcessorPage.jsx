@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, createElement } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { color, type, ui } from '../styles'
 import { useA11yType } from '../hooks/useA11yType'
@@ -8,13 +8,28 @@ import { useSignalLog } from '../signals/useSignalLog'
 import { getProcessorDef } from '../signals/library'
 import { eventsChannel } from '../signals/bus'
 import { SignalFeed } from './room/SignalFeed'
+import { getProcessorView } from './processors/registry'
 
-// The processor page is a live-state view, not a config surface.
-// All wiring/filtering lives in the switchboard row. This page shows the
-// processor's description, its operational config (read-only for now), and
-// the live log of signals it has handled.
+// Detail views (per-defId in components/processors/registry) render the
+// configurable surface; processors without one fall back to a JSON read-only
+// view. Edits flow through onUpdateInstance → agentAPI.updateProcessorConfig.
 
-export function ProcessorPage({ instance, nodeId, nodeName, systemKey, onBack }) {
+function ConfigSurface({ instance, def, onUpdateInstance, t }) {
+  const View = getProcessorView(instance.defId)
+  if (View) {
+    return createElement(View, {
+      config: instance.config || def.defaultConfig || {},
+      onChange: (patch) => onUpdateInstance?.({ config: patch }),
+    })
+  }
+  return (
+    <pre style={{ ...t.mono, background: color.hoverBg, padding: 12, margin: 0, overflow: 'auto' }}>
+      {JSON.stringify(instance.config, null, 2) || '{}'}
+    </pre>
+  )
+}
+
+export function ProcessorPage({ instance, nodeId, nodeName, systemKey, onBack, onUpdateInstance }) {
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const bus = useBus()
@@ -81,10 +96,8 @@ export function ProcessorPage({ instance, nodeId, nodeName, systemKey, onBack })
           overflow: 'auto',
         }}>
           <section>
-            <h3 style={{ ...type.label, margin: 0, marginBottom: 8 }}>{tr('systemPage.configuration')}</h3>
-            <pre style={{ ...t.mono, background: color.hoverBg, padding: 12, margin: 0, overflow: 'auto' }}>
-              {JSON.stringify(instance.config, null, 2) || '{}'}
-            </pre>
+            <h3 style={{ ...type.label, margin: 0, marginBottom: 12 }}>{tr('systemPage.configuration')}</h3>
+            <ConfigSurface instance={instance} def={def} onUpdateInstance={onUpdateInstance} t={t} />
           </section>
         </div>
 

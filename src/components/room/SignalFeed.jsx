@@ -26,14 +26,29 @@ function SignalIcon({ type, srLabel }) {
   )
 }
 
+function compactJSON(obj, max = 120) {
+  let s
+  try { s = JSON.stringify(obj) } catch { s = String(obj) }
+  if (s == null) return ''
+  return s.length > max ? s.slice(0, max - 1) + '…' : s
+}
+
 function signalSummary(signal) {
+  const c = signal.content
+  if (c == null) return ''
   if (signal.type === 'metric') {
-    return `${signal.content.key}: ${signal.content.value}${signal.content.unit ? ' ' + signal.content.unit : ''}`
+    if (c.key != null && c.value != null) {
+      return `${c.key}: ${c.value}${c.unit ? ' ' + c.unit : ''}`
+    }
+    return compactJSON(c)
   }
-  if (signal.type === 'narrative') return signal.content.text
-  if (signal.type === 'event') return signal.content.action
-  if (signal.type === 'alert') return signal.content.message
-  return JSON.stringify(signal.content)
+  if (signal.type === 'narrative') return c.text || compactJSON(c)
+  if (signal.type === 'event') {
+    if (c.kind === 'connection') return `connection ${c.status}${c.detail ? ' — ' + c.detail : ''}`
+    return c.action || c.text || compactJSON(c)
+  }
+  if (signal.type === 'alert') return c.message || compactJSON(c)
+  return compactJSON(c)
 }
 
 // Format a hop key "nodeId:systemKey" for compact display as "S3·a3f2c".
