@@ -2,9 +2,9 @@ import { color } from '../../styles'
 import { useA11yType } from '../../hooks/useA11yType'
 import { useTranslation } from '../../i18n/index.jsx'
 
-function formatTime(ts) {
+function formatTime(ts, locale) {
   const d = new Date(ts)
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return d.toLocaleTimeString(locale || [], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 function SignalIcon({ type, srLabel }) {
@@ -59,7 +59,7 @@ function formatHop(hopKey) {
 
 export function SignalFeed({ signals, label }) {
   const t = useA11yType()
-  const { t: tr } = useTranslation()
+  const { t: tr, lang } = useTranslation()
 
   return (
     <div style={{ padding: '24px 32px', flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -73,7 +73,7 @@ export function SignalFeed({ signals, label }) {
             <div key={signal.id} style={{ padding: '6px 0' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
                 <SignalIcon type={signal.type} />
-                <span style={{ ...t.monoMuted, flexShrink: 0 }}>{formatTime(signal.timestamp)}</span>
+                <span style={{ ...t.monoMuted, flexShrink: 0 }}>{formatTime(signal.timestamp, lang)}</span>
                 <span style={{ ...t.mono, color: color.primary }}>{signalSummary(signal)}</span>
               </div>
               {signal.hops && signal.hops.length > 0 && (

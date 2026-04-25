@@ -57,7 +57,7 @@ export function RoomShell({ systemKey, nodeId, nodeName, node, tree, onBack, onN
           }}>{verb}</h2>
           <h3 style={{ ...t.h1, margin: '4px 0 0', color: color.secondary }}>{unitLabel}</h3>
         </div>
-        <button onClick={onBack} aria-label={tr('nav.back')} style={{ ...ui.button, pointerEvents: 'auto' }}>{tr('nav.esc')}</button>
+        <button onClick={onBack} aria-label={tr('nav.back')} style={{ ...ui.button, pointerEvents: 'auto' }}>← {tr('nav.back')}</button>
       </div>
 
       {/* Content area — centered in viewport */}

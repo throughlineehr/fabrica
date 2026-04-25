@@ -1,16 +1,75 @@
-# React + Vite
+# Fabrica
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+An isometric 3D visualization of a viable system model (VSM). Tree-edit
+your organization, drill into a system room, wire processors to signal
+buses, and watch the nervous system come alive.
 
-Currently, two official plugins are available:
+Stafford Beer's VSM, made tactile.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## What's here
 
-## React Compiler
+- **3D model** — isometric tree of management units and operations.
+  Subsystems S1–S5 with the right cabling between them. Drag, drop,
+  rename, splice, duplicate.
+- **System rooms** — each S1/S2/S3/S4/S5 is its own room with cable
+  terminals on the walls and a switchboard for processors.
+- **Signal bus** — framework-free `signals/` layer with terminals as
+  the single source of truth for both visible cables and real
+  pubsub subscriptions.
+- **Processors** — heartbeat, tracer, logger, websocket transducer,
+  digest. Add a Slack-feed transducer, hook a digest, watch themes
+  emerge.
+- **Agent API** — every mutation flows through one command surface.
+  Same API drives the React UI, the REPL, and the AI agent.
+- **Accessibility** — WCAG 2.1 AA. Parallel DOM tree alongside the
+  3D canvas. Keyboard everywhere. Screen-reader live regions.
+  Color-blind patterns, epilepsy mode, dyslexia font, font scaling.
+  10 languages including RTL Arabic.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Run
 
-## Expanding the ESLint configuration
+```sh
+npm install
+npm run dev          # localhost:5173
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Visit `?styleguide` for the design-system reference page.
+
+## Other entry points
+
+```sh
+npm run relay              # local websocket relay (dev tool)
+npm run connector:slack    # Slack → relay connector (needs .env)
+npm run repl               # terminal REPL driving the same agent API
+npm run test               # 178+ tests, vitest
+npm run build              # production build
+```
+
+## Design references
+
+Living docs at the project root:
+
+- `CLAUDE.md` — architecture overview, contribution guide
+- `SIGNALS.md` — signal wiring layer in depth
+- `ROADMAP.md` — plateau-by-plateau path from personal tool to
+  Cybersyn-class infrastructure
+- `ARCHITECTURE-NEXT.md` — designs not yet built (plugin contract,
+  governance, federation)
+- `INTERNAL-WIRING-DESIGN.md` — Reason/Eurorack-style internal wiring
+  (the rack-flip view, planned)
+- `PLUGIN-MANIFEST.md` — plugin extension surface
+- `DESIGN-OPERATIONS.md` — spatial grammar, cable colors, app contract
+- `COMPLIANCE-ROADMAP.md` — accessibility, security, ethics, certifications
+- `DEBT.md` — living debt list
+- `VPAT-2.5.md` — accessibility conformance report
+- `AUDIT-*.md` — periodic audit snapshots
+
+## License
+
+Hippocratic License 3.0 — see `LICENSE.md`. Permitted for organizations
+working toward human flourishing; not for military, intelligence, mass
+surveillance, weapons, or human-rights violations.
+
+## Contact
+
+thirdcreed@gmail.com
