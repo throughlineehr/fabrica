@@ -25,7 +25,7 @@ export const color = {
   // Bold harmonized palette: all fills on the same tonal step so the five
   // systems read as one family with shifting hue, not five different families.
   s5: { fill: '#9333ea', stroke: '#6b21a8' },   // fill 5.0:1 ✓, stroke 8.5:1 ✓
-  s4: { fill: '#ea580c', stroke: '#9a3412' },   // fill 4.0:1 ✓, stroke 8.4:1 ✓
+  s4: { fill: '#d97706', stroke: '#92400e' },   // fill 3.7:1 ✓, stroke 7.0:1 ✓ (amber, away from s2 red)
   s3: { fill: '#2563eb', stroke: '#1e40af' },   // fill 5.2:1 ✓, stroke 8.4:1 ✓
   s2: { fill: '#dc2626', stroke: '#991b1b' },   // fill 5.0:1 ✓, stroke 7.5:1 ✓
   s1: { fill: '#16a34a', stroke: '#166534' },   // fill 3.0:1 ✓, stroke 7.4:1 ✓
