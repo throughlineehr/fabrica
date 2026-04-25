@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createModel, addNode, removeNode, canAddManagement, canAddOperation } from '../tree/model'
+import { createModel, addNode, removeNode, canAddManagement, canAddOperation, moveNode } from '../tree/model'
 
 describe('createModel', () => {
   it('creates a model with a root management node', () => {
@@ -115,5 +115,46 @@ describe('validation', () => {
     const m2 = addNode(m, m.rootId, 'management')
     // Draft mode allows this — validateModel() catches it
     expect(m2.children[m.rootId]).toHaveLength(2)
+  })
+})
+
+describe('isDescendant (via moveNode cycle prevention)', () => {
+  it('rejects moving an ancestor under one of its descendants', () => {
+    // Build: root → A → B → C
+    let m = createModel('management')
+    m = addNode(m, m.rootId, 'management')
+    const aId = m.children[m.rootId][0]
+    m = addNode(m, aId, 'management')
+    const bId = m.children[aId][0]
+    m = addNode(m, bId, 'management')
+    const cId = m.children[bId][0]
+
+    // Attempting to move A under C would create a cycle. moveNode
+    // returns the model unchanged when isDescendant catches it.
+    const moved = moveNode(m, aId, cId)
+    expect(moved).toBe(m) // unchanged
+    expect(moved.parents[aId]).toBe(m.rootId)
+  })
+
+  it('handles a deep linear chain without stack overflow', () => {
+    // Build a chain root → m1 → m2 → ... → m50. Verify isDescendant
+    // (called by moveNode cycle check) returns correctly for the
+    // deepest node. The previous recursive implementation would
+    // recurse 50 levels — the iterative version handles arbitrary
+    // depth bounded by the safety counter only.
+    let m = createModel('management')
+    let parent = m.rootId
+    const chain = []
+    for (let i = 0; i < 50; i++) {
+      m = addNode(m, parent, 'management')
+      const newId = m.children[parent][0]
+      chain.push(newId)
+      parent = newId
+    }
+    const deepest = chain[chain.length - 1]
+    // root cannot move under its deepest descendant — the cycle guard
+    // must catch this without recursion blowing the stack.
+    const moved = moveNode(m, m.rootId, deepest)
+    expect(moved).toBe(m)
   })
 })

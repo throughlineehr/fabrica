@@ -99,6 +99,38 @@ describe('agent processor commands', () => {
     expect(h.getProcessors()[key][0].config.intervalMs).toBe(1500)
   })
 
+  // ---------------------------------------------------------------------
+  // Announcement coverage — the live region in App.jsx feeds from these,
+  // so screen-reader users hear every processor mutation.
+  // ---------------------------------------------------------------------
+
+  it('announces on addProcessor', () => {
+    h.announcements.length = 0
+    h.api.addProcessor(h.getModel().rootId, 's3', 'heartbeat')
+    expect(h.announcements.some(a => /Heartbeat added/.test(a))).toBe(true)
+  })
+
+  it('announces on removeProcessor', () => {
+    const r = h.api.addProcessor(h.getModel().rootId, 's3', 'heartbeat')
+    h.announcements.length = 0
+    h.api.removeProcessor(h.getModel().rootId, 's3', r.instanceId)
+    expect(h.announcements.some(a => /Heartbeat removed/.test(a))).toBe(true)
+  })
+
+  it('announces on updateProcessorFilters', () => {
+    const a = h.api.addProcessor(h.getModel().rootId, 's3', 'heartbeat')
+    h.announcements.length = 0
+    h.api.updateProcessorFilters(h.getModel().rootId, 's3', a.instanceId, { types: ['metric'] })
+    expect(h.announcements.some(a => /filters updated/i.test(a))).toBe(true)
+  })
+
+  it('announces on updateProcessorConfig', () => {
+    const a = h.api.addProcessor(h.getModel().rootId, 's3', 'heartbeat')
+    h.announcements.length = 0
+    h.api.updateProcessorConfig(h.getModel().rootId, 's3', a.instanceId, { intervalMs: 500 })
+    expect(h.announcements.some(a => /config updated/i.test(a))).toBe(true)
+  })
+
   it('listProcessors returns short + full ids and configs', () => {
     h.api.addProcessor(h.getModel().rootId, 's3', 'heartbeat')
     h.api.addProcessor(h.getModel().rootId, 's3', 'logger')

@@ -66,6 +66,28 @@ describe('wireTopology', () => {
     expect(received).toHaveLength(0)
   })
 
+  it('cleanup count matches subscription count exactly', () => {
+    // Wrap bus.subscribe so we can count subscriptions and unsubscriptions.
+    // Every wireTopology subscription must produce exactly one cleanup call.
+    const realSubscribe = bus.subscribe.bind(bus)
+    let subscribeCalls = 0
+    let unsubscribeCalls = 0
+    bus.subscribe = (...args) => {
+      subscribeCalls += 1
+      const unsub = realSubscribe(...args)
+      return () => { unsubscribeCalls += 1; return unsub() }
+    }
+
+    const { tree } = twoLevelTree()
+    const topo = computeRoomSubscriptions(tree)
+    const cleanup = wireTopology(bus, topo)
+
+    expect(subscribeCalls).toBeGreaterThan(0)
+    expect(unsubscribeCalls).toBe(0)
+    cleanup()
+    expect(unsubscribeCalls).toBe(subscribeCalls)
+  })
+
   it('heartbeat in child A S3 flows to root S3 via the S3-children subscription', () => {
     vi.useFakeTimers()
     const { tree, rootId, aId } = twoLevelTree()
