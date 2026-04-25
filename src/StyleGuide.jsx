@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { type, color, ui } from './styles'
 import { Checkbox } from './components/Checkbox'
+import { WiringDemo } from './components/wiring/WiringDemo'
 
 const layout = {
   page: {
@@ -261,6 +262,20 @@ export default function StyleGuide() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div style={layout.section}>
+        <p style={type.label}>WIRING</p>
+        <h2 style={{ ...type.h2, margin: '0 0 8px' }}>Patch cables</h2>
+        <p style={{ ...type.body, marginBottom: 24, maxWidth: 720 }}>
+          The visual + interaction primitive for internal wiring inside a
+          system room. Panels are plugin-defined and heterogeneous; jacks
+          are placed at meaningful positions by the plugin author. Cables
+          are the <em>idea</em> of a cable: a single solid stroke in one
+          palette color, with verlet-spring physics for sag and sway.
+          See <code>INTERNAL-WIRING-DESIGN.md</code> for the full spec.
+        </p>
+        <WiringDemo />
       </div>
 
       <div>
