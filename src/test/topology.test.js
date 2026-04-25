@@ -114,6 +114,33 @@ describe('enumerateRooms', () => {
     expect(keys).toContain(`${aId}:s2`) // has direct op
     expect(keys).toContain(`${op1}:s1`)
   })
+
+  it('management with no descendants has s3/s4/s5 but no s2', () => {
+    const m = createModel('management')
+    const tree = buildRenderTree(m)
+    const rooms = enumerateRooms(tree)
+    const keys = rooms.map(r => roomKey(r.nodeId, r.systemKey)).sort()
+    expect(keys).toContain(`${m.rootId}:s3`)
+    expect(keys).toContain(`${m.rootId}:s4`)
+    expect(keys).toContain(`${m.rootId}:s5`)
+    expect(keys).not.toContain(`${m.rootId}:s2`)
+  })
+
+  it('an operation never has s2/s3/s4/s5 — only s1', () => {
+    const { tree, op1 } = twoLevelTree()
+    const rooms = enumerateRooms(tree)
+    const opRooms = rooms.filter(r => r.nodeId === op1)
+    expect(opRooms).toHaveLength(1)
+    expect(opRooms[0].systemKey).toBe('s1')
+  })
+
+  it('order: parent rooms enumerated before child rooms', () => {
+    const { tree, rootId, aId, op1 } = twoLevelTree()
+    const rooms = enumerateRooms(tree)
+    const positions = (id) => rooms.findIndex(r => r.nodeId === id)
+    expect(positions(rootId)).toBeLessThan(positions(aId))
+    expect(positions(aId)).toBeLessThan(positions(op1))
+  })
 })
 
 describe('computeRoomSubscriptions', () => {
