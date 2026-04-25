@@ -35,10 +35,10 @@ export function startRelay({ port = 8888 } = {}) {
       const peers = rooms.get(path)
       peers.add(ws)
 
-      ws.on('message', (data) => {
+      ws.on('message', (data, isBinary) => {
         for (const peer of peers) {
           if (peer !== ws && peer.readyState === 1 /* OPEN */) {
-            peer.send(data)
+            peer.send(data, { binary: isBinary })
           }
         }
       })
