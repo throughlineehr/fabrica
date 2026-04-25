@@ -15,6 +15,7 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { type, color } from '../../styles'
+import { makeChain, stepChain, pathFromPoints } from './verlet'
 
 // ---------------------------------------------------------------------------
 // Tuning — every numerical parameter exposed for the styleguide sliders
@@ -48,99 +49,6 @@ const DEFAULT_TUNING = {
   termCable: 23,
   termBend: 22,
   termVisible: 60,
-}
-
-// ---------------------------------------------------------------------------
-// Verlet physics — parameterized by tuning
-// ---------------------------------------------------------------------------
-
-function makeChain(a, b, segments) {
-  const points = []
-  const prev = []
-  for (let i = 0; i < segments; i++) {
-    const t = i / (segments - 1)
-    const x = a.x + (b.x - a.x) * t
-    const y = a.y + (b.y - a.y) * t + 24
-    points.push({ x, y })
-    prev.push({ x, y })
-  }
-  return { points, prev }
-}
-
-function stepChain(chain, a, b, t) {
-  const segments = chain.points.length
-  // If anchors haven't moved AND the chain is settled, skip the sim entirely.
-  const anchorMoved =
-    !chain.lastA || !chain.lastB ||
-    chain.lastA.x !== a.x || chain.lastA.y !== a.y ||
-    chain.lastB.x !== b.x || chain.lastB.y !== b.y
-  if (anchorMoved) {
-    chain.sleeping = false
-    chain.restFrames = 0
-  }
-  if (chain.sleeping) {
-    chain.points[0].x = a.x; chain.points[0].y = a.y
-    chain.points[segments - 1].x = b.x; chain.points[segments - 1].y = b.y
-    return
-  }
-
-  const dx = b.x - a.x
-  const dy = b.y - a.y
-  const dist = Math.hypot(dx, dy) || 1
-  const restLen = (dist * t.slack) / (segments - 1)
-  const { points, prev } = chain
-
-  for (let i = 1; i < segments - 1; i++) {
-    const px = points[i].x, py = points[i].y
-    const vx = (px - prev[i].x) * t.damping
-    const vy = (py - prev[i].y) * t.damping
-    prev[i].x = px; prev[i].y = py
-    points[i].x = px + vx
-    points[i].y = py + vy + t.gravity
-  }
-  points[0].x = a.x; points[0].y = a.y
-  prev[0].x = a.x; prev[0].y = a.y
-  points[segments - 1].x = b.x; points[segments - 1].y = b.y
-  prev[segments - 1].x = b.x; prev[segments - 1].y = b.y
-
-  for (let it = 0; it < t.iterations; it++) {
-    for (let i = 0; i < segments - 1; i++) {
-      const p = points[i], q = points[i + 1]
-      const ddx = q.x - p.x, ddy = q.y - p.y
-      const d = Math.hypot(ddx, ddy) || 1
-      const diff = ((d - restLen) / d) * 0.5
-      const tx = ddx * diff, ty = ddy * diff
-      if (i > 0) { p.x += tx; p.y += ty }
-      if (i < segments - 2) { q.x -= tx; q.y -= ty }
-    }
-    points[0].x = a.x; points[0].y = a.y
-    points[segments - 1].x = b.x; points[segments - 1].y = b.y
-  }
-
-  let maxDelta = 0
-  for (let i = 1; i < segments - 1; i++) {
-    const ddx = points[i].x - prev[i].x
-    const ddy = points[i].y - prev[i].y
-    const d = Math.hypot(ddx, ddy)
-    if (d > maxDelta) maxDelta = d
-  }
-  if (maxDelta < t.restEpsilon) {
-    chain.restFrames = (chain.restFrames || 0) + 1
-    if (chain.restFrames > t.restFramesNeeded) chain.sleeping = true
-  } else {
-    chain.restFrames = 0
-  }
-  chain.lastA = { x: a.x, y: a.y }
-  chain.lastB = { x: b.x, y: b.y }
-}
-
-function pathFromPoints(points) {
-  if (!points || points.length === 0) return ''
-  let d = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`
-  for (let i = 1; i < points.length; i++) {
-    d += ` L ${points[i].x.toFixed(1)} ${points[i].y.toFixed(1)}`
-  }
-  return d
 }
 
 // ---------------------------------------------------------------------------
@@ -470,7 +378,7 @@ export function WiringDemo() {
           width: 920,
           height: 220,
           padding: '24px 24px',
-          background: '#fafafa',
+          background: color.surface,
           border: `1px solid ${color.border}`,
           userSelect: 'none',
         }}
@@ -644,7 +552,7 @@ function PanelView({ panel, jackElRefs, onJackPointerDown, onJackKeyDown, patchi
         ...type.label,
         padding: '10px 12px',
         borderBottom: `1px solid ${color.border}`,
-        background: '#f5f5f5',
+        background: color.surfaceMuted,
       }}>
         {panel.title}
       </div>

@@ -12,6 +12,7 @@ import {
   addNode, removeNode, renameNode, moveNode, insertParent, spliceNode,
   detachNode, duplicateSubtree, validateModel, exportModelCompact,
 } from '../tree/index'
+import { parseShorthand } from '../tree/shorthand'
 import { getProcessorDef, canPlaceProcessor } from '../signals/library'
 import { defaultFilters } from '../signals/filter'
 
@@ -37,6 +38,19 @@ export function createAgentAPI({
       setModel(newModel)
       announce?.('Model replaced')
       return { ok: true }
+    },
+
+    // Build a tree from indented shorthand notation. Replaces the
+    // current model wholesale. See `tree/shorthand.js` for the format.
+    shorthand: (text) => {
+      try {
+        const parsed = parseShorthand(text)
+        setModel(parsed)
+        announce?.('Model built from shorthand')
+        return { ok: true, rootId: parsed.rootId, nodeCount: Object.keys(parsed.entities).length }
+      } catch (err) {
+        return { ok: false, error: String(err.message || err) }
+      }
     },
 
     addManagement: (parentId) => {
@@ -356,6 +370,10 @@ COMMANDS:
     detachNode(nodeId)                  → disconnect from parent (becomes orphan)
     duplicateSubtree(nodeId, parentId, index?)  → deep copy subtree
     validate()                          → check model for publish readiness
+    shorthand(text)                     → BUILD tree from indented shorthand
+                                          (replaces current model). Format:
+                                          "name: m" / "name: o" with 2-space
+                                          indent for depth.
 
   Processors:
     addProcessor(nodeId, systemKey, defId, config?)  → add processor to a room
@@ -394,4 +412,8 @@ RULES:
 - Node IDs are UUIDs — use listNodes() for short IDs
 - Processor instance IDs are UUIDs — use listProcessors(nodeId, sysKey) for short IDs
 - Navigation: overview → focus → detail → system → processor, back() reverses
+
+Not exposed in this DSL (intentional, available on the JS API only):
+- replaceModel(newModel)  — wholesale tree replacement; reserved for
+  serialize/deserialize callers, not natural-language requests.
 `

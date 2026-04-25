@@ -32,6 +32,10 @@ import { Checkbox } from '../components/Checkbox'
 import { SignalFeed } from '../components/room/SignalFeed'
 import { ProcessorLibraryModal } from '../components/room/ProcessorLibraryModal'
 import { TerminalDetail } from '../components/room/TerminalDetail'
+import { Switchboard } from '../components/room/Switchboard'
+import { defaultFilters } from '../signals/filter'
+import { ProcessorPage } from '../components/ProcessorPage'
+import { BusProvider } from '../signals/BusContext'
 
 afterEach(() => cleanup())
 
@@ -39,6 +43,18 @@ function withProviders(node) {
   return (
     <AccessibilityProvider>
       <I18nProvider>{node}</I18nProvider>
+    </AccessibilityProvider>
+  )
+}
+
+// ProcessorPage subscribes to its event channel via useSignalLog,
+// so it needs a BusProvider too.
+function withBus(node) {
+  return (
+    <AccessibilityProvider>
+      <I18nProvider>
+        <BusProvider>{node}</BusProvider>
+      </I18nProvider>
     </AccessibilityProvider>
   )
 }
@@ -120,6 +136,66 @@ describe('axe smoke — TerminalDetail', () => {
     const connections = [{ id: 'node-1', name: 'Division A', systemKey: 's3', verb: 'Manages' }]
     const { container } = render(withProviders(
       <TerminalDetail terminal={terminal} connections={connections} onNavigate={() => {}} />
+    ))
+    await expectNoViolations(container)
+  })
+})
+
+describe('axe smoke — ProcessorPage', () => {
+  it('default heartbeat instance has no violations', async () => {
+    const instance = { id: 'i1', defId: 'heartbeat', config: { intervalMs: 3000 }, filters: defaultFilters() }
+    const { container } = render(withBus(
+      <ProcessorPage
+        instance={instance}
+        nodeId="node-1"
+        nodeName="HQ"
+        systemKey="s3"
+        onBack={() => {}}
+        onUpdateInstance={() => {}}
+      />
+    ))
+    await expectNoViolations(container)
+  })
+})
+
+describe('axe smoke — Switchboard', () => {
+  const terminals = [
+    { id: 's4-out', wall: 'top', colorKey: 's4', dir: 'both', labelKey: 'systems.s4' },
+    { id: 's2-out', wall: 'right', colorKey: 's2', dir: 'both', labelKey: 'systems.s2' },
+  ]
+
+  it('empty state has no violations', async () => {
+    const { container } = render(withProviders(
+      <Switchboard
+        systemKey="s3"
+        sysColor="#3a7ab8"
+        terminals={terminals}
+        processors={[]}
+        onAddProcessor={() => {}}
+        onRemoveProcessor={() => {}}
+        onUpdateProcessor={() => {}}
+        onOpenProcessor={() => {}}
+      />
+    ))
+    await expectNoViolations(container)
+  })
+
+  it('with a couple of processor rows has no violations', async () => {
+    const processors = [
+      { id: 'i1', defId: 'heartbeat', config: { intervalMs: 3000 }, filters: defaultFilters() },
+      { id: 'i2', defId: 'tracer', config: {}, filters: { ...defaultFilters(), types: ['metric'] } },
+    ]
+    const { container } = render(withProviders(
+      <Switchboard
+        systemKey="s3"
+        sysColor="#3a7ab8"
+        terminals={terminals}
+        processors={processors}
+        onAddProcessor={() => {}}
+        onRemoveProcessor={() => {}}
+        onUpdateProcessor={() => {}}
+        onOpenProcessor={() => {}}
+      />
     ))
     await expectNoViolations(container)
   })

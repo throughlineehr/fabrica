@@ -1,5 +1,6 @@
 import { useMemo, useEffect } from 'react'
 import * as THREE from 'three'
+import { color } from '../styles'
 
 const PATTERNS = {
   s5: drawDiagonalLines,
@@ -83,7 +84,7 @@ function makeTexture(systemKey, bg) {
 
   ctx.globalAlpha = 0.7
   const draw = PATTERNS[systemKey]
-  if (draw) draw(ctx, '#000000')
+  if (draw) draw(ctx, color.black)
 
   const tex = new THREE.CanvasTexture(canvas)
   tex.wrapS = THREE.RepeatWrapping
@@ -103,7 +104,7 @@ export function getPatternDataUrl(systemKey, bg) {
   ctx.fillRect(0, 0, SIZE, SIZE)
   ctx.globalAlpha = 0.7
   const draw = PATTERNS[systemKey]
-  if (draw) draw(ctx, '#000000')
+  if (draw) draw(ctx, color.black)
   return canvas.toDataURL()
 }
 

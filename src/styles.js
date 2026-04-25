@@ -16,7 +16,10 @@ export const color = {
   border: '#8a8a8a',       //  3.5:1 ✓ AA
   borderLight: '#b5b5b5',  //  2.1:1 — decorative only, NOT for required boundaries
   hoverBg: '#f0f0f0',
+  surface: '#fafafa',      // recessed/canvas surface — slightly off-white
+  surfaceMuted: '#f5f5f5', // header bands, panel rules — one step deeper than surface
   white: '#fff',
+  black: '#000000',        // canvas drawing primitives that need pure black
 
   // System fills — ≥3:1 on white for meaningful UI (shapes carry system identity)
   s5: { fill: '#9060c0', stroke: '#4a1a8a' },  // fill 4.5:1 ✓, stroke 11.6:1 ✓

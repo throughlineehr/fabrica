@@ -46,13 +46,21 @@ export default defineConfig([
           selector: "TemplateElement[value.cooked=/^proc:/]",
           message: "Don't construct proc: channel strings directly. Use eventsChannel() from src/signals/bus.js.",
         },
+        {
+          // Hex color literals — keep design tokens centralised in styles.js.
+          // Catches '#abc', '#abcdef', '#abcdef12'. styles.js itself is
+          // exempted by the override block below.
+          selector: "Literal[value=/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/]",
+          message: "Don't write hex color literals in components. Add a token to src/styles.js → color and import it.",
+        },
       ],
     },
   },
   {
-    // bus.js is the one place these literals are allowed — it owns
-    // the channel name format.
-    files: ['src/signals/bus.js'],
+    // bus.js is the one place channel-name literals are allowed — it
+    // owns the channel name format. styles.js owns the color tokens.
+    // Test fixtures may use literal hex colors freely.
+    files: ['src/signals/bus.js', 'src/styles.js', 'src/test/**'],
     rules: {
       'no-restricted-syntax': 'off',
     },

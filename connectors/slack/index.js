@@ -13,6 +13,7 @@
 
 import bolt from '@slack/bolt'
 import WebSocket from 'ws'
+import { shouldForward, buildPayload } from './transform.js'
 
 const { App } = bolt
 
@@ -103,27 +104,16 @@ async function resolveUser(client, userId) {
 app.message(async ({ message, client }) => {
   // Bolt delivers messages with various subtypes (edits, deletes, joins).
   // By default we only forward plain user-said-something messages; flip
-  // SLACK_INCLUDE_SUBTYPES=1 to forward everything.
-  if (message.subtype && !INCLUDE_SUBTYPES && message.subtype !== 'thread_broadcast') {
-    return
-  }
+  // SLACK_INCLUDE_SUBTYPES=1 to forward everything. Filter logic + payload
+  // shape live in ./transform.js so they can be unit-tested.
+  if (!shouldForward(message, INCLUDE_SUBTYPES)) return
 
   const [channelName, userName] = await Promise.all([
     resolveChannel(client, message.channel),
     resolveUser(client, message.user),
   ])
 
-  send({
-    source: 'slack',
-    channel: channelName,
-    channelId: message.channel,
-    user: userName,
-    userId: message.user,
-    text: message.text || '',
-    ts: message.ts,
-    threadTs: message.thread_ts || null,
-    subtype: message.subtype || null,
-  })
+  send(buildPayload(message, channelName, userName))
 })
 
 await app.start()

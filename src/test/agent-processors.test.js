@@ -171,4 +171,37 @@ describe('agent processor commands', () => {
     nav = { processorView: { nodeId: 'a', systemKey: 's3', instanceId: 'x' } }
     expect(api.getState().view).toBe('processor')
   })
+
+  // ---------------------------------------------------------------------
+  // shorthand command — BUILD a tree from indented text.
+  // ---------------------------------------------------------------------
+
+  it('shorthand replaces the model with the parsed tree', () => {
+    const text = `HQ: m
+  Engineering: m
+    Frontend: o
+  Sales: m
+    Pipeline: o`
+    const r = h.api.shorthand(text)
+    expect(r.ok).toBe(true)
+    expect(r.nodeCount).toBe(5)
+    const model = h.getModel()
+    expect(model.rootId).toBe(r.rootId)
+    expect(model.entities[r.rootId].name).toBe('HQ')
+    const eng = model.children[r.rootId].find(id => model.entities[id].name === 'Engineering')
+    expect(eng).toBeTruthy()
+    const frontendId = model.children[eng][0]
+    expect(model.entities[frontendId].type).toBe('operation')
+  })
+
+  it('shorthand returns an error for empty/invalid input', () => {
+    expect(h.api.shorthand('').ok).toBe(false)
+    expect(h.api.shorthand('   \n   ').ok).toBe(false)
+  })
+
+  it('shorthand announces success', () => {
+    h.announcements.length = 0
+    h.api.shorthand('Root: m\n  Op: o')
+    expect(h.announcements.some(a => /shorthand/i.test(a))).toBe(true)
+  })
 })
