@@ -27,7 +27,6 @@ import { defaultFilters } from './signals/filter' // used by runtime effect for 
 import { createDispatcher } from './signals/dispatcher'
 import { pruneCablesByRoom, pruneCablesByProcessor, pruneProcessorsByRoom } from './commands'
 import { liveProcessorIdsByRoom } from './queries'
-import { findNode } from './tree/queries'
 
 function App() {
   const { epilepsy, toggleEpilepsy, toggleDyslexia, toggleColorBlind, setFontVisibility } = useAccessibility()
