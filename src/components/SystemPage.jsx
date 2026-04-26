@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Library } from 'lucide-react'
 import { RoomShell } from './room/RoomShell'
 import { TerminalDetail } from './room/TerminalDetail'
 import { Switchboard } from './room/Switchboard'
+import { LibraryDrawer } from './room/LibraryDrawer'
 import { Rack } from './rack/Rack'
 import { getProcessorDef } from '../signals/library'
 import { useTranslation } from '../i18n/index.jsx'
 import { useA11yType } from '../hooks/useA11yType'
 import { color } from '../styles'
+import { Z_INDEX } from '../constants'
 
 const TAB_DEFS = [
   { id: 'switchboard', labelKey: 'systemPage.tabSwitchboard' },
@@ -24,10 +27,18 @@ export function SystemPage({
   const { t: tr } = useTranslation()
   const t = useA11yType()
   const [activeTab, setActiveTab] = useState('switchboard')
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  // Ref so the window keydown handler reads the latest value without
+  // having to rebind on every state change.
+  const libraryOpenRef = useRef(libraryOpen)
+  useEffect(() => { libraryOpenRef.current = libraryOpen }, [libraryOpen])
 
   useEffect(() => {
     const handler = (e) => {
       if (e.key === 'Escape') {
+        // If the library is open, let it handle its own Escape (close
+        // the drawer); don't escape out of the room too.
+        if (libraryOpenRef.current) return
         e.stopImmediatePropagation()
         onBack()
       }
@@ -42,7 +53,42 @@ export function SystemPage({
     def: getProcessorDef(inst.defId),
   })).filter(p => p.def), [processors])
 
+  // Library trigger lives at top-right, just under the back button. Fixed-
+  // positioned so it sits over the room without competing with wall
+  // terminals for edge space. Aria-expanded reflects the drawer state.
+  const libraryTrigger = (
+    <button
+      type="button"
+      aria-label={libraryOpen ? 'Close library' : 'Open library'}
+      aria-expanded={libraryOpen}
+      onClick={() => setLibraryOpen(o => !o)}
+      style={{
+        position: 'fixed',
+        top: 80, right: 32,
+        width: 36, height: 36,
+        background: libraryOpen ? color.primary : color.white,
+        color: libraryOpen ? color.white : color.primary,
+        border: `1px solid ${color.border}`,
+        cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: Z_INDEX.menu - 1,
+      }}
+    >
+      <Library size={18} strokeWidth={1.5} aria-hidden="true" />
+    </button>
+  )
+
+  const drawer = (
+    <LibraryDrawer
+      open={libraryOpen}
+      systemKey={systemKey}
+      onAdd={(def) => onAddProcessor?.(def)}
+      onClose={() => setLibraryOpen(false)}
+    />
+  )
+
   return (
+    <>
     <RoomShell systemKey={systemKey} nodeId={nodeId} nodeName={nodeName} node={node} tree={tree} onBack={onBack} onNavigate={onNavigate}>
       {({ activeTerminal, terminals, connections, onNavigate: nav, sysColor }) => {
         const selected = activeTerminal
@@ -76,12 +122,12 @@ export function SystemPage({
                   terminals={terminals}
                   processors={processors}
                   cables={cables}
-                  onAddProcessor={onAddProcessor}
                   onRemoveProcessor={onRemoveProcessor}
                   onUpdateProcessor={onUpdateProcessor}
                   onOpenProcessor={onOpenProcessor}
                   onAddCable={onAddCable}
                   onRemoveCable={onRemoveCable}
+                  onOpenLibrary={() => setLibraryOpen(true)}
                 />
               ) : (
                 <Rack
@@ -104,6 +150,9 @@ export function SystemPage({
         )
       }}
     </RoomShell>
+    {libraryTrigger}
+    {drawer}
+    </>
   )
 }
 

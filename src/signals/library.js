@@ -17,6 +17,18 @@ import { signalMatches } from './filter'
 
 export const SIGNAL_TYPES = ['metric', 'event', 'narrative', 'alert']
 
+// Library categorization. The LibraryDrawer renders these as a chip row;
+// processor defs declare which category they belong to via `category`.
+// Order in this array is the order the chips render in.
+export const PROCESSOR_CATEGORIES = [
+  { id: 'connector',  label: 'Connectors',  description: 'Bring outside data in (Slack, HTTP, MQTT, …)' },
+  { id: 'transducer', label: 'Transducers', description: 'Reality boundary — S1 only' },
+  { id: 'flow',       label: 'Flow',        description: 'Generic signal handling (heartbeat, tracer, logger, …)' },
+  { id: 'analysis',   label: 'Analysis',    description: 'Variety attenuation (digest, anomaly, …)' },
+  { id: 'governance', label: 'Governance',  description: 'Decision machinery (parliament, policy, audit, …)' },
+  { id: 'effector',   label: 'Effectors',   description: 'Outbound side of transducers' },
+]
+
 // Convention: every processor declares 4 input ports (top of panel) for
 // visual consistency. Most core processors today only functionally consume
 // the first input; the rest are reserved for future control inputs (reset,
@@ -49,6 +61,7 @@ const HEARTBEAT = {
   id: 'heartbeat',
   name: 'Heartbeat',
   description: 'Emits a metric signal on a regular interval. Source only — no inputs.',
+  category: 'flow',
   hasInputs: false,
   hasOutputs: true,
   ports: {
@@ -115,6 +128,7 @@ const TRACER = {
   id: 'tracer',
   name: 'Tracer',
   description: 'Stamps passing signals with this room and timestamp, then forwards. Skips signals it has already traced.',
+  category: 'flow',
   hasInputs: true,
   hasOutputs: true,
   ports: {
@@ -164,6 +178,7 @@ const LOGGER = {
   id: 'logger',
   name: 'Logger',
   description: 'Records every signal it sees. Sink only — no outputs.',
+  category: 'flow',
   hasInputs: true,
   hasOutputs: false,
   ports: {
@@ -205,6 +220,7 @@ const WEBSOCKET_TRANSDUCER = {
   id: 'websocket-transducer',
   name: 'WebSocket Transducer',
   description: 'Connects to an external WebSocket URL and emits each incoming message as a signal in this room. Auto-reconnects with exponential backoff.',
+  category: 'transducer',
   hasInputs: false,
   hasOutputs: true,
   ports: {
@@ -372,6 +388,7 @@ const DIGEST = {
   id: 'digest',
   name: 'Digest',
   description: 'S1→S2 variety filter. Buffers incoming signals, then asks an LLM to extract themes (what is new or anomalous). Emits one narrative signal per theme. Fires after 10s of silence since the last input or when the buffer reaches 5, whichever comes first.',
+  category: 'analysis',
   hasInputs: true,
   hasOutputs: true,
   ports: {

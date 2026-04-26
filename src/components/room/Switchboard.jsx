@@ -6,7 +6,6 @@ import { useTranslation } from '../../i18n/index.jsx'
 import { getProcessorDef, SIGNAL_TYPES } from '../../signals/library'
 import { defaultFilters } from '../../signals/filter'
 import { Checkbox } from '../Checkbox'
-import { ProcessorLibraryModal } from './ProcessorLibraryModal'
 import { nextFreeOutputPort, nextFreeInputPort } from '../rack/portAllocation'
 
 // The switchboard shows one row per processor. Each row has a dot for every
@@ -521,12 +520,12 @@ export function Switchboard({
   systemKey, sysColor, terminals,
   processors,
   cables = [],
-  onAddProcessor, onRemoveProcessor, onUpdateProcessor, onOpenProcessor,
+  onRemoveProcessor, onUpdateProcessor, onOpenProcessor,
   onAddCable, onRemoveCable,
+  onOpenLibrary,
 }) {
   const t = useA11yType()
   const { t: tr } = useTranslation()
-  const [libraryOpen, setLibraryOpen] = useState(false)
   // 'terminal' = show incoming/outgoing terminal-dot columns (default).
   // 'internal' = swap them for from/to columns of internal cable connections.
   const [mode, setMode] = useState('terminal')
@@ -550,11 +549,6 @@ export function Switchboard({
       return { inst, def, displayName: def?.name || inst.defId }
     }).filter(row => row.def)
   ), [processors])
-
-  const handlePick = (def) => {
-    onAddProcessor?.(def)
-    setLibraryOpen(false)
-  }
 
   const updateFilter = (inst, patch) => {
     const nextFilters = { ...(inst.filters || defaultFilters()), ...patch }
@@ -599,7 +593,7 @@ export function Switchboard({
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
         <button
           aria-label={tr('systemPage.addProcessor')}
-          onClick={() => setLibraryOpen(true)}
+          onClick={() => onOpenLibrary?.()}
           style={{
             ...t.mono, color: color.primary, background: 'none',
             border: `1px solid ${color.border}`,
@@ -779,14 +773,6 @@ export function Switchboard({
           onAddCable={onAddCable}
           onRemoveCable={onRemoveCable}
           t={t}
-        />
-      )}
-
-      {libraryOpen && (
-        <ProcessorLibraryModal
-          systemKey={systemKey}
-          onPick={handlePick}
-          onClose={() => setLibraryOpen(false)}
         />
       )}
     </div>

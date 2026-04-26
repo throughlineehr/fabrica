@@ -30,7 +30,7 @@ import { I18nProvider } from '../i18n/index.jsx'
 import { AccessibilityProvider } from '../accessibility'
 import { Checkbox } from '../components/Checkbox'
 import { SignalFeed } from '../components/room/SignalFeed'
-import { ProcessorLibraryModal } from '../components/room/ProcessorLibraryModal'
+import { LibraryDrawer } from '../components/room/LibraryDrawer'
 import { TerminalDetail } from '../components/room/TerminalDetail'
 import { Switchboard } from '../components/room/Switchboard'
 import { defaultFilters } from '../signals/filter'
@@ -121,10 +121,10 @@ describe('axe smoke — SignalFeed', () => {
   })
 })
 
-describe('axe smoke — ProcessorLibraryModal', () => {
-  it('default has no violations', async () => {
+describe('axe smoke — LibraryDrawer', () => {
+  it('open drawer has no violations', async () => {
     const { container } = render(withProviders(
-      <ProcessorLibraryModal systemKey="s3" onPick={() => {}} onClose={() => {}} />
+      <LibraryDrawer open={true} systemKey="s3" onAdd={() => {}} onClose={() => {}} />
     ))
     await expectNoViolations(container)
   })
