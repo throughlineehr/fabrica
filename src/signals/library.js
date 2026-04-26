@@ -209,9 +209,16 @@ const LOGGER = {
   },
   create(_config, runtime) {
     const { bus, instanceId, filters } = runtime
+    const shortId = instanceId.slice(0, 8)
     return {
       onInput({ signal }) {
         if (!signalMatches(signal, filters)) return
+        // Mirror to the browser console so the log persists across room
+        // navigation. The events channel still drives the in-app feed when
+        // the processor page is open.
+        const tags = (signal.tags && signal.tags.length) ? ` [${signal.tags.join(',')}]` : ''
+        // eslint-disable-next-line no-console
+        console.log(`[logger ${shortId}] ${signal.type}${tags}`, signal)
         bus.publish(eventsChannel(instanceId), signal)
       },
       start() {},
