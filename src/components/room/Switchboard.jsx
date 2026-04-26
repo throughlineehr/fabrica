@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react'
-import { Lightbulb, Plus, ChevronRight, Trash2, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, X } from 'lucide-react'
+import { Lightbulb, Plus, ChevronRight, Trash2, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react'
 import { color, ui } from '../../styles'
 import { useA11yType } from '../../hooks/useA11yType'
 import { useTranslation } from '../../i18n/index.jsx'
@@ -62,8 +62,17 @@ function TerminalDot({ terminal, active, onToggle, interactive = true, size = ui
   )
 }
 
-function TerminalDotRow({ terminals, selected, onChange, disabled }) {
+// CableTerminalDotRow — dots are derived from the cables array, NOT from
+// filter state. A dot is "on" iff at least one cable connects this processor
+// to that terminal in the given direction. Click toggles real cable creation
+// or removal, so the rack and the switchboard stay perma-synced.
+function CableTerminalDotRow({
+  terminals, processorId, processorDef, direction,
+  cables, onAddCable, onRemoveCable,
+}) {
   const t = useA11yType()
+  const isOut = direction === 'out'
+
   // Which colorKeys appear more than once in this row? Those dots get arrows.
   const ambiguousColors = useMemo(() => {
     const counts = new Map()
@@ -73,16 +82,64 @@ function TerminalDotRow({ terminals, selected, onChange, disabled }) {
     return new Set(Array.from(counts.entries()).filter(([, n]) => n > 1).map(([k]) => k))
   }, [terminals])
 
+  // Group cables by terminalId for the (processorId, direction) pair.
+  const cablesByTerminal = useMemo(() => {
+    const map = new Map()
+    for (const c of cables) {
+      if (isOut) {
+        if (c?.source?.kind === 'jack' && c.source.instanceId === processorId
+            && c?.target?.kind === 'terminal') {
+          if (!map.has(c.target.terminalId)) map.set(c.target.terminalId, [])
+          map.get(c.target.terminalId).push(c)
+        }
+      } else {
+        if (c?.target?.kind === 'jack' && c.target.instanceId === processorId
+            && c?.source?.kind === 'terminal') {
+          if (!map.has(c.source.terminalId)) map.set(c.source.terminalId, [])
+          map.get(c.source.terminalId).push(c)
+        }
+      }
+    }
+    return map
+  }, [cables, processorId, isOut])
+
+  const disabled = isOut ? !processorDef.hasOutputs : !processorDef.hasInputs
   if (disabled || terminals.length === 0) {
     return <span style={t.monoMuted}>—</span>
   }
-  const isActive = (tid) => (selected === null ? true : selected.includes(tid))
-  const toggle = (tid) => {
-    const allIds = terminals.map(x => x.terminalId)
-    const current = selected === null ? [...allIds] : selected
-    const next = current.includes(tid) ? current.filter(x => x !== tid) : [...current, tid]
-    onChange(next.length === terminals.length ? null : next)
+
+  const isActive = (tid) => (cablesByTerminal.get(tid)?.length || 0) > 0
+
+  const toggle = (term) => {
+    const tid = term.terminalId
+    if (isActive(tid)) {
+      // Remove all cables for this (proc, terminal, direction).
+      for (const c of cablesByTerminal.get(tid)) {
+        onRemoveCable?.(c.id)
+      }
+      return
+    }
+    // Add a new cable. Pick the first free port; if all ports are taken, refuse.
+    const cableColor = color[term.colorKey]?.fill || color.primary
+    if (isOut) {
+      const out = nextFreeOutputPort(cables, processorId, processorDef)
+      if (!out.portId || out.allTaken) return
+      onAddCable?.({
+        source: { kind: 'jack', instanceId: processorId, portId: out.portId },
+        target: { kind: 'terminal', terminalId: tid },
+        color: cableColor,
+      })
+    } else {
+      const inn = nextFreeInputPort(cables, processorId, processorDef)
+      if (!inn.portId || inn.allTaken) return
+      onAddCable?.({
+        source: { kind: 'terminal', terminalId: tid },
+        target: { kind: 'jack', instanceId: processorId, portId: inn.portId },
+        color: cableColor,
+      })
+    }
   }
+
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: ui.checkbox.gap }}>
       {terminals.map(term => (
@@ -90,7 +147,7 @@ function TerminalDotRow({ terminals, selected, onChange, disabled }) {
           key={term.terminalId}
           terminal={term}
           active={isActive(term.terminalId)}
-          onToggle={() => toggle(term.terminalId)}
+          onToggle={() => toggle(term)}
           showArrow={ambiguousColors.has(term.colorKey)}
         />
       ))}
@@ -167,119 +224,296 @@ const lastCellStyle = { ...cellStyle, borderRight: 'none' }
 
 const PAGE_SIZE = 10
 
-// --- Internal connections cell --------------------------------------------
-// Per-row list of cables flowing INTO this row's processor from other
-// processors in the same room. Each entry = one cable. Each entry's
-// select changes the source processor (port auto-assigned to the next
-// free output of the picked source). Add (+) creates a new cable from
-// the first eligible source. Delete (×) removes the cable.
+// --- Mode switch (segmented control) -------------------------------------
+// Two modes for the table's input/output columns. "terminal" = the
+// existing incoming/outgoing dot columns. "internal" = swap those out
+// for from/to selects of internal cable connections.
 
-function InternalConnections({ targetInstance, targetDef, otherProcessors, cables, onAddCable, onRemoveCable, t, tr }) {
-  // Cables targeting this row, where the source is a jack on another
-  // processor in the room.
-  const incoming = useMemo(() => cables.filter(c =>
-    c?.target?.kind === 'jack' && c.target.instanceId === targetInstance.id &&
-    c?.source?.kind === 'jack' && c.source.instanceId !== targetInstance.id
-  ), [cables, targetInstance.id])
+function ModeSwitch({ mode, onChange, t }) {
+  const opts = [
+    { value: 'terminal', label: 'TERMINAL' },
+    { value: 'internal', label: 'INTERNAL' },
+  ]
+  return (
+    <div role="group" aria-label="switchboard mode" style={{
+      display: 'inline-flex',
+      border: `1px solid ${color.border}`,
+    }}>
+      {opts.map((o, i) => {
+        const active = mode === o.value
+        return (
+          <button
+            key={o.value}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(o.value)}
+            style={{
+              ...t.mono, fontSize: 11,
+              padding: '6px 12px',
+              background: active ? color.primary : color.white,
+              color: active ? color.white : color.primary,
+              border: 'none',
+              borderRight: i === 0 ? `1px solid ${color.border}` : 'none',
+              cursor: 'pointer',
+              letterSpacing: '0.05em',
+            }}
+          >{o.label}</button>
+        )
+      })}
+    </div>
+  )
+}
 
-  // Pick the first eligible source: any other processor with at least one
-  // free output port AND we haven't exhausted this row's input ports.
-  const findEligibleSource = () => {
-    const tgtIn = nextFreeInputPort(cables, targetInstance.id, targetDef)
-    if (!tgtIn.portId || tgtIn.allTaken) return null
-    for (const { inst, def } of otherProcessors) {
-      const out = nextFreeOutputPort(cables, inst.id, def)
-      if (out.portId && !out.allTaken) return { inst, def, srcPortId: out.portId, tgtPortId: tgtIn.portId }
+// --- Internal cables: port endpoint helpers -------------------------------
+// In INTERNAL mode each row is one cable. The from/to columns are flat selects
+// of every output / input port across all processors in the room (e.g.,
+// "Heartbeat 1", "Tracer 2", "Digest themes"). Ports already used by another
+// cable are still listed but disabled, so users can see the full topology.
+
+function buildPortOptions(enriched, kind) {
+  const opts = []
+  for (const { inst, def } of enriched) {
+    const isOut = kind === 'output'
+    if (isOut && !def.hasOutputs) continue
+    if (!isOut && !def.hasInputs) continue
+    const ports = (isOut ? def.ports?.outputs : def.ports?.inputs) || []
+    for (const p of ports) {
+      opts.push({
+        value: `${inst.id}:${p.id}`,
+        label: `${def.name} ${p.label || p.id}`,
+        instanceId: inst.id,
+        portId: p.id,
+      })
     }
-    return null
   }
+  return opts
+}
 
-  const handleAdd = () => {
-    const elig = findEligibleSource()
-    if (!elig) return
+function endpointKey(endpoint) {
+  if (!endpoint || endpoint.kind !== 'jack') return null
+  return `${endpoint.instanceId}:${endpoint.portId}`
+}
+
+// --- Internal cables table ------------------------------------------------
+// Each row = one internal cable (jack→jack within the room). The from/to
+// columns are flat selects of every output / input port on every processor.
+// Permasync with the rack: cables are owned by App.jsx and flow through both
+// views.
+
+function PortSelect({ value, options, usedSet, ariaLabel, onChange, t }) {
+  return (
+    <select
+      aria-label={ariaLabel}
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        ...t.mono, fontSize: 12,
+        background: color.white,
+        border: `1px solid ${color.border}`,
+        color: color.primary,
+        padding: '4px 8px', cursor: 'pointer',
+        minWidth: 160,
+      }}
+    >
+      {!value && <option value="" disabled>—</option>}
+      {options.map(o => (
+        <option
+          key={o.value}
+          value={o.value}
+          // The currently-selected option must remain enabled even if usedSet
+          // also contains it (i.e., this row is what's using the port).
+          disabled={usedSet.has(o.value) && o.value !== value}
+        >
+          {o.label}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+// Draft row — empty selects waiting to become a cable. When BOTH ends are
+// picked, the cable commits immediately (in the onChange handler) and the
+// row's local state clears so it's empty again. The just-committed cable
+// shows up in a cable row above; this draft row stays as the next slot.
+function DraftCableRow({
+  outputOptions, inputOptions, usedFrom, usedTo, onAddCable, t, ariaRowIndex,
+}) {
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+
+  const tryCommit = (nextFrom, nextTo) => {
+    if (!nextFrom || !nextTo) {
+      setFrom(nextFrom)
+      setTo(nextTo)
+      return
+    }
+    const fromOpt = outputOptions.find(o => o.value === nextFrom)
+    const toOpt = inputOptions.find(o => o.value === nextTo)
+    if (!fromOpt || !toOpt) {
+      setFrom(nextFrom)
+      setTo(nextTo)
+      return
+    }
     onAddCable?.({
-      source: { kind: 'jack', instanceId: elig.inst.id, portId: elig.srcPortId },
-      target: { kind: 'jack', instanceId: targetInstance.id, portId: elig.tgtPortId },
-      color: color.primary, // black-dot vibe — internal cables are black
+      source: { kind: 'jack', instanceId: fromOpt.instanceId, portId: fromOpt.portId },
+      target: { kind: 'jack', instanceId: toOpt.instanceId, portId: toOpt.portId },
+      color: color.primary,
     })
+    setFrom('')
+    setTo('')
   }
 
-  const handleChangeSource = (cable, newSourceInstanceId) => {
-    // Remove old, add new with auto-assigned next-free port on the new source.
-    const newDef = otherProcessors.find(p => p.inst.id === newSourceInstanceId)?.def
-    if (!newDef) return
-    const out = nextFreeOutputPort(
-      cables.filter(c => c.id !== cable.id),
-      newSourceInstanceId,
-      newDef,
-    )
-    if (!out.portId) return
+  return (
+    <tr role="row" aria-rowindex={ariaRowIndex}>
+      <td role="gridcell" aria-colindex={1} style={cellStyle}>
+        <PortSelect
+          value={from}
+          options={outputOptions}
+          usedSet={usedFrom}
+          ariaLabel="From port (empty)"
+          onChange={(v) => tryCommit(v, to)}
+          t={t}
+        />
+      </td>
+      <td role="gridcell" aria-colindex={2} style={cellStyle}>
+        <PortSelect
+          value={to}
+          options={inputOptions}
+          usedSet={usedTo}
+          ariaLabel="To port (empty)"
+          onChange={(v) => tryCommit(from, v)}
+          t={t}
+        />
+      </td>
+      <td role="gridcell" aria-colindex={3} style={lastCellStyle}>&nbsp;</td>
+    </tr>
+  )
+}
+
+function InternalCablesTable({
+  enriched, cables, sysColor, thStyle,
+  onAddCable, onRemoveCable, t,
+}) {
+  const outputOptions = useMemo(() => buildPortOptions(enriched, 'output'), [enriched])
+  const inputOptions  = useMemo(() => buildPortOptions(enriched, 'input'),  [enriched])
+
+  // Cables that live entirely inside this room (jack → jack).
+  const internalCables = useMemo(() => cables.filter(c =>
+    c?.source?.kind === 'jack' && c?.target?.kind === 'jack'
+  ), [cables])
+
+  const usedFrom = useMemo(
+    () => new Set(internalCables.map(c => endpointKey(c.source)).filter(Boolean)),
+    [internalCables]
+  )
+  const usedTo = useMemo(
+    () => new Set(internalCables.map(c => endpointKey(c.target)).filter(Boolean)),
+    [internalCables]
+  )
+
+  const handleChangeFrom = (cable, newValue) => {
+    const opt = outputOptions.find(o => o.value === newValue)
+    if (!opt) return
     onRemoveCable?.(cable.id)
     onAddCable?.({
-      source: { kind: 'jack', instanceId: newSourceInstanceId, portId: out.portId },
+      source: { kind: 'jack', instanceId: opt.instanceId, portId: opt.portId },
       target: cable.target,
       color: cable.color || color.primary,
     })
   }
 
-  const eligible = findEligibleSource()
-  const sourceOptions = otherProcessors.map(({ inst, def }) => ({
-    value: inst.id,
-    label: def.name,
-  }))
+  const handleChangeTo = (cable, newValue) => {
+    const opt = inputOptions.find(o => o.value === newValue)
+    if (!opt) return
+    onRemoveCable?.(cable.id)
+    onAddCable?.({
+      source: cable.source,
+      target: { kind: 'jack', instanceId: opt.instanceId, portId: opt.portId },
+      color: cable.color || color.primary,
+    })
+  }
+
+  // Always render at least PAGE_SIZE rows; cables fill the top, drafts fill
+  // the rest. There's always at least one draft slot below the cables.
+  const totalRows = Math.max(PAGE_SIZE, internalCables.length + 1)
+  const draftCount = totalRows - internalCables.length
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', minHeight: 24 }}>
-      {incoming.map(cable => {
-        const sourceProc = otherProcessors.find(p => p.inst.id === cable.source.instanceId)
-        return (
-          <span key={cable.id} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4,
-            border: `1px solid ${color.border}`, padding: '2px 6px',
-            background: color.white,
-          }}>
-            {/* black dot */}
-            <span aria-hidden="true" style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: color.primary, flexShrink: 0,
-            }} />
-            <select
-              aria-label={`Source for internal connection`}
-              value={cable.source.instanceId}
-              onChange={(e) => handleChangeSource(cable, e.target.value)}
-              style={{
-                ...t.mono, fontSize: 11,
-                background: 'none', border: 'none',
-                color: color.primary, padding: 0, cursor: 'pointer',
-              }}
-            >
-              {sourceOptions.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onRemoveCable?.(cable.id) }}
-              aria-label={`Remove internal connection from ${sourceProc?.def?.name || cable.source.instanceId}`}
-              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', color: color.muted }}
-            ><X size={12} strokeWidth={1.5} aria-hidden="true" /></button>
-          </span>
-        )
-      })}
-      {eligible && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); handleAdd() }}
-          aria-label={tr('systemPage.addProcessor') /* re-use; says "add" */}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 2,
-            border: `1px dashed ${color.border}`, padding: '2px 6px',
-            background: 'none', cursor: 'pointer',
-            ...t.mono, fontSize: 11, color: color.muted,
-          }}
-        ><Plus size={12} strokeWidth={1.5} aria-hidden="true" /></button>
-      )}
-    </div>
+    <table
+      role="grid"
+      aria-label="Internal cables"
+      aria-rowcount={totalRows + 1}
+      aria-colcount={3}
+      style={{
+        width: '100%', borderCollapse: 'collapse',
+        border: `1px solid ${color.border}`,
+      }}
+    >
+      <thead>
+        <tr role="row" aria-rowindex={1} style={{ background: sysColor ? `${sysColor}18` : 'transparent' }}>
+          <th role="columnheader" aria-colindex={1} style={thStyle}>from</th>
+          <th role="columnheader" aria-colindex={2} style={thStyle}>to</th>
+          <th role="columnheader" aria-colindex={3} style={{ ...thStyle, borderRight: 'none', textAlign: 'right' }}>&nbsp;</th>
+        </tr>
+      </thead>
+      <tbody>
+        {internalCables.map((cable, idx) => {
+          const fromValue = endpointKey(cable.source)
+          const toValue   = endpointKey(cable.target)
+          const fromLabel = outputOptions.find(o => o.value === fromValue)?.label || fromValue
+          const toLabel   = inputOptions.find(o => o.value === toValue)?.label || toValue
+          return (
+            <tr key={cable.id} role="row" aria-rowindex={idx + 2}>
+              <td role="gridcell" aria-colindex={1} style={cellStyle}>
+                <PortSelect
+                  value={fromValue}
+                  options={outputOptions}
+                  usedSet={usedFrom}
+                  ariaLabel={`From port (currently ${fromLabel})`}
+                  onChange={(v) => handleChangeFrom(cable, v)}
+                  t={t}
+                />
+              </td>
+              <td role="gridcell" aria-colindex={2} style={cellStyle}>
+                <PortSelect
+                  value={toValue}
+                  options={inputOptions}
+                  usedSet={usedTo}
+                  ariaLabel={`To port (currently ${toLabel})`}
+                  onChange={(v) => handleChangeTo(cable, v)}
+                  t={t}
+                />
+              </td>
+              <td role="gridcell" aria-colindex={3} style={{ ...lastCellStyle, textAlign: 'right' }}>
+                <button
+                  type="button"
+                  onClick={() => onRemoveCable?.(cable.id)}
+                  aria-label={`Remove cable ${fromLabel} to ${toLabel}`}
+                  style={{
+                    background: 'none', border: 'none', padding: 4, cursor: 'pointer',
+                    color: color.muted,
+                  }}
+                >
+                  <Trash2 size={14} strokeWidth={1.5} />
+                </button>
+              </td>
+            </tr>
+          )
+        })}
+        {Array.from({ length: draftCount }).map((_, i) => (
+          <DraftCableRow
+            key={`draft-${i}`}
+            outputOptions={outputOptions}
+            inputOptions={inputOptions}
+            usedFrom={usedFrom}
+            usedTo={usedTo}
+            onAddCable={onAddCable}
+            ariaRowIndex={internalCables.length + i + 2}
+            t={t}
+          />
+        ))}
+      </tbody>
+    </table>
   )
 }
 
@@ -293,7 +527,10 @@ export function Switchboard({
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const [libraryOpen, setLibraryOpen] = useState(false)
-  const [showInternal, setShowInternal] = useState(false)
+  // 'terminal' = show incoming/outgoing terminal-dot columns (default).
+  // 'internal' = swap them for from/to columns of internal cable connections.
+  const [mode, setMode] = useState('terminal')
+  const isInternal = mode === 'internal'
   const rowRefs = useRef({}) // instanceId → <tr> element, for arrow-key focus movement
 
   const showAlgedonic = systemKey === 's5'
@@ -373,17 +610,7 @@ export function Switchboard({
           <Plus size={14} strokeWidth={1.5} />
           {tr('systemPage.processor')}
         </button>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 16, cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={showInternal}
-            onChange={(e) => setShowInternal(e.target.checked)}
-            style={{ cursor: 'pointer' }}
-          />
-          <span style={{ ...t.mono, fontSize: 12, color: color.secondary }}>
-            internal connections
-          </span>
-        </label>
+        <ModeSwitch mode={mode} onChange={setMode} t={t} />
       </div>
 
       {enriched.length === 0 && (
@@ -395,12 +622,12 @@ export function Switchboard({
         </div>
       )}
 
-      {enriched.length > 0 && (
+      {enriched.length > 0 && !isInternal && (
         <table
           role="grid"
           aria-label={tr('systemPage.switchboard')}
           aria-rowcount={enriched.length + 1}
-          aria-colcount={showInternal ? 7 : 6}
+          aria-colcount={6}
           style={{
             width: '100%', borderCollapse: 'collapse',
             border: `1px solid ${color.border}`,
@@ -410,20 +637,16 @@ export function Switchboard({
             <tr role="row" aria-rowindex={1} style={{ background: sysColor ? `${sysColor}18` : 'transparent' }}>
               <th role="columnheader" aria-colindex={1} style={thStyle}>{tr('systemPage.incoming')}</th>
               <th role="columnheader" aria-colindex={2} style={thStyle}>{tr('systemPage.processor')}</th>
-              {showInternal && (
-                <th role="columnheader" aria-colindex={3} style={thStyle}>internal in</th>
-              )}
-              <th role="columnheader" aria-colindex={showInternal ? 4 : 3} style={thStyle}>{tr('systemPage.outgoing')}</th>
-              <th role="columnheader" aria-colindex={showInternal ? 5 : 4} style={thStyle}>{tr('systemPage.filterTypes')}</th>
-              <th role="columnheader" aria-colindex={showInternal ? 6 : 5} style={thStyle}>{tr('systemPage.filterTags')}</th>
-              <th role="columnheader" aria-colindex={showInternal ? 7 : 6} style={{ ...thStyle, borderRight: 'none', textAlign: 'right' }}>&nbsp;</th>
+              <th role="columnheader" aria-colindex={3} style={thStyle}>{tr('systemPage.outgoing')}</th>
+              <th role="columnheader" aria-colindex={4} style={thStyle}>{tr('systemPage.filterTypes')}</th>
+              <th role="columnheader" aria-colindex={5} style={thStyle}>{tr('systemPage.filterTags')}</th>
+              <th role="columnheader" aria-colindex={6} style={{ ...thStyle, borderRight: 'none', textAlign: 'right' }}>&nbsp;</th>
             </tr>
           </thead>
           <tbody>
             {enriched.map(({ inst, def, displayName }, idx) => {
               const filters = inst.filters || defaultFilters()
               const handleRowKeyDown = (e) => {
-                // Only respond when focus is on the row itself, not an interactive cell child
                 if (e.target !== e.currentTarget) return
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
@@ -444,7 +667,6 @@ export function Switchboard({
                 } else if (e.key === 'Delete' || e.key === 'Backspace') {
                   e.preventDefault()
                   onRemoveProcessor?.(inst.id)
-                  // Shift focus to the next row (or previous if at end)
                   const nextIdx = idx < enriched.length - 1 ? idx + 1 : idx - 1
                   const nextId = enriched[nextIdx]?.inst.id
                   if (nextId) requestAnimationFrame(() => rowRefs.current[nextId]?.focus())
@@ -467,11 +689,14 @@ export function Switchboard({
                   style={{ cursor: 'pointer' }}
                 >
                   <td role="gridcell" aria-colindex={1} style={cellStyle}>
-                    <TerminalDotRow
+                    <CableTerminalDotRow
                       terminals={roomTerminals}
-                      selected={filters.inputTerminals}
-                      onChange={(next) => updateFilter(inst, { inputTerminals: next })}
-                      disabled={!def.hasInputs}
+                      processorId={inst.id}
+                      processorDef={def}
+                      direction="in"
+                      cables={cables}
+                      onAddCable={onAddCable}
+                      onRemoveCable={onRemoveCable}
                     />
                   </td>
                   <td role="gridcell" aria-colindex={2} style={cellStyle}>
@@ -489,42 +714,32 @@ export function Switchboard({
                       <ChevronRight size={12} strokeWidth={1.5} color={color.muted} aria-hidden="true" />
                     </button>
                   </td>
-                  {showInternal && (
-                    <td role="gridcell" aria-colindex={3} style={cellStyle}>
-                      <InternalConnections
-                        targetInstance={inst}
-                        targetDef={def}
-                        otherProcessors={enriched.filter(p => p.inst.id !== inst.id)}
-                        cables={cables}
-                        onAddCable={onAddCable}
-                        onRemoveCable={onRemoveCable}
-                        t={t} tr={tr}
-                      />
-                    </td>
-                  )}
-                  <td role="gridcell" aria-colindex={showInternal ? 4 : 3} style={cellStyle}>
-                    <TerminalDotRow
+                  <td role="gridcell" aria-colindex={3} style={cellStyle}>
+                    <CableTerminalDotRow
                       terminals={roomTerminals}
-                      selected={filters.outputTerminals}
-                      onChange={(next) => updateFilter(inst, { outputTerminals: next })}
-                      disabled={!def.hasOutputs}
+                      processorId={inst.id}
+                      processorDef={def}
+                      direction="out"
+                      cables={cables}
+                      onAddCable={onAddCable}
+                      onRemoveCable={onRemoveCable}
                     />
                   </td>
-                  <td role="gridcell" aria-colindex={showInternal ? 5 : 4} style={cellStyle}>
+                  <td role="gridcell" aria-colindex={4} style={cellStyle}>
                     <TypeChipRow
                       selected={filters.types}
                       onChange={(next) => updateFilter(inst, { types: next })}
                       disabled={!def.hasInputs}
                     />
                   </td>
-                  <td role="gridcell" aria-colindex={showInternal ? 6 : 5} style={cellStyle}>
+                  <td role="gridcell" aria-colindex={5} style={cellStyle}>
                     <TagsInput
                       tags={filters.tags}
                       onChange={(next) => updateFilter(inst, { tags: next })}
                       disabled={!def.hasInputs}
                     />
                   </td>
-                  <td role="gridcell" aria-colindex={showInternal ? 7 : 6} style={{ ...lastCellStyle, textAlign: 'right' }}>
+                  <td role="gridcell" aria-colindex={6} style={{ ...lastCellStyle, textAlign: 'right' }}>
                     {onRemoveProcessor && (
                       <button
                         aria-label={`${tr('systemPage.removeProcessor')} ${displayName}`}
@@ -541,13 +756,10 @@ export function Switchboard({
                 </tr>
               )
             })}
-            {/* Empty padding rows — visual-only so the table height is stable.
-                aria-hidden so screen readers don't announce N blank rows. */}
             {Array.from({ length: emptyRows }).map((_, i) => (
               <tr key={`empty-${i}`} aria-hidden="true" role="presentation">
                 <td style={cellStyle}>&nbsp;</td>
                 <td style={cellStyle}>&nbsp;</td>
-                {showInternal && <td style={cellStyle}>&nbsp;</td>}
                 <td style={cellStyle}>&nbsp;</td>
                 <td style={cellStyle}>&nbsp;</td>
                 <td style={cellStyle}>&nbsp;</td>
@@ -556,6 +768,18 @@ export function Switchboard({
             ))}
           </tbody>
         </table>
+      )}
+
+      {enriched.length > 0 && isInternal && (
+        <InternalCablesTable
+          enriched={enriched}
+          cables={cables}
+          sysColor={sysColor}
+          thStyle={thStyle}
+          onAddCable={onAddCable}
+          onRemoveCable={onRemoveCable}
+          t={t}
+        />
       )}
 
       {libraryOpen && (

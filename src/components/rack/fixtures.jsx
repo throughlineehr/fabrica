@@ -105,10 +105,12 @@ export function Knob({ id, label, value, range = [0, 1], step, unit, color: acce
 // The cable layer finds jacks by data attribute. Position is read from the
 // rendered element's getBoundingClientRect at frame time.
 
-export function Jack({ id, label, kind, port, color: accentKey, processorInstanceId }) {
+export function Jack({ id, label, kind, port, color: accentKey, processorInstanceId, disabled = false }) {
   const t = useA11yType()
   const accent = resolveAccent(accentKey)
   // Jack visual: 22px outer, 10px hollow center (donut)
+  // Disabled state: muted fill/stroke, no pointer events (so the rack's
+  // capture-phase pointerdown listener never sees a jack hit), cursor not-allowed.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, width: '100%', height: '100%' }}>
       <button
@@ -117,17 +119,21 @@ export function Jack({ id, label, kind, port, color: accentKey, processorInstanc
         data-jack-kind={kind}
         data-jack-port={port}
         data-jack-instance={processorInstanceId}
-        aria-label={`${label || id}, ${kind}`}
+        data-jack-disabled={disabled ? 'true' : undefined}
+        aria-label={`${label || id}, ${kind}${disabled ? ' (disabled, broadcast on)' : ''}`}
+        aria-disabled={disabled || undefined}
         style={{
           width: 22, height: 22,
           minWidth: 22, minHeight: 22,
           borderRadius: '50%',
-          background: accent.fill,
+          background: disabled ? color.surfaceMuted : accent.fill,
           border: 'none',
           padding: 0,
-          cursor: 'crosshair',
+          cursor: disabled ? 'not-allowed' : 'crosshair',
+          pointerEvents: disabled ? 'none' : undefined,
+          opacity: disabled ? 0.5 : 1,
           position: 'relative',
-          boxShadow: `inset 0 0 0 2px ${accent.stroke}`,
+          boxShadow: `inset 0 0 0 2px ${disabled ? color.border : accent.stroke}`,
         }}
       >
         <span aria-hidden="true" style={{

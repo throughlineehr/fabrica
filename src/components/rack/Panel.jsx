@@ -14,7 +14,7 @@
 import { useA11yType } from '../../hooks/useA11yType'
 import { color } from '../../styles'
 import {
-  HP, BODY_ROWS, PANEL_HEIGHT, PANEL_TITLE_STRIP, PANEL_FOOT_STRIP,
+  HP, BODY_ROWS, PANEL_HEIGHT, PANEL_TITLE_STRIP, PANEL_FOOT_STRIP, PANEL_BROADCAST_STRIP,
   fixtureSize, validatePanel,
 } from './panelSchema'
 import {
@@ -39,7 +39,7 @@ function getAccent(key) {
 
 // --- Fixture dispatch -----------------------------------------------------
 
-function FixtureNode({ f, instance, state, onConfigChange, onAction, processorInstanceId, panelAccent }) {
+function FixtureNode({ f, instance, state, onConfigChange, onAction, processorInstanceId, panelAccent, jackDisabled }) {
   const colorKey = f.color || panelAccent
 
   // Resolve binding to a value (read-only)
@@ -66,7 +66,8 @@ function FixtureNode({ f, instance, state, onConfigChange, onAction, processorIn
         color={colorKey} readOnly={readOnly} onChange={onChange} />
     case 'jack':
       return <Jack id={f.id} label={f.label} kind={f.kind} port={f.port}
-        color={colorKey} processorInstanceId={processorInstanceId} />
+        color={colorKey} processorInstanceId={processorInstanceId}
+        disabled={jackDisabled && f.kind === 'output'} />
     case 'toggle':
       return <Toggle id={f.id} label={f.label} value={value ?? f.default ?? false}
         options={f.options} readOnly={readOnly} onChange={onChange} />
@@ -124,6 +125,9 @@ export function Panel({
   const bg = BG_TOKEN[manifest.bg] || color.surface
   const fg = BODY_TEXT[manifest.bg] || color.primary
 
+  const broadcast = Boolean(instance?.config?.broadcast)
+  const setBroadcast = (next) => onConfigChange?.({ broadcast: next })
+
   return (
     <div
       role="group"
@@ -162,6 +166,46 @@ export function Panel({
         }} />
       </div>
 
+      {/* Broadcast strip — sits above the body so it reads as a header for
+          the output region. Empty for processors without outputs (kept for
+          consistent panel heights across the rack). */}
+      <div style={{
+        height: PANEL_BROADCAST_STRIP,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: color.surfaceMuted,
+        borderBottom: `1px solid ${color.border}`,
+        padding: '0 8px',
+      }}>
+        {processorDef.hasOutputs ? (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={broadcast}
+            aria-label="Broadcast outputs to all room terminals"
+            onClick={() => setBroadcast(!broadcast)}
+            style={{
+              ...t.mono, fontSize: 10,
+              padding: '2px 10px',
+              background: broadcast ? color.primary : color.white,
+              color: broadcast ? color.white : color.primary,
+              border: `1.5px solid ${color.primary}`,
+              cursor: 'pointer',
+              textTransform: 'uppercase', letterSpacing: '0.08em',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            <span aria-hidden="true" style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: broadcast ? color.white : 'transparent',
+              border: `1.5px solid ${broadcast ? color.white : color.primary}`,
+            }} />
+            broadcast
+          </button>
+        ) : (
+          <span style={{ ...t.mono, fontSize: 9, color: color.muted, opacity: 0.5 }}>—</span>
+        )}
+      </div>
+
       {/* Body grid */}
       <div style={{
         flex: 1, position: 'relative',
@@ -187,6 +231,7 @@ export function Panel({
                 onAction={onAction}
                 processorInstanceId={instance?.id}
                 panelAccent={manifest.accent}
+                jackDisabled={broadcast}
               />
             </div>
           )

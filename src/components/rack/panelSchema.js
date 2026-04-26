@@ -8,12 +8,13 @@
 // (informally) `defaultConfig`/`stateSchema` — anything missing is an
 // issue.
 
-export const PANEL_HEIGHT = 360
 export const PANEL_TITLE_STRIP = 28
 export const PANEL_FOOT_STRIP = 16
-export const PANEL_BODY_HEIGHT = PANEL_HEIGHT - PANEL_TITLE_STRIP - PANEL_FOOT_STRIP
+export const PANEL_BROADCAST_STRIP = 24
 export const HP = 24
-export const BODY_ROWS = Math.floor(PANEL_BODY_HEIGHT / HP) // 13
+export const BODY_ROWS = 13
+export const PANEL_BODY_HEIGHT = BODY_ROWS * HP // 312
+export const PANEL_HEIGHT = PANEL_TITLE_STRIP + PANEL_BROADCAST_STRIP + PANEL_BODY_HEIGHT + PANEL_FOOT_STRIP // 380
 export const MIN_WIDTH_HP = 4
 export const MAX_WIDTH_HP = 24
 

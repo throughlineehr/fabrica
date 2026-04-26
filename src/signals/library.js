@@ -43,11 +43,11 @@ function withOutputRouting(signal, filters) {
 const HEARTBEAT = {
   id: 'heartbeat',
   name: 'Heartbeat',
-  description: 'Emits a metric signal on a regular interval. Source only — no inputs functionally bound; control inputs reserved.',
+  description: 'Emits a metric signal on a regular interval. Source only — no inputs.',
   hasInputs: false,
   hasOutputs: true,
   ports: {
-    inputs: FOUR_INPUTS,
+    inputs: [],
     outputs: Array.from({ length: 8 }, (_, i) => ({
       id: `out${i + 1}`, label: String(i + 1),
       emits: { types: ['metric'], tags: [] },
@@ -60,12 +60,10 @@ const HEARTBEAT = {
     bg: 'mid',
     accent: 's1',
     fixtures: [
-      ...FOUR_INPUT_FIXTURES('s1'),
-      // Centred large rate knob
-      { type: 'knob',  id: 'rate', x: 2, y: 3, size: 'lg',
+      // Source-only processor — no input jacks rendered.
+      { type: 'knob', id: 'rate', x: 2, y: 1, size: 'lg',
         bind: 'config.intervalMs', range: [100, 10000], step: 100, unit: 'ms', label: 'rate' },
-      // Beat LED next to the knob
-      { type: 'led',   id: 'beat', x: 6, y: 4, bind: 'state.beat', color: 's1', label: 'beat' },
+      { type: 'led',  id: 'beat', x: 6, y: 2, bind: 'state.beat', color: 's1', label: 'beat' },
       // 8 outputs in a 4×2 grid at the bottom
       { type: 'jack', id: 'jout1', x: 0, y: 9,  kind: 'output', port: 'out1', color: 's1', label: '1' },
       { type: 'jack', id: 'jout2', x: 2, y: 9,  kind: 'output', port: 'out2', color: 's1', label: '2' },
@@ -219,7 +217,7 @@ const WEBSOCKET_TRANSDUCER = {
   hasInputs: false,
   hasOutputs: true,
   ports: {
-    inputs: FOUR_INPUTS,
+    inputs: [],
     outputs: [
       { id: 'out', label: 'out', emits: { types: null, tags: ['transducer', 'websocket'] } },
     ],
@@ -240,20 +238,20 @@ const WEBSOCKET_TRANSDUCER = {
     bg: 'mid',
     accent: 's1',
     fixtures: [
-      ...FOUR_INPUT_FIXTURES('s1'),
-      { type: 'textInput', id: 'url',    x: 0, y: 3, w: 8, h: 1,
+      // Source-only processor — no input jacks rendered.
+      { type: 'textInput', id: 'url',    x: 0, y: 1, w: 8, h: 1,
         bind: 'config.url', placeholder: 'ws://...', label: 'url' },
-      { type: 'dropdown',  id: 'parse',  x: 0, y: 5, w: 4, h: 1,
+      { type: 'dropdown',  id: 'parse',  x: 0, y: 3, w: 4, h: 1,
         bind: 'config.parse', options: [{ value: 'text', label: 'text' }, { value: 'json', label: 'json' }], label: 'parse' },
-      { type: 'dropdown',  id: 'sigType',x: 4, y: 5, w: 4, h: 1,
+      { type: 'dropdown',  id: 'sigType',x: 4, y: 3, w: 4, h: 1,
         bind: 'config.signalType', options: [
           { value: 'metric',    label: 'metric' },
           { value: 'event',     label: 'event' },
           { value: 'narrative', label: 'narrative' },
           { value: 'alert',     label: 'alert' },
         ], label: 'type' },
-      { type: 'led',       id: 'conn',   x: 1, y: 8, bind: 'state.connected', color: 's1', label: 'conn' },
-      { type: 'display',   id: 'count',  x: 2, y: 8, w: 5, h: 1, bind: 'state.msgCount', label: 'msgs' },
+      { type: 'led',       id: 'conn',   x: 1, y: 6, bind: 'state.connected', color: 's1', label: 'conn' },
+      { type: 'display',   id: 'count',  x: 2, y: 6, w: 5, h: 1, bind: 'state.msgCount', label: 'msgs' },
       { type: 'jack',      id: 'jout',   x: 3, y: 11, kind: 'output', port: 'out', color: 's1', label: 'out' },
     ],
   },
