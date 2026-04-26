@@ -133,7 +133,11 @@ export function CableTerminal({ terminal, active, onClick, tuning, connections, 
           borderRadius: '50%',
         }}
       >
-        {/* Cable SVG — positioned at dot center, overflows in all directions */}
+        {/* Cable SVG — positioned at dot center, overflows in all directions.
+            Two stacked paths: a wider dark stroke acts as outline, the
+            colored stroke fills it. Combined with the dot's outer ring,
+            the terminal reads as one continuous shape with one outline,
+            not two separate pieces. */}
         <svg style={{
           position: 'absolute',
           left: 0, top: 0,
@@ -145,6 +149,15 @@ export function CableTerminal({ terminal, active, onClick, tuning, connections, 
           <path
             d={cablePath(terminal.wall, BEND, VISIBLE)}
             fill="none"
+            stroke={c.stroke}
+            strokeWidth={CABLE_THICKNESS + 4}
+            strokeLinecap="butt"
+            strokeLinejoin="round"
+            transform={`translate(${TERMINAL_SIZE / 2}, ${TERMINAL_SIZE / 2})`}
+          />
+          <path
+            d={cablePath(terminal.wall, BEND, VISIBLE)}
+            fill="none"
             stroke={cableColor}
             strokeWidth={CABLE_THICKNESS}
             strokeLinecap="butt"
@@ -153,17 +166,19 @@ export function CableTerminal({ terminal, active, onClick, tuning, connections, 
           />
         </svg>
 
-        {/* Dot — fill is the channel color; an inset ring in c.stroke carries
-            the WCAG 1.4.11 contrast for low-luminance fills (notably audit
-            yellow). For high-contrast fills (deep blue, red, etc.) the ring
-            blends visually with the fill and reads as a subtle inner edge. */}
+        {/* Dot — fill is the channel color; an outset 2px ring in c.stroke
+            wraps the dot AND aligns with the cable's dark outline. The
+            terminal reads as one shape with one continuous border. For
+            audit yellow this carries WCAG 1.4.11 (≥3:1) for the whole
+            component identifier. For high-contrast fills the border is
+            still part of the design — same outline language. */}
         <div aria-hidden="true" style={{
           position: 'relative',
           width: TERMINAL_SIZE,
           height: TERMINAL_SIZE,
           borderRadius: '50%',
           background: cableColor,
-          boxShadow: `inset 0 0 0 2px ${c.stroke}`,
+          boxShadow: `0 0 0 2px ${c.stroke}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
