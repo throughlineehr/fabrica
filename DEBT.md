@@ -136,6 +136,56 @@ listed below.
   prompt editing in the UI yet (only via direct config). Acceptable
   for v1.
 
+## Compound processors (subpatches / racks-within-racks)
+
+Big design direction surfaced 2026-04-26 while riffing on real-time
+numerical processors (Kalman + Holt-Winters wired internally as a
+"Smoothed Forecaster," etc.). Compositions of primitives quickly
+exceed what the user wants to keep wiring in every room — they want
+to declare a sub-rack once and reuse it as a single processor.
+
+Pattern is established in MaxMSP (`p` objects), VCV Rack subpatches,
+Reaktor macros, Pure Data (`pd`), and Bitwig/Ableton device racks. In
+this codebase it's an orthogonal axis to VSM tree recursion: a
+processor's `create()` is replaced by a sub-rack definition with
+declared external ports.
+
+**Two recursions, kept separate:**
+1. VSM recursion — every S1 is its own viable system (tree-of-rooms,
+   already implemented).
+2. Processor recursion — a processor def is either primitive
+   (`create(config, runtime) → handle`) OR composed
+   (`subRack: { processors, cables, exposedInputs, exposedOutputs,
+   exposedParams }`). New territory.
+
+**Open design questions:**
+
+- [ ] **Compound processor data shape.** Extend the def schema with a
+  `subRack` alternative to `create`. Inner cables reference inner
+  instance ids. External ports declare which inner jacks they bind.
+- [ ] **Runtime topology.** Each outer instance gets its own private
+  bag of inner instances; dispatcher can stay flat if instance ids
+  namespace through scoping (e.g., prefix with outer id).
+- [ ] **Parameter exposure.** Inner knobs surface as outer config
+  fields. Need a binding declaration on the def
+  (`exposedParams: [{ outer: 'rate', inner: 'inst-X.config.intervalMs' }]`).
+- [ ] **Drill-in UX.** Existing `openProcessor` → `ProcessorPage` is
+  the natural place: that page becomes the rack-inside view when the
+  processor is composed. Breadcrumb back is mandatory.
+- [ ] **Save-as-library.** User builds a composition in a room, then
+  "Save as Processor" elevates it to a library entry. Needs a
+  declared boundary (which jacks become external ports) and a
+  category/role.
+- [ ] **Versioning.** When a saved composition is edited, what
+  happens to existing instances of it? Snapshot-at-instantiation vs
+  live-template-binding decisions.
+
+**Smallest viable first move.** Don't build the editor yet. Teach the
+runtime + library to support a compound def shape (read-only). Ship
+one or two proof compositions in code (e.g., "Smoothed Forecaster" =
+Kalman + Holt-Winters internally). Once that runs the editor + save-
+as-library is purely a UX follow-up, not a system change.
+
 ## Cable graph / dispatcher (post-B3b)
 
 These are the open items left over from the cable-driven dispatcher
