@@ -122,6 +122,12 @@ the title strip.
 Plugin authors choose:
 - `bg: 'light' | 'mid' | 'dark'` — body background (three locked
   shades from `styles.js` so racks don't become flea markets)
+
+> **Fabrica core convention:** every core processor uses `bg: 'mid'`.
+> Always. Consistency across the canonical set is a hard requirement —
+> a rack of core processors must read as one rack, not a sampler of
+> backgrounds. The `'light'` / `'dark'` options exist for 3rd-party
+> plugins, where stylistic divergence is a feature.
 - `accent: 's1' | 's2' | 's3' | 's4' | 's5' | 'audit' | 'algedonic'` —
   one accent hue from the system palette. Used for the title-strip
   marker, the foot-strip band, and as the default fixture color when

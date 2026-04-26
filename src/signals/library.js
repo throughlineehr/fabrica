@@ -371,7 +371,7 @@ const DIGEST = {
   },
   panel: {
     widthHP: 12,
-    bg: 'dark',
+    bg: 'mid',  // Fabrica core convention: all core processors share one bg.
     accent: 's2',
     fixtures: [
       { type: 'jack',    id: 'in',       x: 1, y: 0, kind: 'input', port: 'in', color: 's3', label: 'in' },
