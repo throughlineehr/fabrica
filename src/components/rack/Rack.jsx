@@ -40,29 +40,34 @@ function jackQuery(instanceId, portId) {
   return `[data-jack-instance="${instanceId}"][data-jack-port="${portId}"]`
 }
 
+// All cable coordinates are in VIEWPORT space (clientX/Y, getBoundingClientRect
+// without subtracting any container offset). The SVG cable layer is rendered
+// position:fixed at the viewport edges, so cables can extend beyond the rack
+// tab's overflow:auto bounds and reach wall terminals or anything else on
+// screen. Each frame's rAF re-reads positions, so cables follow rack panels
+// as they scroll within their wrapper.
+
 function readJackCenter(rackEl, instanceId, portId) {
   if (!rackEl) return null
   const el = rackEl.querySelector(jackQuery(instanceId, portId))
   if (!el) return null
-  const rb = rackEl.getBoundingClientRect()
   const r = el.getBoundingClientRect()
   return {
-    x: r.left - rb.left + r.width / 2,
-    y: r.top - rb.top + r.height / 2,
+    x: r.left + r.width / 2,
+    y: r.top + r.height / 2,
   }
 }
 
 function jackUnderPoint(rackEl, x, y) {
   if (!rackEl) return null
-  // Find any jack within hit radius of (x, y)
+  // x, y are in viewport coords. Find any jack within hit radius.
   const jacks = rackEl.querySelectorAll('[data-jack-id]')
-  const rb = rackEl.getBoundingClientRect()
   let best = null
   let bestD = 24
   for (const el of jacks) {
     const r = el.getBoundingClientRect()
-    const cx = r.left - rb.left + r.width / 2
-    const cy = r.top - rb.top + r.height / 2
+    const cx = r.left + r.width / 2
+    const cy = r.top + r.height / 2
     const d = Math.hypot(cx - x, cy - y)
     if (d < bestD) {
       bestD = d
@@ -221,19 +226,15 @@ export function Rack({
   }, [cables, onRemoveCable])
 
   // ---- mouse move + up while patching ----
+  // Cursor is in viewport coords. The cable layer is fixed-positioned and
+  // anchors are also in viewport coords, so no rackRef offset subtraction.
   useEffect(() => {
     if (!patching || patching.mode !== 'mouse') return
     const onMove = (e) => {
-      const rb = rackRef.current?.getBoundingClientRect()
-      if (!rb) return
-      setPatching(p => p && ({ ...p, cursor: { x: e.clientX - rb.left, y: e.clientY - rb.top } }))
+      setPatching(p => p && ({ ...p, cursor: { x: e.clientX, y: e.clientY } }))
     }
     const onUp = (e) => {
-      const rb = rackRef.current?.getBoundingClientRect()
-      if (!rb) { setPatching(null); return }
-      const x = e.clientX - rb.left
-      const y = e.clientY - rb.top
-      const target = jackUnderPoint(rackRef.current, x, y)
+      const target = jackUnderPoint(rackRef.current, e.clientX, e.clientY)
       if (target && target.kind !== patching.sourceJack.kind &&
           !(target.instanceId === patching.sourceJack.instanceId && target.portId === patching.sourceJack.portId)) {
         commitCable(patching.sourceJack, target)
@@ -320,7 +321,12 @@ export function Rack({
 
         <svg
           aria-hidden="true"
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}
+          style={{
+            position: 'fixed', left: 0, top: 0,
+            width: '100vw', height: '100vh',
+            pointerEvents: 'none', overflow: 'visible',
+            zIndex: 100, // above tab content; below modals (panel z=950, menu z=1100)
+          }}
         >
           {cableSpec.map(cab => {
             const d = frame.paths[cab.id]
