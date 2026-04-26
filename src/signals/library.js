@@ -1030,7 +1030,154 @@ const TEST_EXPLAINER = {
   },
 }
 
-export const PROCESSOR_LIBRARY = [HEARTBEAT, TRACER, LOGGER, WEBSOCKET_TRANSDUCER, DIGEST, TEST_GENERATOR, TEST_EXPLAINER]
+// PERIOD DETECTOR --------------------------------------------------------
+// Autocorrelation-based periodicity detector. Buffers incoming numerical
+// samples and, on each check tick, computes the normalised autocorrelation
+// at lags between minLag and N/2. The strongest peak above `threshold` is
+// declared the detected period; the lag is converted to milliseconds via
+// the buffer's average sample interval.
+//
+// Wire `test-generator.data → period-detector.in` and
+// `period-detector.detection → test-generator.results` to validate the
+// periodicity-test path: with the test generator's `amp` knob > 0 the
+// detector should fire `detection`/`periodic` signals; with `amp` at 0 it
+// should stay silent.
+
+const PERIOD_DETECTOR = {
+  id: 'period-detector',
+  name: 'Period Detector',
+  description: 'Autocorrelation-based periodicity detector. Buffers numerical input and emits a detection signal when a strong periodic component is found above the confidence threshold.',
+  category: 'analysis',
+  hasInputs: true,
+  hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'in', label: 'in', accepts: { types: ['metric'], tags: null } },
+    ],
+    outputs: [
+      { id: 'detection', label: 'detection', emits: { types: ['event'], tags: ['detection', 'periodic'] } },
+    ],
+  },
+  placement: 'any',
+  defaultConfig: {
+    bufferSize: 128,
+    threshold: 0.5,
+    checkIntervalMs: 3000,
+    minPeriodMs: 1000,
+  },
+  panel: {
+    widthHP: 10,
+    bg: 'mid',
+    accent: 's3',
+    fixtures: [
+      { type: 'jack',  id: 'jin', x: 0, y: 0, kind: 'input', port: 'in', color: 's3', label: 'in' },
+      // Tuning knobs
+      { type: 'knob', id: 'threshold',     x: 0, y: 2, size: 'md',
+        bind: 'config.threshold',     range: [0, 1],         step: 0.05, label: 'thr' },
+      { type: 'knob', id: 'bufferSize',    x: 2, y: 2, size: 'md',
+        bind: 'config.bufferSize',    range: [16, 1024],     step: 16,   label: 'buf' },
+      { type: 'knob', id: 'checkIntervalMs', x: 4, y: 2, size: 'md',
+        bind: 'config.checkIntervalMs', range: [500, 30000], step: 500,  unit: 'ms', label: 'rate' },
+      { type: 'knob', id: 'minPeriodMs',   x: 6, y: 2, size: 'md',
+        bind: 'config.minPeriodMs',   range: [200, 60000],   step: 200,  unit: 'ms', label: 'minP' },
+      // Status: LED + numeric readouts (state-binding plumbing pending,
+      // labels still describe the intended view).
+      { type: 'led',     id: 'detected',  x: 1, y: 5, bind: 'state.detected', color: 's3', label: 'det' },
+      { type: 'display', id: 'periodMs',  x: 2, y: 5, w: 4, h: 1, bind: 'state.periodMs',   label: 'period' },
+      { type: 'display', id: 'confidence',x: 6, y: 5, w: 3, h: 1, bind: 'state.confidence', label: 'conf' },
+      { type: 'display', id: 'samples',   x: 0, y: 8, w: 4, h: 1, bind: 'state.samples',    label: 'samples' },
+      // Output
+      { type: 'jack', id: 'jout', x: 4, y: 11, kind: 'output', port: 'detection', color: 's3', label: 'det' },
+    ],
+  },
+  create(config, runtime) {
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    const buffer = [] // {value, timestamp}
+    let timer = null
+
+    const detectPeriod = () => {
+      const N = buffer.length
+      // Need at least 2× minimum-detectable lag worth of samples for
+      // autocorrelation to mean anything.
+      if (N < 32) return null
+
+      const mean = buffer.reduce((s, p) => s + p.value, 0) / N
+      const detrended = buffer.map(p => p.value - mean)
+      const variance = detrended.reduce((s, v) => s + v * v, 0)
+      if (variance === 0) return null
+
+      // Sweep autocorrelation lags from minLag to N/2. minLag = 4 skips
+      // the trivial-and-noisy first few lags. Use the *unbiased* normaliser
+      // (s * N / ((N-k) * variance)) — the biased version
+      // (s / variance) shrinks with lag because the cross-sum has fewer
+      // terms, which can make a 4-sample-period harmonic beat the actual
+      // period at higher lags.
+      const minLag = 4
+      const maxLag = Math.floor(N / 2)
+      let bestLag = 0
+      let bestR = 0
+      for (let k = minLag; k <= maxLag; k++) {
+        let s = 0
+        for (let i = 0; i < N - k; i++) s += detrended[i] * detrended[i + k]
+        const r = (s * N) / ((N - k) * variance)
+        if (r > bestR) { bestR = r; bestLag = k }
+      }
+
+      if (bestR < (config.threshold ?? 0.5)) return null
+
+      const totalSpan = buffer[N - 1].timestamp - buffer[0].timestamp
+      if (totalSpan <= 0) return null
+      const avgInterval = totalSpan / (N - 1)
+      const periodMs = bestLag * avgInterval
+      if (periodMs < (config.minPeriodMs ?? 1000)) return null
+
+      return { periodMs, confidence: bestR, lag: bestLag }
+    }
+
+    const check = () => {
+      const detection = detectPeriod()
+      if (!detection) return
+      const sig = createSignal(
+        'event',
+        {
+          subkind: 'periodic',
+          periodMs: Math.round(detection.periodMs),
+          confidence: Number(detection.confidence.toFixed(3)),
+          samples: buffer.length,
+        },
+        { processorId: instanceId, processorType: 'period-detector', roomNodeId, roomSystemKey },
+      )
+      sig.tags = ['detection', 'periodic']
+      const stamped = appendTrace(sig, {
+        roomNodeId, roomSystemKey,
+        processorId: instanceId, processorType: 'period-detector',
+      })
+      dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'detection' })
+      bus.publish(eventsChannel(instanceId), stamped)
+    }
+
+    return {
+      onInput({ signal }) {
+        if (!signalMatches(signal, filters)) return
+        const value = signal.content?.value
+        if (typeof value !== 'number' || !Number.isFinite(value)) return
+        buffer.push({ value, timestamp: signal.timestamp || Date.now() })
+        const cap = config.bufferSize || 128
+        while (buffer.length > cap) buffer.shift()
+      },
+      start() {
+        if (timer) return
+        timer = setInterval(check, config.checkIntervalMs || 3000)
+      },
+      stop() {
+        if (timer) { clearInterval(timer); timer = null }
+        buffer.length = 0
+      },
+    }
+  },
+}
+
+export const PROCESSOR_LIBRARY = [HEARTBEAT, TRACER, LOGGER, WEBSOCKET_TRANSDUCER, DIGEST, TEST_GENERATOR, TEST_EXPLAINER, PERIOD_DETECTOR]
 
 export function getProcessorDef(defId) {
   return PROCESSOR_LIBRARY.find(p => p.id === defId)
