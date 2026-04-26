@@ -320,7 +320,7 @@ export function Rack({
 
         <svg
           aria-hidden="true"
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}
         >
           {cableSpec.map(cab => {
             const d = frame.paths[cab.id]
