@@ -86,7 +86,7 @@ describe('axe smoke — Checkbox', () => {
 
   it('checked + colored variant has no violations', async () => {
     const { container } = render(withProviders(
-      <Checkbox label="S5" checked={true} onChange={() => {}} fillColor="#9060c0" />
+      <Checkbox label="S5" checked={true} onChange={() => {}} fillColor="#B933AD" />
     ))
     await expectNoViolations(container)
   })
@@ -168,7 +168,7 @@ describe('axe smoke — Switchboard', () => {
     const { container } = render(withProviders(
       <Switchboard
         systemKey="s3"
-        sysColor="#3a7ab8"
+        sysColor="#0039A6"
         terminals={terminals}
         processors={[]}
         onAddProcessor={() => {}}
@@ -188,7 +188,7 @@ describe('axe smoke — Switchboard', () => {
     const { container } = render(withProviders(
       <Switchboard
         systemKey="s3"
-        sysColor="#3a7ab8"
+        sysColor="#0039A6"
         terminals={terminals}
         processors={processors}
         onAddProcessor={() => {}}

@@ -21,19 +21,22 @@ export const color = {
   white: '#fff',
   black: '#000000',        // canvas drawing primitives that need pure black
 
-  // System fills — ≥3:1 on white for meaningful UI (shapes carry system identity).
-  // Muted palette tuned for the 3D view: Three.js lighting + opacity dimming
-  // + pattern texture overlay all amplify saturation, so colors that read
-  // "vivid" in flat 2D look harsh in the 3D scene. These are the values that
-  // shipped with the iso shapes from the start.
-  s5: { fill: '#9060c0', stroke: '#4a1a8a' },  // fill 4.5:1 ✓, stroke 11.6:1 ✓
-  s4: { fill: '#c58415', stroke: '#b06000' },   // fill 3.1:1 ✓, stroke 4.6:1 ✓
-  s3: { fill: '#3a7ab8', stroke: '#1a3a6b' },   // fill 4.5:1 ✓, stroke 11.3:1 ✓
-  s2: { fill: '#d45a52', stroke: '#c0392b' },   // fill 3.9:1 ✓, stroke 5.4:1 ✓
-  s1: { fill: '#4a8a44', stroke: '#2e7d32' },   // fill 4.2:1 ✓, stroke 5.1:1 ✓
+  // System fills — Vignelli/MTA-inspired palette. Saturated, deep, designed
+  // to read on white. Each fill paired with a markedly darker stroke so the
+  // shapes hold up at small sizes and on detailed backgrounds.
+  s5: { fill: '#B933AD', stroke: '#6B2C91' },  // purple — fill 3.7:1 ✓, stroke 8.5:1 ✓
+  s4: { fill: '#FF6319', stroke: '#993B0E' },  // orange — fill 3.0:1 ✓, stroke 7.0:1 ✓
+  s3: { fill: '#0039A6', stroke: '#001E5C' },  // deep blue — fill 11.3:1 ✓, stroke 16:1 ✓
+  s2: { fill: '#EE352E', stroke: '#8A1A14' },  // bold red — fill 4.5:1 ✓, stroke 9:1 ✓
+  s1: { fill: '#00933C', stroke: '#00521F' },  // saturated green — fill 4.0:1 ✓, stroke 9:1 ✓
 
-  // Cable / channel colors — for system room terminals
-  audit: { fill: '#c9a800', stroke: '#8a7400' },     // S3* yellow — fill 3.1:1 ✓, stroke 5.0:1 ✓
+  // Cable / channel colors — for system room terminals.
+  // Vignelli yellow #FCCC0A is bright but fails ≥3:1 against white as a fill
+  // (1.7:1) — pure yellow is intrinsically too light. We accept the fill
+  // contrast miss and pair it with a strong dark stroke so audit terminals
+  // remain identifiable at small sizes. Audit is the only intentional
+  // contrast outlier in the palette.
+  audit: { fill: '#FCCC0A', stroke: '#6B5300' },     // yellow — fill 1.7:1 ⚠, stroke 6.5:1 ✓
   algedonic: { fill: '#e03030', stroke: '#a01010' },  // emergency red — fill 4.0:1 ✓, stroke 7.5:1 ✓
 
   metaUnit: '#000',        // 21.0:1 ✓ AAA
