@@ -153,13 +153,17 @@ export function CableTerminal({ terminal, active, onClick, tuning, connections, 
           />
         </svg>
 
-        {/* Dot */}
+        {/* Dot — fill is the channel color; an inset ring in c.stroke carries
+            the WCAG 1.4.11 contrast for low-luminance fills (notably audit
+            yellow). For high-contrast fills (deep blue, red, etc.) the ring
+            blends visually with the fill and reads as a subtle inner edge. */}
         <div aria-hidden="true" style={{
           position: 'relative',
           width: TERMINAL_SIZE,
           height: TERMINAL_SIZE,
           borderRadius: '50%',
           background: cableColor,
+          boxShadow: `inset 0 0 0 2px ${c.stroke}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

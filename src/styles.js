@@ -36,12 +36,16 @@ export const color = {
   s2: { fill: '#EE352E', stroke: '#8A1A14' },  // red       — fill 4.5:1 ✓, stroke 9.0:1 ✓
   s1: { fill: '#00933C', stroke: '#00521F' },  // green     — fill 4.0:1 ✓, stroke 9.0:1 ✓
 
-  // Cable / channel colors — Beer's audit is canonically yellow. Pure
-  // vivid yellow on white cannot hit ≥3:1 (caps ~1.7:1, yellow's
-  // intrinsic luminance), so audit lives in the amber-orange zone:
-  // hue-shifted toward orange so it doesn't read as muddy gold/brown,
-  // luminance-shifted dark enough to clear the AA contrast bar.
-  audit: { fill: '#b45309', stroke: '#78350f' },     // amber-orange — fill 4.6:1 ✓, stroke 9.5:1 ✓
+  // Cable / channel colors — Beer's audit is canonically vivid yellow.
+  // Vignelli #FCCC0A is the right hue and saturation but only 1.7:1 against
+  // white as a fill (yellow's intrinsic luminance bars it from clearing 3:1).
+  // Pattern: bright yellow fill + dark amber-brown stroke. CableTerminal
+  // renders the stroke as a visible 2px ring around the dot, which carries
+  // the WCAG 1.4.11 contrast (≥3:1 against both fill and background).
+  // Stroke #422006 is amber-950, ~13:1 against white. The component
+  // identifier is the ringed shape, not the fill alone — same trick a road
+  // sign uses to make yellow legible.
+  audit: { fill: '#FCCC0A', stroke: '#422006' },     // vivid yellow + dark ring — fill 1.7:1 (decorative), stroke 13:1 ✓
   algedonic: { fill: '#e03030', stroke: '#a01010' },  // emergency red — fill 4.0:1 ✓, stroke 7.5:1 ✓
 
   metaUnit: '#000',        // 21.0:1 ✓ AAA
