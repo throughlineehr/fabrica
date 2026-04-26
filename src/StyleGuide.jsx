@@ -68,8 +68,8 @@ function RackDemo() {
   const [cables, setCables] = useState([
     {
       id: 'c-demo-1',
-      sourceInstanceId: 'demo-heartbeat', sourcePortId: 'pulse',
-      targetInstanceId: 'demo-tracer',    targetPortId: 'in',
+      source: { kind: 'jack', instanceId: 'demo-heartbeat', portId: 'pulse' },
+      target: { kind: 'jack', instanceId: 'demo-tracer',    portId: 'in' },
       color: color.s1.fill,
     },
   ])
@@ -84,11 +84,7 @@ function RackDemo() {
   }
   const onAddCable = (cab) => {
     const id = 'c-' + Math.random().toString(36).slice(2, 8)
-    // Resolve cable color from the source processor's port
-    const src = instances.find(p => p.id === cab.sourceInstanceId)
-    const port = src?.def?.ports?.outputs?.find(p => p.id === cab.sourcePortId)
-    const c = color.s3.fill
-    setCables(prev => [...prev, { id, ...cab, color: c, port }])
+    setCables(prev => [...prev, { id, ...cab }])
   }
   const onRemoveCable = (id) => setCables(prev => prev.filter(c => c.id !== id))
   return (

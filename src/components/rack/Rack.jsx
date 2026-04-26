@@ -1,13 +1,18 @@
 // Rack — horizontal layout of processor panels at fixed height with a
-// cable layer floating on top.
+// viewport-fixed cable layer floating on top.
 //
 // Spec: PROCESSOR-PANEL-SPEC.md, INTERNAL-WIRING-DESIGN.md.
 //
-// Each processor instance gets its own Panel rendered left-to-right.
-// The rack scrolls horizontally if the combined width exceeds the
-// viewport. Cables are SVG paths on a position:absolute layer that
-// overlays the panel row, drawn with the verlet physics in
-// `wiring/verlet.js`.
+// Cables connect anchor descriptors. Two anchor kinds today:
+//   { kind: 'jack',     instanceId, portId }
+//   { kind: 'terminal', terminalId, nodeId, systemKey }
+//
+// Both kinds expose data attributes on their DOM elements; the cable
+// layer queries the document for them and reads getBoundingClientRect
+// each rAF frame. Coordinates are in viewport space throughout — the
+// SVG layer is position:fixed at viewport (0,0) so cables can extend
+// beyond the rack tab's overflow:auto bounds and reach wall terminals
+// at the room edges.
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { color } from '../../styles'
@@ -32,53 +37,79 @@ const TUNING = {
   cableOpacity: 0.92,
 }
 
-function jackKey(instanceId, portId) {
-  return `${instanceId}::${portId}`
+// ----------------------------------------------------------------------------
+// Anchor descriptor helpers
+// ----------------------------------------------------------------------------
+
+function selectorFor(d) {
+  if (!d) return null
+  if (d.kind === 'jack') {
+    return `[data-jack-instance="${d.instanceId}"][data-jack-port="${d.portId}"]`
+  }
+  if (d.kind === 'terminal') {
+    return `[data-terminal-id="${d.terminalId}"]`
+  }
+  return null
 }
 
-function jackQuery(instanceId, portId) {
-  return `[data-jack-instance="${instanceId}"][data-jack-port="${portId}"]`
-}
-
-// All cable coordinates are in VIEWPORT space (clientX/Y, getBoundingClientRect
-// without subtracting any container offset). The SVG cable layer is rendered
-// position:fixed at the viewport edges, so cables can extend beyond the rack
-// tab's overflow:auto bounds and reach wall terminals or anything else on
-// screen. Each frame's rAF re-reads positions, so cables follow rack panels
-// as they scroll within their wrapper.
-
-function readJackCenter(rackEl, instanceId, portId) {
-  if (!rackEl) return null
-  const el = rackEl.querySelector(jackQuery(instanceId, portId))
+function readAnchorCenter(descriptor) {
+  const sel = selectorFor(descriptor)
+  if (!sel) return null
+  // Query at document level — terminals live OUTSIDE the rack DOM.
+  const el = document.querySelector(sel)
   if (!el) return null
   const r = el.getBoundingClientRect()
-  return {
-    x: r.left + r.width / 2,
-    y: r.top + r.height / 2,
-  }
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
 }
 
-function jackUnderPoint(rackEl, x, y) {
-  if (!rackEl) return null
-  // x, y are in viewport coords. Find any jack within hit radius.
-  const jacks = rackEl.querySelectorAll('[data-jack-id]')
+// Find the anchor (jack OR terminal) under a viewport point. Returns a
+// descriptor with kind + ids + a "polarity" hint ('input'|'output'|'both').
+function anchorUnderPoint(x, y) {
+  const els = document.querySelectorAll('[data-jack-id], [data-terminal-id]')
   let best = null
-  let bestD = 24
-  for (const el of jacks) {
+  let bestD = 28
+  for (const el of els) {
     const r = el.getBoundingClientRect()
     const cx = r.left + r.width / 2
     const cy = r.top + r.height / 2
     const d = Math.hypot(cx - x, cy - y)
-    if (d < bestD) {
-      bestD = d
+    if (d >= bestD) continue
+    bestD = d
+    if (el.hasAttribute('data-terminal-id')) {
       best = {
+        kind: 'terminal',
+        terminalId: el.getAttribute('data-terminal-id'),
+        nodeId: el.getAttribute('data-terminal-node-id'),
+        systemKey: el.getAttribute('data-terminal-system-key'),
+        polarity: 'both',
+        color: el.getAttribute('data-terminal-color') || null,
+      }
+    } else {
+      best = {
+        kind: 'jack',
         instanceId: el.getAttribute('data-jack-instance'),
         portId: el.getAttribute('data-jack-port'),
-        kind: el.getAttribute('data-jack-kind'),
+        polarity: el.getAttribute('data-jack-kind'), // input|output
       }
     }
   }
   return best
+}
+
+// Two anchors are eligible to connect if their polarities are opposite,
+// OR at least one is 'both' (terminals are bidirectional).
+function polaritiesCompatible(a, b) {
+  if (!a || !b) return false
+  if (a.polarity === 'both' || b.polarity === 'both') return true
+  return a.polarity !== b.polarity
+}
+
+function sameAnchor(a, b) {
+  if (!a || !b) return false
+  if (a.kind !== b.kind) return false
+  if (a.kind === 'jack') return a.instanceId === b.instanceId && a.portId === b.portId
+  if (a.kind === 'terminal') return a.terminalId === b.terminalId
+  return false
 }
 
 // ----------------------------------------------------------------------------
@@ -94,153 +125,147 @@ export function Rack({
 }) {
   const t = useA11yType()
   const rackRef = useRef(null)
-  const chainsRef = useRef(new Map()) // cableId -> chain
+  const chainsRef = useRef(new Map())
   const ghostChainRef = useRef(null)
-  const [frame, setFrame] = useState({ paths: {}, ghostPath: null, anchors: {} })
-  const [patching, setPatching] = useState(null) // { sourceJack: {instanceId, portId, kind}, cursor: {x,y}, mode }
+  const [frame, setFrame] = useState({ paths: {}, ghostPath: null })
+  // patching: { source: <descriptor>, cursor: {x,y}, mode } | null
+  const [patching, setPatching] = useState(null)
   const [selectedCable, setSelectedCable] = useState(null)
   const [announce, setAnnounce] = useState('')
-
-  // Build a map cable -> { from, to } anchor jack identifiers
-  const cableSpec = useMemo(() => cables.map(c => ({
-    id: c.id,
-    src: { instanceId: c.sourceInstanceId, portId: c.sourcePortId },
-    dst: { instanceId: c.targetInstanceId, portId: c.targetPortId },
-    color: c.color,
-  })), [cables])
 
   // ---- rAF physics loop ----
   useEffect(() => {
     let raf
     const loop = () => {
-      const rackEl = rackRef.current
-      if (!rackEl) { raf = requestAnimationFrame(loop); return }
-
-      // Anchors
-      const anchors = {}
-      const liveIds = new Set(cableSpec.map(c => c.id))
-      // Drop chains for removed cables
+      // Cable paths
+      const liveIds = new Set(cables.map(c => c.id))
       for (const id of Array.from(chainsRef.current.keys())) {
         if (!liveIds.has(id)) chainsRef.current.delete(id)
       }
-      const cablePaths = {}
-      for (const cab of cableSpec) {
-        const a = readJackCenter(rackEl, cab.src.instanceId, cab.src.portId)
-        const b = readJackCenter(rackEl, cab.dst.instanceId, cab.dst.portId)
+      const paths = {}
+      for (const cab of cables) {
+        const a = readAnchorCenter(cab.source)
+        const b = readAnchorCenter(cab.target)
         if (!a || !b) continue
-        anchors[jackKey(cab.src.instanceId, cab.src.portId)] = a
-        anchors[jackKey(cab.dst.instanceId, cab.dst.portId)] = b
         let chain = chainsRef.current.get(cab.id)
         if (!chain || chain.points.length !== TUNING.segments) {
           chain = makeChain(a, b, TUNING.segments)
           chainsRef.current.set(cab.id, chain)
         }
         stepChain(chain, a, b, TUNING)
-        cablePaths[cab.id] = pathFromPoints(chain.points)
+        paths[cab.id] = { d: pathFromPoints(chain.points), a, b }
       }
 
       // Ghost
-      let ghostPath = null
+      let ghost = null
       if (patching) {
-        const a = readJackCenter(rackEl, patching.sourceJack.instanceId, patching.sourceJack.portId)
+        const a = readAnchorCenter(patching.source)
         const b = patching.cursor
         if (a && b) {
           if (!ghostChainRef.current || ghostChainRef.current.points.length !== TUNING.segments) {
             ghostChainRef.current = makeChain(a, b, TUNING.segments)
           }
           stepChain(ghostChainRef.current, a, b, TUNING)
-          ghostPath = pathFromPoints(ghostChainRef.current.points)
+          ghost = { d: pathFromPoints(ghostChainRef.current.points), a, b }
         }
       } else if (ghostChainRef.current) {
         ghostChainRef.current = null
       }
 
-      setFrame({ paths: cablePaths, ghostPath, anchors })
+      setFrame({ paths, ghostPath: ghost?.d || null, ghostA: ghost?.a, ghostB: ghost?.b })
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
-  }, [cableSpec, patching])
+  }, [cables, patching])
 
-  // ---- commit (declared before patch handlers because they reference it) ----
+  // ---- commit a new cable ----
   const commitCable = useCallback((src, dst) => {
-    // Normalize: source is always the output side
-    const out = src.kind === 'output' ? src : dst
-    const inn = src.kind === 'output' ? dst : src
-    const exists = cables.some(c =>
-      c.sourceInstanceId === out.instanceId && c.sourcePortId === out.portId &&
-      c.targetInstanceId === inn.instanceId && c.targetPortId === inn.portId
-    )
-    if (exists) { setAnnounce('Cable already exists.'); return }
-    onAddCable?.({
-      sourceInstanceId: out.instanceId,
-      sourcePortId: out.portId,
-      targetInstanceId: inn.instanceId,
-      targetPortId: inn.portId,
-    })
-    setAnnounce(`Cable from ${out.portId} to ${inn.portId} created.`)
-  }, [cables, onAddCable])
-
-  // ---- patch start (mouse) on jack ----
-  // Use event delegation at the rack level — when a jack receives pointerdown,
-  // start a patch. Cables already wired to that jack are detached first.
-  const onRackPointerDown = useCallback((e) => {
-    const target = e.target.closest('[data-jack-id]')
-    if (!target) return
-    e.preventDefault()
-    setSelectedCable(null)
-    const instanceId = target.getAttribute('data-jack-instance')
-    const portId = target.getAttribute('data-jack-port')
-    const kind = target.getAttribute('data-jack-kind')
-
-    // If this jack is on an existing cable, detach it; the OTHER end becomes
-    // the patch source, cursor at this jack.
-    const existing = cables.find(c =>
-      (c.sourceInstanceId === instanceId && c.sourcePortId === portId) ||
-      (c.targetInstanceId === instanceId && c.targetPortId === portId)
-    )
-
-    if (existing) {
-      const otherIs = existing.sourceInstanceId === instanceId && existing.sourcePortId === portId
-      const otherInstanceId = otherIs ? existing.targetInstanceId : existing.sourceInstanceId
-      const otherPortId = otherIs ? existing.targetPortId : existing.sourcePortId
-      const otherKind = otherIs ? 'input' : 'output'
-      onRemoveCable?.(existing.id)
-      const here = readJackCenter(rackRef.current, instanceId, portId) || { x: 0, y: 0 }
-      setPatching({
-        sourceJack: { instanceId: otherInstanceId, portId: otherPortId, kind: otherKind },
-        cursor: here,
-        mode: 'mouse',
-      })
-      setAnnounce('Cable detached. Drag to a new jack.')
+    if (!polaritiesCompatible(src, dst) || sameAnchor(src, dst)) {
+      setAnnounce('Cannot connect — incompatible jacks.')
       return
     }
+    // Normalize so the cable's `source` is the output side when one of the
+    // two anchors is a jack with kind='output'. Terminals stay where they
+    // were dropped (their polarity is 'both').
+    let source = src, target = dst
+    if (src.polarity === 'input' && dst.polarity === 'output') {
+      source = dst; target = src
+    }
+    const exists = cables.some(c => sameAnchor(c.source, source) && sameAnchor(c.target, target))
+    if (exists) { setAnnounce('Cable already exists.'); return }
+    const cabColor = src.color || dst.color || color.s3.fill
+    onAddCable?.({ source, target, color: cabColor })
+    setAnnounce('Cable created.')
+  }, [cables, onAddCable])
 
-    const here = readJackCenter(rackRef.current, instanceId, portId) || { x: 0, y: 0 }
-    setPatching({
-      sourceJack: { instanceId, portId, kind },
-      cursor: here,
-      mode: 'mouse',
-    })
-    setAnnounce(`Patching from ${portId}. Drag to a target jack.`)
+  // ---- start a patch (jack OR terminal) ----
+  // Detach the existing cable if any; the OTHER end becomes the source.
+  const startPatch = useCallback((descriptor, cursorClient) => {
+    setSelectedCable(null)
+    const existing = cables.find(c => sameAnchor(c.source, descriptor) || sameAnchor(c.target, descriptor))
+    if (existing) {
+      const otherIsSource = sameAnchor(existing.source, descriptor) ? false : true
+      const survivingEnd = otherIsSource ? existing.source : existing.target
+      onRemoveCable?.(existing.id)
+      const here = readAnchorCenter(descriptor) || cursorClient
+      setPatching({ source: survivingEnd, cursor: here, mode: 'mouse' })
+      setAnnounce('Cable detached. Drag to a new patch point.')
+      return
+    }
+    const here = readAnchorCenter(descriptor) || cursorClient
+    setPatching({ source: descriptor, cursor: here, mode: 'mouse' })
+    setAnnounce('Patching. Drag to a target patch point.')
   }, [cables, onRemoveCable])
 
-  // ---- mouse move + up while patching ----
-  // Cursor is in viewport coords. The cable layer is fixed-positioned and
-  // anchors are also in viewport coords, so no rackRef offset subtraction.
+  // ---- pointerdown event delegation: jacks (within rack) AND terminals
+  //      (anywhere in the document while Rack is mounted) ----
+  useEffect(() => {
+    const onWindowPointerDown = (e) => {
+      // Terminals: capture-phase, document-wide, but only while Rack is mounted.
+      const term = e.target.closest?.('[data-terminal-id]')
+      if (term) {
+        e.preventDefault()
+        e.stopPropagation()
+        const desc = {
+          kind: 'terminal',
+          terminalId: term.getAttribute('data-terminal-id'),
+          nodeId: term.getAttribute('data-terminal-node-id'),
+          systemKey: term.getAttribute('data-terminal-system-key'),
+          polarity: 'both',
+          color: term.getAttribute('data-terminal-color') || null,
+        }
+        startPatch(desc, { x: e.clientX, y: e.clientY })
+        return
+      }
+    }
+    document.addEventListener('pointerdown', onWindowPointerDown, true)
+    return () => document.removeEventListener('pointerdown', onWindowPointerDown, true)
+  }, [startPatch])
+
+  const onRackPointerDown = useCallback((e) => {
+    const jack = e.target.closest('[data-jack-id]')
+    if (!jack) return
+    e.preventDefault()
+    const desc = {
+      kind: 'jack',
+      instanceId: jack.getAttribute('data-jack-instance'),
+      portId: jack.getAttribute('data-jack-port'),
+      polarity: jack.getAttribute('data-jack-kind'),
+    }
+    startPatch(desc, { x: e.clientX, y: e.clientY })
+  }, [startPatch])
+
+  // ---- mouse move + up while patching (cursor is in viewport coords) ----
   useEffect(() => {
     if (!patching || patching.mode !== 'mouse') return
     const onMove = (e) => {
       setPatching(p => p && ({ ...p, cursor: { x: e.clientX, y: e.clientY } }))
     }
     const onUp = (e) => {
-      const target = jackUnderPoint(rackRef.current, e.clientX, e.clientY)
-      if (target && target.kind !== patching.sourceJack.kind &&
-          !(target.instanceId === patching.sourceJack.instanceId && target.portId === patching.sourceJack.portId)) {
-        commitCable(patching.sourceJack, target)
-      } else {
-        setAnnounce('Patch cancelled.')
-      }
+      const target = anchorUnderPoint(e.clientX, e.clientY)
+      if (target) commitCable(patching.source, target)
+      else setAnnounce('Patch cancelled.')
       setPatching(null)
     }
     window.addEventListener('pointermove', onMove)
@@ -249,8 +274,7 @@ export function Rack({
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patching])
+  }, [patching, commitCable])
 
   // ---- delete selected cable ----
   useEffect(() => {
@@ -279,14 +303,11 @@ export function Rack({
     return () => window.removeEventListener('keydown', onKey)
   }, [patching])
 
-  // ---- ghost color from source port's resolved jack color ----
   const ghostColor = useMemo(() => {
     if (!patching) return color.primary
-    const c = cables[0]?.color
-    return c || color.primary
-  }, [patching, cables])
+    return patching.source.color || color.primary
+  }, [patching])
 
-  // ---- render ----
   const totalWidth = processors.reduce((sum, { def }) => sum + (def.panel?.widthHP || 4) * 24, 0)
 
   return (
@@ -318,63 +339,63 @@ export function Rack({
             systemColor={systemColor}
           />
         ))}
-
-        <svg
-          aria-hidden="true"
-          style={{
-            position: 'fixed', left: 0, top: 0,
-            width: '100vw', height: '100vh',
-            pointerEvents: 'none', overflow: 'visible',
-            zIndex: 100, // above tab content; below modals (panel z=950, menu z=1100)
-          }}
-        >
-          {cableSpec.map(cab => {
-            const d = frame.paths[cab.id]
-            const a = frame.anchors[jackKey(cab.src.instanceId, cab.src.portId)]
-            const b = frame.anchors[jackKey(cab.dst.instanceId, cab.dst.portId)]
-            const isSelected = selectedCable === cab.id
-            const stroke = cab.color || color.primary
-            return (
-              <g key={cab.id}>
-                <path
-                  d={d}
-                  fill="none"
-                  stroke={stroke}
-                  strokeWidth={isSelected ? TUNING.cableStrokeSelected : TUNING.cableStroke}
-                  strokeOpacity={isSelected ? 1 : TUNING.cableOpacity}
-                  strokeLinecap="round"
-                  style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
-                  onMouseDown={(e) => { e.stopPropagation(); setSelectedCable(cab.id); setAnnounce('Cable selected. Press Delete to remove.') }}
-                />
-                {a && (<>
-                  <circle cx={a.x} cy={a.y} r={TUNING.endpointRadius} fill={stroke} />
-                  <circle cx={a.x} cy={a.y} r={TUNING.endpointHole} fill={color.white} />
-                </>)}
-                {b && (<>
-                  <circle cx={b.x} cy={b.y} r={TUNING.endpointRadius} fill={stroke} />
-                  <circle cx={b.x} cy={b.y} r={TUNING.endpointHole} fill={color.white} />
-                </>)}
-              </g>
-            )
-          })}
-          {frame.ghostPath && (
-            <>
-              <path
-                d={frame.ghostPath}
-                fill="none"
-                stroke={ghostColor}
-                strokeWidth={TUNING.ghostStroke}
-                strokeOpacity={0.55}
-                strokeLinecap="round"
-              />
-              {patching?.cursor && (<>
-                <circle cx={patching.cursor.x} cy={patching.cursor.y} r={TUNING.endpointRadius} fill={ghostColor} fillOpacity={0.55} />
-                <circle cx={patching.cursor.x} cy={patching.cursor.y} r={TUNING.endpointHole} fill={color.white} />
-              </>)}
-            </>
-          )}
-        </svg>
       </div>
+
+      {/* Cable layer — viewport-fixed so it escapes all ancestor overflow */}
+      <svg
+        aria-hidden="true"
+        style={{
+          position: 'fixed', left: 0, top: 0,
+          width: '100vw', height: '100vh',
+          pointerEvents: 'none', overflow: 'visible',
+          zIndex: 100,
+        }}
+      >
+        {cables.map(cab => {
+          const path = frame.paths[cab.id]
+          if (!path) return null
+          const isSelected = selectedCable === cab.id
+          const stroke = cab.color || color.primary
+          return (
+            <g key={cab.id}>
+              <path
+                d={path.d}
+                fill="none"
+                stroke={stroke}
+                strokeWidth={isSelected ? TUNING.cableStrokeSelected : TUNING.cableStroke}
+                strokeOpacity={isSelected ? 1 : TUNING.cableOpacity}
+                strokeLinecap="round"
+                style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                onMouseDown={(e) => { e.stopPropagation(); setSelectedCable(cab.id); setAnnounce('Cable selected. Press Delete to remove.') }}
+              />
+              <circle cx={path.a.x} cy={path.a.y} r={TUNING.endpointRadius} fill={stroke} />
+              <circle cx={path.a.x} cy={path.a.y} r={TUNING.endpointHole} fill={color.white} />
+              <circle cx={path.b.x} cy={path.b.y} r={TUNING.endpointRadius} fill={stroke} />
+              <circle cx={path.b.x} cy={path.b.y} r={TUNING.endpointHole} fill={color.white} />
+            </g>
+          )
+        })}
+        {frame.ghostPath && frame.ghostA && (
+          <>
+            <path
+              d={frame.ghostPath}
+              fill="none"
+              stroke={ghostColor}
+              strokeWidth={TUNING.ghostStroke}
+              strokeOpacity={0.55}
+              strokeLinecap="round"
+            />
+            <circle cx={frame.ghostA.x} cy={frame.ghostA.y} r={TUNING.endpointRadius} fill={ghostColor} fillOpacity={0.55} />
+            <circle cx={frame.ghostA.x} cy={frame.ghostA.y} r={TUNING.endpointHole} fill={color.white} />
+            {frame.ghostB && (
+              <>
+                <circle cx={frame.ghostB.x} cy={frame.ghostB.y} r={TUNING.endpointRadius} fill={ghostColor} fillOpacity={0.55} />
+                <circle cx={frame.ghostB.x} cy={frame.ghostB.y} r={TUNING.endpointHole} fill={color.white} />
+              </>
+            )}
+          </>
+        )}
+      </svg>
 
       <div role="status" aria-live="polite" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
         {announce}

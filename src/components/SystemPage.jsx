@@ -36,9 +36,12 @@ export function SystemPage({
   if (processors !== prevProcs) {
     setPrevProcs(processors)
     const liveIds = new Set(processors.map(p => p.id))
-    setCables(prev => prev.filter(c =>
-      liveIds.has(c.sourceInstanceId) && liveIds.has(c.targetInstanceId)
-    ))
+    const refsLive = (d) => {
+      if (!d) return false
+      if (d.kind === 'jack') return liveIds.has(d.instanceId)
+      return true // terminals always live as long as the room exists
+    }
+    setCables(prev => prev.filter(c => refsLive(c.source) && refsLive(c.target)))
   }
 
   useEffect(() => {

@@ -31,7 +31,7 @@ function cablePath(wall, bend, visible) {
   }
 }
 
-export function CableTerminal({ terminal, active, onClick, tuning, connections, onNavigate, pulseCount = 0 }) {
+export function CableTerminal({ terminal, active, onClick, tuning, connections, onNavigate, pulseCount = 0, nodeId, systemKey }) {
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const c = resolveColor(terminal.colorKey)
@@ -116,10 +116,19 @@ export function CableTerminal({ terminal, active, onClick, tuning, connections, 
     >
       {!wallSide && labelContent}
 
-      {/* Terminal selection button — dot + SVG cable */}
+      {/* Terminal selection button — dot + SVG cable.
+          Exposes data-terminal-* attributes so the Rack's cable layer
+          can find this terminal as a patch point and attach cables to
+          it. The cable layer also intercepts pointerdown on terminals
+          (capture-phase, document-level) to initiate patches; that
+          takes precedence over the terminal-detail click below. */}
       <button
         type="button"
         className="cable-terminal-button"
+        data-terminal-id={terminal.id}
+        data-terminal-node-id={nodeId}
+        data-terminal-system-key={systemKey}
+        data-terminal-color={c.fill}
         onClick={() => onClick?.(terminal.id)}
         aria-label={`${tr('systemPage.selectTerminal')} ${label}${active ? ` (${tr('systemPage.selected')})` : ''}`}
         title={connections && connections.length > 1 ? connections.map(c => `${c.verb} ${c.name}`).join('\n') : undefined}

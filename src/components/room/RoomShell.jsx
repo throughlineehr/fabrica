@@ -88,7 +88,7 @@ export function RoomShell({ systemKey, nodeId, nodeName, node, tree, onBack, onN
           zIndex: 1,
         }}>
           {topTerminals.map(terminal => (
-            <CableTerminal key={terminal.id} terminal={terminal}
+            <CableTerminal key={terminal.id} terminal={terminal} nodeId={nodeId} systemKey={systemKey}
               active={activeTerminal === terminal.id} onClick={setActiveTerminal} tuning={tuning}
               connections={connections[terminal.id]} onNavigate={onNavigate} />
           ))}
@@ -105,7 +105,7 @@ export function RoomShell({ systemKey, nodeId, nodeName, node, tree, onBack, onN
           zIndex: 1,
         }}>
           {bottomTerminals.map(terminal => (
-            <CableTerminal key={terminal.id} terminal={terminal}
+            <CableTerminal key={terminal.id} terminal={terminal} nodeId={nodeId} systemKey={systemKey}
               active={activeTerminal === terminal.id} onClick={setActiveTerminal} tuning={tuning}
               connections={connections[terminal.id]} onNavigate={onNavigate} />
           ))}
@@ -122,7 +122,7 @@ export function RoomShell({ systemKey, nodeId, nodeName, node, tree, onBack, onN
           zIndex: 1,
         }}>
           {leftTerminals.map(terminal => (
-            <CableTerminal key={terminal.id} terminal={terminal}
+            <CableTerminal key={terminal.id} terminal={terminal} nodeId={nodeId} systemKey={systemKey}
               active={activeTerminal === terminal.id} onClick={setActiveTerminal} tuning={tuning}
               connections={connections[terminal.id]} onNavigate={onNavigate} />
           ))}
@@ -139,7 +139,7 @@ export function RoomShell({ systemKey, nodeId, nodeName, node, tree, onBack, onN
           zIndex: 1,
         }}>
           {rightTerminals.map(terminal => (
-            <CableTerminal key={terminal.id} terminal={terminal}
+            <CableTerminal key={terminal.id} terminal={terminal} nodeId={nodeId} systemKey={systemKey}
               active={activeTerminal === terminal.id} onClick={setActiveTerminal} tuning={tuning}
               connections={connections[terminal.id]} onNavigate={onNavigate} />
           ))}
