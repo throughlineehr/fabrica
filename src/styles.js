@@ -31,7 +31,7 @@ export const color = {
   // teal-toned. Color is paired with shape + label everywhere it carries
   // meaning, so this never has to be the only signal (1.4.1).
   s5: { fill: '#B933AD', stroke: '#6B2C91' },  // purple    — fill 3.7:1 ✓, stroke 8.5:1 ✓
-  s4: { fill: '#FF6319', stroke: '#993B0E' },  // orange    — fill 3.0:1 ✓, stroke 7.0:1 ✓ (Caleb's swap from canonical blue)
+  s4: { fill: '#0039A6', stroke: '#001E5C' },  // blue      — fill 11.3:1 ✓, stroke 16:1 ✓ (Beer canonical)
   s3: { fill: '#0891b2', stroke: '#155e75' },  // cyan      — fill 3.7:1 ✓, stroke 7.4:1 ✓
   s2: { fill: '#EE352E', stroke: '#8A1A14' },  // red       — fill 4.5:1 ✓, stroke 9.0:1 ✓
   s1: { fill: '#00933C', stroke: '#00521F' },  // green     — fill 4.0:1 ✓, stroke 9.0:1 ✓
