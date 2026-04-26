@@ -123,6 +123,49 @@ listed below.
   prompt editing in the UI yet (only via direct config). Acceptable
   for v1.
 
+## Cable graph / dispatcher (post-B3b)
+
+These are the open items left over from the cable-driven dispatcher
+work (commits cf31992 → e9506c8). The dispatcher and pure command/
+query layer are in place and tested; these are the next-level
+refinements.
+
+- [ ] **Broadcast jack semantics — keep jack→jack patches live in
+  broadcast mode.** Today `broadcast=true` visually disables ALL output
+  jacks on the panel. The original direction was "broadcast wins for
+  terminal cables, internal jack→jack stays untouched." Fix: the
+  dispatcher already does the right thing semantically (internal
+  cables fire even in broadcast); the disable should only refuse
+  jack→terminal *new* drops, not block all interaction. ~15 min in
+  `Panel.jsx` + `Rack.jsx` drag-validation.
+
+- [ ] **Live drag validation when starting a patch.** When the user
+  grabs a jack to start a cable, eligible targets should highlight and
+  incompatible ones dim. Two layers of validation:
+    1. *Structural* — terminals refuse jacks from broadcasting
+       processors; jacks of source-only processors don't appear as
+       cable targets; etc.
+    2. *Type compatibility* — port `emits.types`/`accepts.types` must
+       match (null on either side = match anything).
+  Today wiring an incompatible cable silently creates a cable that
+  never carries signal. This is the highest-leverage UX move; also
+  pre-validates connections at the moment they're made.
+
+- [ ] **B3c: cycle diagnostic surfaced as a signal.** When a signal
+  hits the hop cap (32) it's currently dropped silently. Per direction,
+  emit a `type: 'alert'` signal with tags `['dispatcher', 'cycle']` so
+  the cycle is visible in the live feed. Eventual goal: route to
+  nearest S5 algedonic channel. Tabled today since it's lower priority
+  and the algedonic routing is itself a future concern.
+
+- [ ] **Auto-passthrough terminals.** Cross-room flows now require
+  pass-through cables (terminal → terminal) in every intermediate room.
+  Optional flag on a terminal saying "anything arriving here goes out
+  the peer side automatically" would remove the per-room tedium for
+  VSM-canonical multi-hop flows (e.g., S1 → S2 → S3 → S4 → S5
+  recursion-up). Keeps the explicit/visible principle because the
+  passthrough is declared on the terminal, not implicit.
+
 ## Feature Completeness
 
 - [ ] System pages are visual shells — no real data flow, signals,

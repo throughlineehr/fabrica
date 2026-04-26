@@ -22,12 +22,18 @@ import { PANEL_HEIGHT } from './panelSchema'
 import { makeChain, stepChain, pathFromPoints } from '../wiring/verlet'
 
 const TUNING = {
-  segments: 16,
-  iterations: 18,
-  gravity: 0.32,
-  damping: 0.78,
+  // Adaptive segment count: short cables get the floor, long ones get more
+  // segments so the curve stays smooth instead of breaking into visible
+  // straight pieces. minSegments must stay ≥ 4 for the verlet sim to make
+  // sense; pixelsPerSegment is the target spacing.
+  minSegments: 16,
+  maxSegments: 56,
+  pixelsPerSegment: 26,
+  iterations: 20,
+  gravity: 2.2,      // strong fall — was 1.6, still floaty on long cables
+  damping: 0.90,     // velocity preserved frame-to-frame (less drag = heavier feel)
   slack: 1.10,
-  restEpsilon: 0.06,
+  restEpsilon: 0.5,
   restFramesNeeded: 4,
   cableStroke: 8,
   cableStrokeSelected: 10,
@@ -35,6 +41,14 @@ const TUNING = {
   endpointRadius: 9,
   endpointHole: 4,
   cableOpacity: 0.92,
+}
+
+// Pick a segment count proportional to cable length, clamped. We bucket
+// (and only rebuild on a >4-segment delta) so jacks moving by a few pixels
+// don't recreate the chain and lose physics state.
+function computeSegments(a, b, t) {
+  const dist = Math.hypot(b.x - a.x, b.y - a.y)
+  return Math.max(t.minSegments, Math.min(t.maxSegments, Math.round(dist / t.pixelsPerSegment)))
 }
 
 // ----------------------------------------------------------------------------
@@ -148,9 +162,12 @@ export function Rack({
         const a = readAnchorCenter(cab.source)
         const b = readAnchorCenter(cab.target)
         if (!a || !b) continue
+        const targetSegs = computeSegments(a, b, TUNING)
         let chain = chainsRef.current.get(cab.id)
-        if (!chain || chain.points.length !== TUNING.segments) {
-          chain = makeChain(a, b, TUNING.segments)
+        // Rebuild only when segment count differs meaningfully — small
+        // anchor moves shouldn't trash the simulation state.
+        if (!chain || Math.abs(chain.points.length - targetSegs) > 4) {
+          chain = makeChain(a, b, targetSegs)
           chainsRef.current.set(cab.id, chain)
         }
         stepChain(chain, a, b, TUNING)
@@ -163,8 +180,9 @@ export function Rack({
         const a = readAnchorCenter(patching.source)
         const b = patching.cursor
         if (a && b) {
-          if (!ghostChainRef.current || ghostChainRef.current.points.length !== TUNING.segments) {
-            ghostChainRef.current = makeChain(a, b, TUNING.segments)
+          const targetSegs = computeSegments(a, b, TUNING)
+          if (!ghostChainRef.current || Math.abs(ghostChainRef.current.points.length - targetSegs) > 4) {
+            ghostChainRef.current = makeChain(a, b, targetSegs)
           }
           stepChain(ghostChainRef.current, a, b, TUNING)
           ghost = { d: pathFromPoints(ghostChainRef.current.points), a, b }
