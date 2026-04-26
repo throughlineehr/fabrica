@@ -1,15 +1,18 @@
 // Processor library. Each entry is a definition; create() returns a running
 // instance bound to a room.
 //
-// Runtime receives { bus, instanceId, roomNodeId, roomSystemKey, filters }.
-// Filters are applied at the subscribe boundary via signalMatches() so each
-// processor doesn't duplicate the filter check.
+// Runtime receives:
+//   { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters, llm }
+// - bus: live UI feed (eventsChannel) only.
+// - dispatcher: cable-driven routing. Emits go through dispatcher.emit;
+//   inputs are delivered via the handle's onInput method (registered by
+//   the runtime once create() returns).
 //
-// Every processor also publishes its own events to proc:{instanceId}:events
-// for the processor app page to display.
+// Filters apply per processor to type/tag only (terminal-list filtering
+// moved to the cable graph).
 
 import { createSignal, appendTrace, hasTraced } from './signal'
-import { roomChannel, eventsChannel, publishToRoom } from './bus'
+import { eventsChannel } from './bus'
 import { signalMatches } from './filter'
 
 export const SIGNAL_TYPES = ['metric', 'event', 'narrative', 'alert']
@@ -33,11 +36,13 @@ const FOUR_INPUT_FIXTURES = (colorKey) => [
   { type: 'jack', id: 'jin4', x: 6, y: 0, kind: 'input', port: 'in4', color: colorKey, label: '4' },
 ]
 
-// If the instance restricts its outputs to specific terminals, stamp that
-// onto the signal so forwarders route it. Null passes through — broadcast to all.
-function withOutputRouting(signal, filters) {
-  if (!filters?.outputTerminals) return signal
-  return { ...signal, outgoingTerminals: filters.outputTerminals }
+// Helper: emit the same signal on every output port a processor declares.
+// Cables decide which receivers (if any) it reaches; dedup at the receiver
+// handles fan-in collisions.
+function emitOnAllOutputs(def, dispatcher, instanceId, signal) {
+  for (const p of def.ports?.outputs || []) {
+    dispatcher.emit(signal, { fromInstanceId: instanceId, fromPortId: p.id })
+  }
 }
 
 const HEARTBEAT = {
@@ -76,7 +81,7 @@ const HEARTBEAT = {
     ],
   },
   create(config, runtime) {
-    const { bus, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey } = runtime
     let timer = null
 
     const emit = () => {
@@ -89,9 +94,8 @@ const HEARTBEAT = {
         roomNodeId, roomSystemKey,
         processorId: instanceId, processorType: 'heartbeat',
       })
-      const routed = withOutputRouting(stamped, filters)
-      publishToRoom(bus, roomNodeId, roomSystemKey, routed)
-      bus.publish(eventsChannel(instanceId), routed)
+      emitOnAllOutputs(HEARTBEAT, dispatcher, instanceId, stamped)
+      bus.publish(eventsChannel(instanceId), stamped)
     }
 
     return {
@@ -138,27 +142,20 @@ const TRACER = {
     ],
   },
   create(_config, runtime) {
-    const { bus, instanceId, roomNodeId, roomSystemKey, filters } = runtime
-    let unsub = null
-
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
     return {
-      start() {
-        if (unsub) return
-        unsub = bus.subscribe(roomChannel(roomNodeId, roomSystemKey), (signal) => {
-          if (hasTraced(signal, instanceId)) return
-          if (!signalMatches(signal, filters)) return
-          const traced = appendTrace(signal, {
-            roomNodeId, roomSystemKey,
-            processorId: instanceId, processorType: 'tracer',
-          })
-          const routed = withOutputRouting(traced, filters)
-          publishToRoom(bus, roomNodeId, roomSystemKey, routed)
-          bus.publish(eventsChannel(instanceId), routed)
+      onInput({ signal }) {
+        if (hasTraced(signal, instanceId)) return
+        if (!signalMatches(signal, filters)) return
+        const traced = appendTrace(signal, {
+          roomNodeId, roomSystemKey,
+          processorId: instanceId, processorType: 'tracer',
         })
+        emitOnAllOutputs(TRACER, dispatcher, instanceId, traced)
+        bus.publish(eventsChannel(instanceId), traced)
       },
-      stop() {
-        if (unsub) { unsub(); unsub = null }
-      },
+      start() {},
+      stop() {},
     }
   },
 }
@@ -186,20 +183,14 @@ const LOGGER = {
     ],
   },
   create(_config, runtime) {
-    const { bus, instanceId, roomNodeId, roomSystemKey, filters } = runtime
-    let unsub = null
-
+    const { bus, instanceId, filters } = runtime
     return {
-      start() {
-        if (unsub) return
-        unsub = bus.subscribe(roomChannel(roomNodeId, roomSystemKey), (signal) => {
-          if (!signalMatches(signal, filters)) return
-          bus.publish(eventsChannel(instanceId), signal)
-        })
+      onInput({ signal }) {
+        if (!signalMatches(signal, filters)) return
+        bus.publish(eventsChannel(instanceId), signal)
       },
-      stop() {
-        if (unsub) { unsub(); unsub = null }
-      },
+      start() {},
+      stop() {},
     }
   },
 }
@@ -256,7 +247,7 @@ const WEBSOCKET_TRANSDUCER = {
     ],
   },
   create(config, runtime) {
-    const { bus, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey } = runtime
     let socket = null
     let attempts = 0
     let stopRequested = false
@@ -295,9 +286,8 @@ const WEBSOCKET_TRANSDUCER = {
         roomNodeId, roomSystemKey,
         processorId: instanceId, processorType: 'websocket-transducer',
       })
-      const routed = withOutputRouting(stamped, filters)
-      publishToRoom(bus, roomNodeId, roomSystemKey, routed)
-      bus.publish(eventsChannel(instanceId), routed)
+      emitOnAllOutputs(WEBSOCKET_TRANSDUCER, dispatcher, instanceId, stamped)
+      bus.publish(eventsChannel(instanceId), stamped)
     }
 
     const connect = () => {
@@ -423,8 +413,7 @@ const DIGEST = {
     ],
   },
   create(config, runtime) {
-    const { bus, instanceId, roomNodeId, roomSystemKey, filters, llm } = runtime
-    let unsub = null
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters, llm } = runtime
     let buffer = []
     let debounceTimer = null
     let flushing = false
@@ -469,14 +458,15 @@ const DIGEST = {
       return sig
     }
 
-    const emit = (sig) => {
+    // Digest emits on a SPECIFIC output port (themes vs alerts) — they have
+    // different semantics. Pass the portId in.
+    const emit = (sig, portId) => {
       const stamped = appendTrace(sig, {
         roomNodeId, roomSystemKey,
         processorId: instanceId, processorType: 'digest',
       })
-      const routed = withOutputRouting(stamped, filters)
-      publishToRoom(bus, roomNodeId, roomSystemKey, routed)
-      reportEvent(routed)
+      dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: portId })
+      reportEvent(stamped)
     }
 
     const parseThemes = (text) => {
@@ -511,34 +501,29 @@ const DIGEST = {
           { role: 'user', content: JSON.stringify({ signals: userPayload }) },
         ])
         const themes = parseThemes(text)
-        for (const theme of themes) emit(buildThemeSignal(theme, sources))
+        for (const theme of themes) emit(buildThemeSignal(theme, sources), 'themes')
       } catch (err) {
-        emit(buildAlertSignal(String(err.message || err), sources))
+        emit(buildAlertSignal(String(err.message || err), sources), 'alerts')
       } finally {
         flushing = false
       }
     }
 
-    const onSignal = (signal) => {
-      if (hasTraced(signal, instanceId)) return
-      if (!signalMatches(signal, filters)) return
-      buffer.push(signal)
-
-      if (debounceTimer) clearTimeout(debounceTimer)
-      const debounceMs = config.debounceMs ?? 60000
-      debounceTimer = setTimeout(() => flush('debounce'), debounceMs)
-
-      const max = config.maxBuffer ?? 20
-      if (buffer.length >= max) flush('max-buffer')
-    }
-
     return {
-      start() {
-        if (unsub) return
-        unsub = bus.subscribe(roomChannel(roomNodeId, roomSystemKey), onSignal)
+      onInput({ signal }) {
+        if (hasTraced(signal, instanceId)) return
+        if (!signalMatches(signal, filters)) return
+        buffer.push(signal)
+
+        if (debounceTimer) clearTimeout(debounceTimer)
+        const debounceMs = config.debounceMs ?? 60000
+        debounceTimer = setTimeout(() => flush('debounce'), debounceMs)
+
+        const max = config.maxBuffer ?? 20
+        if (buffer.length >= max) flush('max-buffer')
       },
+      start() {},
       stop() {
-        if (unsub) { unsub(); unsub = null }
         if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
         buffer = []
       },

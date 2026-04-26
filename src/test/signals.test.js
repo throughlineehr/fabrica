@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createBus, roomChannel, eventsChannel } from '../signals/bus'
+import { createBus, eventsChannel } from '../signals/bus'
 import { createSignal, appendTrace, hasTraced } from '../signals/signal'
 import { PROCESSOR_LIBRARY, getProcessorDef, canPlaceProcessor } from '../signals/library'
+import { createDispatcher } from '../signals/dispatcher'
+
+const ROOM = 'room-node:s3'
 
 describe('createBus', () => {
   it('delivers published signals to subscribers', () => {
@@ -106,84 +109,96 @@ describe('library metadata', () => {
 })
 
 describe('filters', () => {
-  let bus
-  beforeEach(() => { bus = createBus() })
+  // Wire a logger via the dispatcher and inject signals via a synthetic
+  // emitter cable. Filtering is done by the processor's onInput.
+  function setup(filters) {
+    const bus = createBus()
+    const dispatcher = createDispatcher({ onTerminal: () => {} })
+    const events = []
+    bus.subscribe(eventsChannel('inst-1'), (s) => events.push(s))
+    const logger = getProcessorDef('logger').create({}, {
+      bus, dispatcher, instanceId: 'inst-1', roomNodeId: 'n', roomSystemKey: 's3', filters,
+    })
+    dispatcher.registerProcessor('inst-1', { roomKey: 'n:s3', inputHandler: logger.onInput })
+    dispatcher.registerProcessor('emitter', { roomKey: 'n:s3', inputHandler: () => {} })
+    dispatcher.setCables({
+      'n:s3': [
+        { id: 'c1', source: { kind: 'jack', instanceId: 'emitter', portId: 'out1' },
+                    target: { kind: 'jack', instanceId: 'inst-1', portId: 'in1' } },
+      ],
+    })
+    return {
+      events,
+      send: (sig) => dispatcher.emit(sig, { fromInstanceId: 'emitter', fromPortId: 'out1' }),
+    }
+  }
 
   it('logger filters by type', async () => {
     const { defaultFilters } = await import('../signals/filter')
-    const filters = { ...defaultFilters(), types: ['metric'] }
-    const logger = getProcessorDef('logger').create({}, {
-      bus, instanceId: 'inst-1', roomNodeId: 'n', roomSystemKey: 's3', filters,
-    })
-    const events = []
-    bus.subscribe(eventsChannel('inst-1'), (s) => events.push(s))
-    logger.start()
-    bus.publish(roomChannel('n', 's3'), createSignal('metric', {}, {}))
-    bus.publish(roomChannel('n', 's3'), createSignal('alert', {}, {}))
+    const { events, send } = setup({ ...defaultFilters(), types: ['metric'] })
+    send(createSignal('metric', {}, {}))
+    send(createSignal('alert', {}, {}))
     expect(events).toHaveLength(1)
     expect(events[0].type).toBe('metric')
-    logger.stop()
   })
 
   it('logger filters by tag (signal needs at least one matching tag)', async () => {
     const { defaultFilters } = await import('../signals/filter')
-    const filters = { ...defaultFilters(), tags: ['urgent'] }
-    const logger = getProcessorDef('logger').create({}, {
-      bus, instanceId: 'inst-1', roomNodeId: 'n', roomSystemKey: 's3', filters,
-    })
-    const events = []
-    bus.subscribe(eventsChannel('inst-1'), (s) => events.push(s))
-    logger.start()
+    const { events, send } = setup({ ...defaultFilters(), tags: ['urgent'] })
     const tagged = createSignal('metric', {}, {})
     tagged.tags = ['urgent', 'audit']
-    bus.publish(roomChannel('n', 's3'), tagged)
-    const untagged = createSignal('metric', {}, {})
-    bus.publish(roomChannel('n', 's3'), untagged)
+    send(tagged)
+    send(createSignal('metric', {}, {}))
     expect(events).toHaveLength(1)
-    logger.stop()
   })
-
-  // Removed: 'logger filters by input terminal …'. Terminal-based filtering
-  // moved out of `filters` and into the cable graph (B1). What used to be
-  // filters.inputTerminals=[…] is now expressed as cables from those
-  // terminals into the processor's input jacks.
 })
 
 describe('processor runtime', () => {
-  let bus, runtime
+  let bus, dispatcher, runtime, spy
 
   beforeEach(() => {
     vi.useFakeTimers()
     bus = createBus()
+    dispatcher = createDispatcher({ onTerminal: () => {} })
+    spy = []
+    dispatcher.registerProcessor('spy', {
+      roomKey: ROOM,
+      inputHandler: ({ signal }) => spy.push(signal),
+    })
+    dispatcher.registerProcessor('emitter', {
+      roomKey: ROOM,
+      inputHandler: () => {},
+    })
     runtime = {
-      bus,
+      bus, dispatcher,
       instanceId: 'inst-1',
       roomNodeId: 'room-node',
       roomSystemKey: 's3',
     }
   })
 
-  afterEach(() => {
-    vi.useRealTimers()
-  })
+  afterEach(() => { vi.useRealTimers() })
 
-  it('heartbeat emits on interval to the room channel with a trace entry', () => {
+  it('heartbeat emits per tick; cabled out1 → spy delivers reliably', () => {
     const hb = getProcessorDef('heartbeat').create({ intervalMs: 1000 }, runtime)
-    const received = []
-    bus.subscribe(roomChannel('room-node', 's3'), (s) => received.push(s))
+    dispatcher.registerProcessor('inst-1', { roomKey: ROOM, inputHandler: () => {} })
+    dispatcher.setCables({
+      [ROOM]: [
+        { id: 'c1', source: { kind: 'jack', instanceId: 'inst-1', portId: 'out1' },
+                    target: { kind: 'jack', instanceId: 'spy', portId: 'in1' } },
+      ],
+    })
     hb.start()
-    expect(received).toHaveLength(1) // emits immediately on start
+    expect(spy).toHaveLength(1)
     vi.advanceTimersByTime(1000)
-    expect(received).toHaveLength(2)
+    expect(spy).toHaveLength(2)
     vi.advanceTimersByTime(2500)
-    expect(received).toHaveLength(4)
+    expect(spy).toHaveLength(4)
     hb.stop()
     vi.advanceTimersByTime(5000)
-    expect(received).toHaveLength(4)
-    // Each signal carries a trace entry for this room+processor
-    expect(received[0].trace).toHaveLength(1)
-    expect(received[0].trace[0].processorId).toBe('inst-1')
-    expect(received[0].trace[0].roomNodeId).toBe('room-node')
+    expect(spy).toHaveLength(4)
+    expect(spy[0].trace[0].processorId).toBe('inst-1')
+    expect(spy[0].trace[0].roomNodeId).toBe('room-node')
   })
 
   it('heartbeat also logs to its events channel', () => {
@@ -195,63 +210,66 @@ describe('processor runtime', () => {
     hb.stop()
   })
 
-  it('tracer stamps passing signals and forwards without looping', () => {
+  it('tracer stamps passing signals and forwards via cables', () => {
     const tracer = getProcessorDef('tracer').create({}, runtime)
-    const room = roomChannel('room-node', 's3')
-    const received = []
-    bus.subscribe(room, (s) => received.push(s))
-    tracer.start()
-
-    // Publish a fresh signal; tracer should receive, stamp, republish
-    const sig = createSignal('metric', { key: 'x' }, {})
-    bus.publish(room, sig)
-    // received: [sig, tracer-stamped-copy]
-    expect(received.length).toBeGreaterThanOrEqual(2)
-    const stamped = received.find(s => s.trace.some(t => t.processorId === 'inst-1'))
-    expect(stamped).toBeTruthy()
-
-    // No infinite loop — tracer skips its own stamped signal
-    const beforeCount = received.length
-    // Wait a tick-equivalent; synchronous publish already done
-    expect(received.length).toBe(beforeCount)
-    tracer.stop()
+    dispatcher.registerProcessor('inst-1', { roomKey: ROOM, inputHandler: tracer.onInput })
+    dispatcher.setCables({
+      [ROOM]: [
+        { id: 'c0', source: { kind: 'jack', instanceId: 'emitter', portId: 'out1' },
+                    target: { kind: 'jack', instanceId: 'inst-1', portId: 'in1' } },
+        { id: 'c1', source: { kind: 'jack', instanceId: 'inst-1', portId: 'out1' },
+                    target: { kind: 'jack', instanceId: 'spy', portId: 'in1' } },
+      ],
+    })
+    dispatcher.emit(createSignal('metric', { key: 'x' }, {}), { fromInstanceId: 'emitter', fromPortId: 'out1' })
+    expect(spy.length).toBeGreaterThanOrEqual(1)
+    expect(spy[0].trace.some(t => t.processorId === 'inst-1')).toBe(true)
   })
 
   it('tracer skips signals it has already traced', () => {
     const tracer = getProcessorDef('tracer').create({}, runtime)
-    const room = roomChannel('room-node', 's3')
+    dispatcher.registerProcessor('inst-1', { roomKey: ROOM, inputHandler: tracer.onInput })
+    dispatcher.setCables({
+      [ROOM]: [
+        { id: 'c0', source: { kind: 'jack', instanceId: 'emitter', portId: 'out1' },
+                    target: { kind: 'jack', instanceId: 'inst-1', portId: 'in1' } },
+      ],
+    })
     const events = []
     bus.subscribe(eventsChannel('inst-1'), (s) => events.push(s))
-    tracer.start()
-
     const pre = appendTrace(createSignal('event', {}, {}), { processorId: 'inst-1' })
-    bus.publish(room, pre)
-    expect(events).toHaveLength(0) // already traced — no event log entry
-    tracer.stop()
+    dispatcher.emit(pre, { fromInstanceId: 'emitter', fromPortId: 'out1' })
+    expect(events).toHaveLength(0)
   })
 
-  it('logger publishes every room signal to its events channel', () => {
+  it('logger publishes every cabled signal to its events channel', () => {
     const logger = getProcessorDef('logger').create({}, runtime)
-    const room = roomChannel('room-node', 's3')
+    dispatcher.registerProcessor('inst-1', { roomKey: ROOM, inputHandler: logger.onInput })
+    dispatcher.setCables({
+      [ROOM]: [
+        { id: 'c0', source: { kind: 'jack', instanceId: 'emitter', portId: 'out1' },
+                    target: { kind: 'jack', instanceId: 'inst-1', portId: 'in1' } },
+      ],
+    })
     const events = []
     bus.subscribe(eventsChannel('inst-1'), (s) => events.push(s))
-    logger.start()
-    bus.publish(room, createSignal('alert', {}, {}))
-    bus.publish(room, createSignal('metric', {}, {}))
-    expect(events).toHaveLength(2)
-    logger.stop()
-    bus.publish(room, createSignal('event', {}, {}))
+    dispatcher.emit(createSignal('alert', {}, {}), { fromInstanceId: 'emitter', fromPortId: 'out1' })
+    dispatcher.emit(createSignal('metric', {}, {}), { fromInstanceId: 'emitter', fromPortId: 'out1' })
     expect(events).toHaveLength(2)
   })
 
   it('start is idempotent; stop is safe to call without start', () => {
     const hb = getProcessorDef('heartbeat').create({ intervalMs: 1000 }, runtime)
-    const room = roomChannel('room-node', 's3')
-    const received = []
-    bus.subscribe(room, (s) => received.push(s))
+    dispatcher.registerProcessor('inst-1', { roomKey: ROOM, inputHandler: () => {} })
+    dispatcher.setCables({
+      [ROOM]: [
+        { id: 'c1', source: { kind: 'jack', instanceId: 'inst-1', portId: 'out1' },
+                    target: { kind: 'jack', instanceId: 'spy', portId: 'in1' } },
+      ],
+    })
     hb.start()
     hb.start()
-    expect(received).toHaveLength(1)
+    expect(spy).toHaveLength(1)
     hb.stop()
     hb.stop()
     expect(() => hb.stop()).not.toThrow()

@@ -1,195 +1,233 @@
-// End-to-end plumbing tests for the signal system.
+// End-to-end plumbing tests for the signal system, dispatcher edition.
 //
-// No React, no component rendering. Builds a tree via the tree model,
-// computes topology, wires the bus, drops processors into rooms, runs
-// the clock, and asserts signals flow through the expected path.
-//
-// This is the "can you test it from outside the app?" answer — yes.
-// The signal system layers (bus, signal, topology, wiring, library,
-// filter) are plain JS. React lives only at two named edges (BusContext,
-// useSignalLog) that are not under test here.
+// In the cable-driven model, signals only flow where cables (or broadcast)
+// route them. These tests build a small tree, set up the dispatcher with
+// the topology bridge, drop processors with explicit cables, and assert
+// signals reach the expected places.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createModel, addNode } from '../tree/model'
 import { buildRenderTree } from '../tree/index'
-import { createBus, roomChannel, eventsChannel, publishToRoom } from '../signals/bus'
+import { createBus, eventsChannel } from '../signals/bus'
 import { createSignal, appendTrace, hasTraced } from '../signals/signal'
 import { getProcessorDef } from '../signals/library'
-import { computeRoomSubscriptions } from '../signals/topology'
-import { wireTopology } from '../signals/wiring'
+import { computeRoomSubscriptions, enumerateRooms, roomKey, buildRoomTerminals } from '../signals/topology'
+import { findNode } from '../tree/queries'
+import { createDispatcher } from '../signals/dispatcher'
 
-// Build a realistic tree for plumbing tests:
+// Two-children tree for plumbing scenarios:
 //
 //   Root (mgmt)
 //   ├── A (mgmt)
 //   │   └── op-a (operation)
 //   └── B (mgmt)
 //       └── op-b (operation)
-//
-// Topology consequence: A:s3 and B:s3 both subscribe to Root:s3 via
-// s3-parent, and Root:s3 subscribes to both A:s3 and B:s3 via s3-children.
 function twoChildrenTree() {
   let m = createModel('management')
-  m = addNode(m, m.rootId, 'management')           // A
+  m = addNode(m, m.rootId, 'management')
   const aId = m.children[m.rootId][0]
-  m = addNode(m, m.rootId, 'management')           // B
+  m = addNode(m, m.rootId, 'management')
   const bId = m.children[m.rootId][1]
-  m = addNode(m, aId, 'operation')                 // op-a
+  m = addNode(m, aId, 'operation')
   const opA = m.children[aId][0]
-  m = addNode(m, bId, 'operation')                 // op-b
+  m = addNode(m, bId, 'operation')
   const opB = m.children[bId][0]
   return { tree: buildRenderTree(m), rootId: m.rootId, aId, bId, opA, opB }
 }
 
-// Convenience: stand up the full runtime (bus, topology, wiring) and
-// return a teardown fn plus helpers.
+// Stand up bus + dispatcher with topology bridge. `place` registers a
+// processor instance with the dispatcher and starts it.
 function harness() {
-  const { tree, rootId, aId, bId, opA, opB } = twoChildrenTree()
+  const t = twoChildrenTree()
   const bus = createBus()
-  const topo = computeRoomSubscriptions(tree)
-  const cleanups = [wireTopology(bus, topo)]
-  const runtime = (instanceId, roomNodeId, roomSystemKey, filters = {}) => ({
-    bus, instanceId, roomNodeId, roomSystemKey, filters,
+  const topo = computeRoomSubscriptions(t.tree)
+
+  // Forward index: (sourceRoomKey|sourceTerminalId) → peer rooms.
+  const idx = new Map()
+  for (const [targetRoomKey, inbounds] of Object.entries(topo)) {
+    for (const sub of inbounds) {
+      const k = `${sub.sourceRoomKey}|${sub.sourceTerminalId}`
+      if (!idx.has(k)) idx.set(k, [])
+      idx.get(k).push({ targetRoomKey, targetTerminalId: sub.terminalId })
+    }
+  }
+
+  let dispatcher
+  dispatcher = createDispatcher({
+    onTerminal: (fromRoomKey, terminalId, signal, hopCount) => {
+      const peers = idx.get(`${fromRoomKey}|${terminalId}`) || []
+      for (const peer of peers) {
+        dispatcher.deliverFromTerminal(peer.targetRoomKey, peer.targetTerminalId, signal, hopCount)
+      }
+    },
   })
-  const place = (defId, instanceId, roomNodeId, roomSystemKey, { config = {}, filters } = {}) => {
+
+  // Register room terminals so broadcast knows what to fan out to.
+  const terminalsByRoom = {}
+  for (const r of enumerateRooms(t.tree)) {
+    const node = findNode(t.tree, r.nodeId)
+    if (!node) continue
+    terminalsByRoom[roomKey(r.nodeId, r.systemKey)] = buildRoomTerminals(node, r.systemKey, t.tree).map(x => x.id)
+  }
+  dispatcher.setRoomTerminals(terminalsByRoom)
+
+  let cables = {}
+  const setCables = (next) => { cables = next; dispatcher.setCables(cables) }
+
+  const handles = []
+  const place = (defId, instanceId, nodeId, systemKey, { config = {}, filters, broadcast } = {}) => {
     const def = getProcessorDef(defId)
     const handle = def.create(
       { ...(def.defaultConfig || {}), ...config },
-      runtime(instanceId, roomNodeId, roomSystemKey, filters),
+      { bus, dispatcher, instanceId, roomNodeId: nodeId, roomSystemKey: systemKey, filters },
     )
+    // Always register so the dispatcher knows the room (sources need this
+    // to emit; sinks need it to receive).
+    dispatcher.registerProcessor(instanceId, {
+      roomKey: roomKey(nodeId, systemKey),
+      inputHandler: handle.onInput || (() => {}),
+    })
+    if (broadcast) dispatcher.setBroadcast(instanceId, true)
     handle.start()
-    cleanups.push(() => handle.stop())
+    handles.push({ handle, instanceId })
     return handle
   }
-  const tearDown = () => cleanups.forEach(c => c())
-  return { tree, rootId, aId, bId, opA, opB, bus, topo, place, tearDown }
+  const tearDown = () => {
+    for (const { handle, instanceId } of handles) {
+      handle.stop()
+      dispatcher.unregisterProcessor(instanceId)
+    }
+  }
+  return { ...t, bus, dispatcher, place, setCables, tearDown }
 }
 
-describe('signal plumbing (no React)', () => {
+describe('signal plumbing (dispatcher-driven)', () => {
   beforeEach(() => { vi.useFakeTimers() })
   afterEach(() => { vi.useRealTimers() })
 
-  it('heartbeat in child A S3 reaches a logger in root S3', () => {
+  it('broadcast=true on a source fans out to peer rooms via topology', () => {
+    // Heartbeat in A:s3 with broadcast=true sends to all A:s3 terminals.
+    // s3-parent peers with Root:s3's s3-children → logger in Root:s3 receives.
     const h = harness()
     const loggerEvents = []
-    // Place listeners BEFORE the heartbeat so subscribers are live when it
-    // emits its first pulse (the heartbeat emits once synchronously on start).
     h.place('logger', 'log-1', h.rootId, 's3')
     h.bus.subscribe(eventsChannel('log-1'), s => loggerEvents.push(s))
-    h.place('heartbeat', 'hb-1', h.aId, 's3', { config: { intervalMs: 1000 } })
 
-    // Immediate emit at t=0 + one tick at t=1000
+    // Cable from Root:s3's s3-children terminal to the logger's input — so
+    // signals arriving from A's s3-parent reach this logger.
+    h.setCables({
+      [`${h.rootId}:s3`]: [
+        { id: 'c1', source: { kind: 'terminal', terminalId: 's3-children' },
+                    target: { kind: 'jack', instanceId: 'log-1', portId: 'in1' } },
+      ],
+    })
+
+    h.place('heartbeat', 'hb-1', h.aId, 's3', { config: { intervalMs: 1000 }, broadcast: true })
     vi.advanceTimersByTime(1100)
 
-    // Logger sits in root:s3 and root:s3 subscribes to child A:s3 — signal flows.
     expect(loggerEvents.length).toBeGreaterThanOrEqual(2)
-    // Every signal the logger saw originated from the heartbeat.
     for (const sig of loggerEvents) {
       expect(sig.source.processorType).toBe('heartbeat')
       expect(sig.trace.some(t => t.processorId === 'hb-1')).toBe(true)
-      // hops record the root-ward trip
-      expect(sig.hops[0]).toBe(`${h.aId}:s3`)
-      expect(sig.hops).toContain(`${h.rootId}:s3`)
     }
     h.tearDown()
   })
 
-  it('heartbeat → tracer → logger (tracer and logger share a room)', () => {
-    // Plumbing: heartbeat in A:s3 emits every second; tracer AND logger both
-    // sit in Root:s3. The signal arrives at Root:s3 through the A→Root
-    // forwarder, the logger sees it (unstamped at this point), the tracer
-    // sees it and re-publishes with its own trace entry, the logger sees
-    // the tracer-stamped version as a second delivery on the same channel.
-    //
-    // This is the correct place to observe tracer-enrichment: in the room
-    // where the tracer lives. Downstream rooms (B:s3, s4, s5) already received
-    // the original signal via forwarders; delivered[] prevents re-delivery
-    // there, which is the intended loop-prevention behavior of the bus.
+  it('without broadcast and without cables, source stays silent (room is not auto-wired)', () => {
     const h = harness()
     const loggerEvents = []
     h.place('logger', 'log-1', h.rootId, 's3')
-    h.place('tracer', 'tr-1', h.rootId, 's3')
     h.bus.subscribe(eventsChannel('log-1'), s => loggerEvents.push(s))
     h.place('heartbeat', 'hb-1', h.aId, 's3', { config: { intervalMs: 1000 } })
 
     vi.advanceTimersByTime(1100)
-
-    // The logger receives TWO events per heartbeat tick:
-    //   1. original arriving from A:s3 via the forwarder
-    //   2. tracer's stamped re-publish after it added its trace entry
-    const stamped = loggerEvents.filter(s => s.trace.some(t => t.processorId === 'tr-1'))
-    const unstamped = loggerEvents.filter(s => !s.trace.some(t => t.processorId === 'tr-1'))
-    expect(stamped.length).toBeGreaterThan(0)
-    expect(unstamped.length).toBeGreaterThan(0)
-
-    for (const sig of stamped) {
-      // Provenance order in trace: heartbeat first, tracer after.
-      const procOrder = sig.trace.map(t => t.processorId)
-      expect(procOrder).toContain('hb-1')
-      expect(procOrder).toContain('tr-1')
-      expect(procOrder.indexOf('hb-1')).toBeLessThan(procOrder.indexOf('tr-1'))
-      // trace also records each room each processor visited
-      expect(sig.trace.find(t => t.processorId === 'hb-1').roomSystemKey).toBe('s3')
-      expect(sig.trace.find(t => t.processorId === 'tr-1').roomSystemKey).toBe('s3')
-      // hops include both origin and Root rooms
-      expect(sig.hops).toContain(`${h.aId}:s3`)
-      expect(sig.hops).toContain(`${h.rootId}:s3`)
-    }
-
+    expect(loggerEvents).toHaveLength(0)
     h.tearDown()
   })
 
-  it('delivered[] prevents tracer-enriched signals from re-entering already-delivered rooms', () => {
-    // Same topology, but logger is in B:s3 (downstream). The heartbeat's
-    // original signal reaches B:s3 through the forwarder (before the tracer
-    // re-publishes), so delivered[] has B:s3 when the tracer's stamped copy
-    // tries to forward. The stamped copy does NOT reach B:s3 — by design,
-    // loop prevention. Observing the stamp therefore requires looking at
-    // the tracer's own events channel or a listener in the tracer's room.
+  it('explicit jack→jack cable in same room: heartbeat → logger directly', () => {
     const h = harness()
-    const bLoggerEvents = []
-    const tracerEvents = []
-    h.place('logger', 'log-1', h.bId, 's3')
-    h.place('tracer', 'tr-1', h.rootId, 's3')
-    h.bus.subscribe(eventsChannel('log-1'), s => bLoggerEvents.push(s))
-    h.bus.subscribe(eventsChannel('tr-1'), s => tracerEvents.push(s))
-    h.place('heartbeat', 'hb-1', h.aId, 's3', { config: { intervalMs: 1000 } })
+    const loggerEvents = []
+    h.place('logger', 'log-1', h.rootId, 's3')
+    h.bus.subscribe(eventsChannel('log-1'), s => loggerEvents.push(s))
+
+    h.setCables({
+      [`${h.rootId}:s3`]: [
+        { id: 'c1', source: { kind: 'jack', instanceId: 'hb-1', portId: 'out1' },
+                    target: { kind: 'jack', instanceId: 'log-1', portId: 'in1' } },
+      ],
+    })
+    h.place('heartbeat', 'hb-1', h.rootId, 's3', { config: { intervalMs: 1000 } })
 
     vi.advanceTimersByTime(1100)
-
-    // Tracer stamped at least one signal — observable on its own events channel.
-    expect(tracerEvents.length).toBeGreaterThan(0)
-    for (const sig of tracerEvents) {
-      expect(sig.trace.some(t => t.processorId === 'tr-1')).toBe(true)
-    }
-
-    // But B's logger receives ONLY unstamped copies (the original, via forwarder).
-    // The stamped re-publish is blocked by delivered[] from re-entering B:s3.
-    expect(bLoggerEvents.length).toBeGreaterThan(0)
-    for (const sig of bLoggerEvents) {
-      expect(sig.trace.some(t => t.processorId === 'tr-1')).toBe(false)
-    }
-
+    expect(loggerEvents.length).toBeGreaterThanOrEqual(2)
     h.tearDown()
   })
 
-  it('tracer does not re-stamp its own output (loop prevention)', () => {
-    // Place a tracer in Root:s3. Publish a signal into the room. The tracer
-    // stamps it and republishes. The republish fires the same subscribe
-    // callback — but hasTraced catches the loop and the tracer skips.
+  it('tracer stamps signals it sees and forwards to next-hop cables', () => {
     const h = harness()
     const tracerEvents = []
     h.place('tracer', 'tr-1', h.rootId, 's3')
     h.bus.subscribe(eventsChannel('tr-1'), s => tracerEvents.push(s))
 
-    publishToRoom(h.bus, h.rootId, 's3', createSignal('metric', { v: 1 }, {}))
+    h.setCables({
+      [`${h.rootId}:s3`]: [
+        { id: 'c1', source: { kind: 'jack', instanceId: 'hb-1', portId: 'out1' },
+                    target: { kind: 'jack', instanceId: 'tr-1', portId: 'in1' } },
+      ],
+    })
+    h.place('heartbeat', 'hb-1', h.rootId, 's3', { config: { intervalMs: 1000 } })
+
+    vi.advanceTimersByTime(1100)
+    expect(tracerEvents.length).toBeGreaterThan(0)
+    for (const sig of tracerEvents) {
+      const order = sig.trace.map(t => t.processorId)
+      expect(order).toContain('hb-1')
+      expect(order).toContain('tr-1')
+      expect(order.indexOf('hb-1')).toBeLessThan(order.indexOf('tr-1'))
+    }
+    h.tearDown()
+  })
+
+  it('tracer does not re-stamp its own output (hasTraced loop guard)', () => {
+    const h = harness()
+    const tracerEvents = []
+    h.place('tracer', 'tr-1', h.rootId, 's3')
+    h.bus.subscribe(eventsChannel('tr-1'), s => tracerEvents.push(s))
+
+    // Self-loop: tracer's output cabled back to its own input.
+    h.setCables({
+      [`${h.rootId}:s3`]: [
+        { id: 'c1', source: { kind: 'jack', instanceId: 'tr-1', portId: 'out1' },
+                    target: { kind: 'jack', instanceId: 'tr-1', portId: 'in1' } },
+      ],
+    })
+
+    // Inject a signal directly via the dispatcher's deliverFromTerminal-ish
+    // entry point. Simplest: register a synthetic emitter that triggers tracer.
+    h.dispatcher.registerProcessor('synthetic', {
+      roomKey: roomKey(h.rootId, 's3'),
+      inputHandler: () => {},
+    })
+    h.setCables({
+      [`${h.rootId}:s3`]: [
+        { id: 'c0', source: { kind: 'jack', instanceId: 'synthetic', portId: 'out1' },
+                    target: { kind: 'jack', instanceId: 'tr-1', portId: 'in1' } },
+        { id: 'c1', source: { kind: 'jack', instanceId: 'tr-1', portId: 'out1' },
+                    target: { kind: 'jack', instanceId: 'tr-1', portId: 'in1' } },
+      ],
+    })
+
+    h.dispatcher.emit(createSignal('metric', { v: 1 }, {}), { fromInstanceId: 'synthetic', fromPortId: 'out1' })
+
     expect(tracerEvents).toHaveLength(1)
     expect(tracerEvents[0].trace.filter(t => t.processorId === 'tr-1')).toHaveLength(1)
 
+    h.dispatcher.unregisterProcessor('synthetic')
     h.tearDown()
   })
 
-  it('filters gate processor reactions (type + tag)', () => {
+  it('filters gate processor reactions (type only — terminal filtering moved to cables)', () => {
     const h = harness()
     const loggerEvents = []
     h.place('logger', 'log-1', h.rootId, 's3', {
@@ -197,80 +235,28 @@ describe('signal plumbing (no React)', () => {
     })
     h.bus.subscribe(eventsChannel('log-1'), s => loggerEvents.push(s))
 
-    // Emit three different types; only alert should survive.
-    publishToRoom(h.bus, h.rootId, 's3', createSignal('metric', {}, {}))
-    publishToRoom(h.bus, h.rootId, 's3', createSignal('event', {}, {}))
-    publishToRoom(h.bus, h.rootId, 's3', createSignal('alert', {}, {}))
+    h.dispatcher.registerProcessor('synthetic', {
+      roomKey: roomKey(h.rootId, 's3'),
+      inputHandler: () => {},
+    })
+    h.setCables({
+      [`${h.rootId}:s3`]: [
+        { id: 'c0', source: { kind: 'jack', instanceId: 'synthetic', portId: 'out1' },
+                    target: { kind: 'jack', instanceId: 'log-1', portId: 'in1' } },
+      ],
+    })
+
+    h.dispatcher.emit(createSignal('metric', {}, {}), { fromInstanceId: 'synthetic', fromPortId: 'out1' })
+    h.dispatcher.emit(createSignal('event',  {}, {}), { fromInstanceId: 'synthetic', fromPortId: 'out1' })
+    h.dispatcher.emit(createSignal('alert',  {}, {}), { fromInstanceId: 'synthetic', fromPortId: 'out1' })
     expect(loggerEvents).toHaveLength(1)
     expect(loggerEvents[0].type).toBe('alert')
 
-    h.tearDown()
-  })
-
-  it('deleting a node tears down its room forwarders (rewire after tree change)', () => {
-    // Build, wire, record.  Then rebuild the tree WITHOUT B, rewire, and
-    // confirm signals destined for B no longer arrive.
-    const h = harness()
-    const loggerEvents = []
-    h.place('logger', 'log-1', h.bId, 's3')
-    h.bus.subscribe(eventsChannel('log-1'), s => loggerEvents.push(s))
-    h.place('heartbeat', 'hb-1', h.aId, 's3', { config: { intervalMs: 1000 } })
-
-    vi.advanceTimersByTime(1100)
-    const countBefore = loggerEvents.length
-    expect(countBefore).toBeGreaterThan(0)
-
-    // Simulate the App effect: tree mutation → teardown + rewire.
-    // Rebuild the tree as if B were removed.
-    let m2 = createModel('management')
-    m2 = addNode(m2, m2.rootId, 'management')
-    const aIdNew = m2.children[m2.rootId][0]
-    m2 = addNode(m2, aIdNew, 'operation')
-    const tree2 = buildRenderTree(m2)
-    const topo2 = computeRoomSubscriptions(tree2)
-
-    // The processors placed in the OLD tree's rooms keep running — they're
-    // App state, not topology state. The App code removes them on prune, but
-    // the signal layer just changes who's wired to whom.
-    h.tearDown() // drop the OLD wiring
-    const cleanup2 = wireTopology(h.bus, topo2)
-
-    loggerEvents.length = 0
-    vi.advanceTimersByTime(1100)
-    // B's logger is still subscribed to its (now-orphan) events channel, but
-    // no forwarder reaches its room any more — the heartbeat lives in A:s3
-    // of the OLD tree, whose node doesn't exist in tree2. So events should be 0.
-    expect(loggerEvents).toHaveLength(0)
-
-    cleanup2()
-  })
-
-  it('channel names are produced by helpers (no string literals below bus.js)', () => {
-    // Quick contract check: roomChannel and eventsChannel are the only
-    // way to construct these strings. A processor published through the
-    // helpers should end up on the channel the helpers name.
-    const h = harness()
-    const direct = []
-    h.bus.subscribe(roomChannel(h.aId, 's3'), s => direct.push(s))
-    publishToRoom(h.bus, h.aId, 's3', createSignal('event', { v: 'x' }, {}))
-    expect(direct).toHaveLength(1)
-    expect(direct[0].content.v).toBe('x')
-    h.tearDown()
-  })
-
-  it('publishing outside the topology does not crash; no-op delivery', () => {
-    // An orphan publish to a room that doesn't exist in the topology
-    // shouldn't blow up — just no subscribers will hear it.
-    const h = harness()
-    expect(() =>
-      publishToRoom(h.bus, 'not-a-real-node', 's3', createSignal('metric', {}, {}))
-    ).not.toThrow()
+    h.dispatcher.unregisterProcessor('synthetic')
     h.tearDown()
   })
 
   it('signal shape contract: id, trace[], hops[], delivered[], tags[]', () => {
-    // Pure function level — no bus, no topology. Just verifies the shape
-    // a test-author would rely on.
     const sig = createSignal('narrative', { text: 'hello' }, { processorId: 'x' })
     expect(sig.id).toMatch(/[0-9a-f-]+/)
     expect(sig.type).toBe('narrative')
@@ -284,6 +270,6 @@ describe('signal plumbing (no React)', () => {
     const stamped = appendTrace(sig, { processorId: 'p', roomNodeId: 'r', roomSystemKey: 's3' })
     expect(hasTraced(stamped, 'p')).toBe(true)
     expect(hasTraced(stamped, 'q')).toBe(false)
-    expect(sig.trace).toHaveLength(0) // original unchanged (append is immutable on trace)
+    expect(sig.trace).toHaveLength(0)
   })
 })

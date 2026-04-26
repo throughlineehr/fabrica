@@ -1,12 +1,32 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { createBus, roomChannel, eventsChannel } from '../signals/bus'
+import { createBus, eventsChannel } from '../signals/bus'
 import { getProcessorDef } from '../signals/library'
+import { createDispatcher } from '../signals/dispatcher'
+
+const ROOM_KEY = 'node-1:s1'
 
 describe('websocket-transducer', () => {
-  let bus, sockets
+  let bus, dispatcher, sockets, received
 
   beforeEach(() => {
     bus = createBus()
+    dispatcher = createDispatcher({ onTerminal: () => {} })
+    received = []
+    // Spy that captures whatever the transducer emits on its single output.
+    dispatcher.registerProcessor('spy', {
+      roomKey: ROOM_KEY,
+      inputHandler: ({ signal }) => received.push(signal),
+    })
+    // Source-only processor must still be registered so the dispatcher
+    // knows its roomKey when it tries to emit.
+    dispatcher.registerProcessor('i1', { roomKey: ROOM_KEY, inputHandler: () => {} })
+    dispatcher.setCables({
+      [ROOM_KEY]: [
+        { id: 'c1', source: { kind: 'jack', instanceId: 'i1', portId: 'out' },
+                    target: { kind: 'jack', instanceId: 'spy', portId: 'in1' } },
+      ],
+    })
+
     sockets = []
     class FakeWS {
       constructor(url) {
@@ -26,20 +46,19 @@ describe('websocket-transducer', () => {
   afterEach(() => {
     delete globalThis.WebSocket
     vi.useRealTimers()
+    dispatcher.unregisterProcessor('spy')
   })
 
   function build(configOverrides = {}) {
     const def = getProcessorDef('websocket-transducer')
     const inst = def.create(
       { ...def.defaultConfig, url: 'ws://example.test', ...configOverrides },
-      { bus, instanceId: 'i1', roomNodeId: 'node-1', roomSystemKey: 's1', filters: {} },
+      { bus, dispatcher, instanceId: 'i1', roomNodeId: 'node-1', roomSystemKey: 's1', filters: {} },
     )
     return inst
   }
 
   it('emits incoming text messages as event signals into the room', () => {
-    const received = []
-    bus.subscribe(roomChannel('node-1', 's1'), (s) => received.push(s))
     const inst = build()
     inst.start()
     sockets[0].onopen()
@@ -53,8 +72,6 @@ describe('websocket-transducer', () => {
   })
 
   it('parses JSON when parse=json', () => {
-    const received = []
-    bus.subscribe(roomChannel('node-1', 's1'), (s) => received.push(s))
     const inst = build({ parse: 'json' })
     inst.start()
     sockets[0].onopen()

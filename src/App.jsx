@@ -22,11 +22,12 @@ import { callProvider } from './agent/providers'
 import { createAgentAPI } from './agent/commands'
 import { useBus } from './signals/BusContext.jsx'
 import { getProcessorDef } from './signals/library'
-import { computeRoomSubscriptions, enumerateRooms, roomKey as makeRoomKey } from './signals/topology'
-import { wireTopology } from './signals/wiring'
+import { computeRoomSubscriptions, enumerateRooms, roomKey as makeRoomKey, buildRoomTerminals } from './signals/topology'
 import { defaultFilters } from './signals/filter' // used by runtime effect for instances without filters set
+import { createDispatcher } from './signals/dispatcher'
 import { pruneCablesByRoom, pruneCablesByProcessor, pruneProcessorsByRoom } from './commands'
 import { liveProcessorIdsByRoom } from './queries'
+import { findNode } from './tree/queries'
 
 function App() {
   const { epilepsy, toggleEpilepsy, toggleDyslexia, toggleColorBlind, setFontVisibility } = useAccessibility()
@@ -70,19 +71,61 @@ function App() {
     prompt: (messages) => callProvider({ ...aiConfigRef.current, messages }),
   }), [])
 
-  // Compute channel topology from the tree (which rooms subscribe to which).
+  // Compute channel topology from the tree (which rooms peer which terminals).
   const topology = useMemo(() => computeRoomSubscriptions(tree), [tree])
 
-  // Wire the tree's subscriptions onto the bus. Tree changes → teardown + rewire.
+  // Forward index of topology: (sourceRoomKey|sourceTerminalId) → peer rooms.
+  // The dispatcher's onTerminal hook walks this for cross-room hops.
+  const topologyIndexRef = useRef(new Map())
   useEffect(() => {
-    if (!bus) return
-    return wireTopology(bus, topology)
-  }, [bus, topology])
+    const index = new Map()
+    for (const [targetRoomKey, inbounds] of Object.entries(topology)) {
+      for (const sub of inbounds) {
+        const k = `${sub.sourceRoomKey}|${sub.sourceTerminalId}`
+        if (!index.has(k)) index.set(k, [])
+        index.get(k).push({ targetRoomKey, targetTerminalId: sub.terminalId })
+      }
+    }
+    topologyIndexRef.current = index
+  }, [topology])
 
   // Cables — keyed by `${nodeId}:${systemKey}`. Lifted to App so the
   // Switchboard and Rack tabs stay perma-synced (one model, two views).
   // Each cable: { id, source: <descriptor>, target: <descriptor>, color }.
   const [cables, setCables] = useState({})
+
+  // Single dispatcher for the whole app. onTerminal walks the topology
+  // index to bridge across rooms via peer terminals.
+  const dispatcher = useMemo(() => {
+    let self
+    self = createDispatcher({
+      onTerminal: (fromRoomKey, terminalId, signal, hopCount) => {
+        const peers = topologyIndexRef.current.get(`${fromRoomKey}|${terminalId}`) || []
+        for (const peer of peers) {
+          self.deliverFromTerminal(peer.targetRoomKey, peer.targetTerminalId, signal, hopCount)
+        }
+      },
+    })
+    return self
+  }, [])
+
+  // Sync mutable dispatcher state with React state on every change.
+  useEffect(() => { dispatcher.setCables(cables) }, [dispatcher, cables])
+  useEffect(() => {
+    for (const list of Object.values(processors)) {
+      for (const inst of list) dispatcher.setBroadcast(inst.id, !!inst.broadcast)
+    }
+  }, [dispatcher, processors])
+  useEffect(() => {
+    const terminalsByRoom = {}
+    for (const room of enumerateRooms(tree)) {
+      const node = findNode(tree, room.nodeId)
+      if (!node) continue
+      const terms = buildRoomTerminals(node, room.systemKey, tree)
+      terminalsByRoom[makeRoomKey(room.nodeId, room.systemKey)] = terms.map(t => t.id)
+    }
+    dispatcher.setRoomTerminals(terminalsByRoom)
+  }, [dispatcher, tree])
 
   // Prune processors AND cables whose room no longer exists in the tree
   // (node was deleted). Checked during render so the runtime effect below
@@ -105,7 +148,10 @@ function App() {
   }
 
   // Start/stop running instances in sync with the processors state.
-  // Rebuilds all on every change — simple and correct for small counts.
+  // Each processor.create() returns { start, stop, onInput? }. We register
+  // onInput with the dispatcher so cable deliveries reach the processor;
+  // emits flow back through dispatcher.emit. Rebuilds all on every change —
+  // simple and correct for small counts.
   useEffect(() => {
     if (!bus) return
     const running = []
@@ -115,19 +161,30 @@ function App() {
         const def = getProcessorDef(inst.defId)
         if (!def) continue
         const handle = def.create(inst.config || def.defaultConfig || {}, {
-          bus,
+          bus, dispatcher,
           instanceId: inst.id,
           roomNodeId: nodeId,
           roomSystemKey: systemKey,
           filters: inst.filters || defaultFilters(),
           llm,
         })
+        // Register every processor — source-only ones still need the
+        // dispatcher to know their roomKey so emit() can route from them.
+        dispatcher.registerProcessor(inst.id, {
+          roomKey: key,
+          inputHandler: handle.onInput || (() => {}),
+        })
         handle.start()
-        running.push(handle)
+        running.push({ handle, instanceId: inst.id })
       }
     }
-    return () => running.forEach(h => h.stop())
-  }, [bus, processors, llm])
+    return () => {
+      for (const { handle, instanceId } of running) {
+        handle.stop()
+        dispatcher.unregisterProcessor(instanceId)
+      }
+    }
+  }, [bus, dispatcher, processors, llm])
 
   // Processor CRUD flows through the agent API (agentAPI.addProcessor /
   // removeProcessor / updateProcessorFilters). See SystemPage render below.
