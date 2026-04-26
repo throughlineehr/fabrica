@@ -217,7 +217,6 @@ const LOGGER = {
         // navigation. The events channel still drives the in-app feed when
         // the processor page is open.
         const tags = (signal.tags && signal.tags.length) ? ` [${signal.tags.join(',')}]` : ''
-        // eslint-disable-next-line no-console
         console.log(`[logger ${shortId}] ${signal.type}${tags}`, signal)
         bus.publish(eventsChannel(instanceId), signal)
       },
@@ -586,7 +585,11 @@ const TEST_GENERATOR = {
   hasOutputs: true,
   ports: {
     inputs: [
-      { id: 'detections', label: 'detections', accepts: { types: null, tags: ['detection'] } },
+      // Anything arriving here is treated as a candidate detection. Properly
+      // tagged ('detection' + kind) → matched against the ledger. Anything
+      // else → counted as a false positive so a self-loop (data → results)
+      // explodes the FP counter and produces a FAIL verdict.
+      { id: 'results', label: 'results', accepts: { types: null, tags: null } },
     ],
     outputs: [
       { id: 'data',   label: 'data',   emits: { types: ['metric'],    tags: ['testdata'] } },
@@ -611,8 +614,9 @@ const TEST_GENERATOR = {
     bg: 'mid',
     accent: 's4',
     fixtures: [
-      // Detections input at top-left (2x2 due to default jack size).
-      { type: 'jack', id: 'jin', x: 0, y: 0, kind: 'input', port: 'detections', color: 's4', label: 'in' },
+      // Results input at top-left (2x2 due to default jack size). Wire
+      // detector outputs here for the test generator to score.
+      { type: 'jack', id: 'jin', x: 0, y: 0, kind: 'input', port: 'results', color: 's4', label: 'rslt' },
       // Pattern knobs (row y=2-3)
       { type: 'knob', id: 'baseline',        x: 0,  y: 2, size: 'md',
         bind: 'config.baseline',        range: [0, 200],     step: 1,    label: 'base' },
@@ -663,21 +667,86 @@ const TEST_GENERATOR = {
     // matching a currently-active pattern).
     const patternFlags = { trend: false, period: false }
 
-    let counts = { caught: 0, missed: 0, falsePositives: 0, emitted: 0, detectionsReceived: 0 }
+    // FP breakdown so the report can explain *why* a self-loop fails:
+    // malformed = no 'detection' tag at all (raw data signals echoed back)
+    // unkindish = 'detection' tag but no recognised kind tag
+    // hallucinated = detector claimed a continuous pattern that isn't active
+    // unmatched = detection arrived but no nearby ledger entry of that kind
+    let counts = {
+      emitted: 0, detectionsReceived: 0,
+      malformed: 0, unkindish: 0, hallucinated: 0, unmatched: 0,
+    }
+    const totalFalsePositives = () =>
+      counts.malformed + counts.unkindish + counts.hallucinated + counts.unmatched
+
+    const computeVerdict = (test, fp) => {
+      const d = test.discrete
+      const c = test.continuous
+      const dApplicable = d.expected > 0
+      const trendApplicable = c.trend.active
+      const periodApplicable = c.period.active
+      const totalTests = (dApplicable ? d.expected : 0)
+        + (trendApplicable ? 1 : 0) + (periodApplicable ? 1 : 0)
+
+      if (totalTests === 0) {
+        if (fp > 0) return { verdict: 'FAIL', reason: `No tests scheduled but ${fp} false positives received` }
+        return { verdict: 'NO TEST', reason: 'No tests scheduled. Configure trend/period or press step/spike to schedule discrete events.' }
+      }
+      const caught = (dApplicable ? d.caught : 0)
+        + (trendApplicable && c.trend.detected ? 1 : 0)
+        + (periodApplicable && c.period.detected ? 1 : 0)
+      const passRate = caught / totalTests
+
+      if (passRate === 1 && fp === 0) {
+        return { verdict: 'PASS', reason: `${caught}/${totalTests} caught, no false positives` }
+      }
+      if (caught === 0) {
+        return { verdict: 'FAIL', reason: `0/${totalTests} caught${fp ? `, ${fp} false positives` : ''}` }
+      }
+      if (passRate >= 0.5 && fp <= totalTests) {
+        return { verdict: 'PARTIAL', reason: `${caught}/${totalTests} caught${fp ? `, ${fp} false positives` : ''}` }
+      }
+      return { verdict: 'FAIL', reason: `${caught}/${totalTests} caught, ${fp} false positives` }
+    }
 
     const buildReport = () => {
       const runtimeMs = Date.now() - startMs
       const expectedDiscrete = ledger.length
       const caughtDiscrete = ledger.filter(e => e.caught).length
-      const missedDiscrete = ledger.filter(e => !e.caught && (Date.now() - startMs) > e.at + (config.matchToleranceMs || 3000)).length
-      // Recompute counts so the panel + report agree.
-      counts.caught = caughtDiscrete
-      counts.missed = missedDiscrete
+      const missedDiscrete = ledger.filter(e =>
+        !e.caught && (Date.now() - startMs) > e.at + (config.matchToleranceMs || 3000)
+      ).length
+      const pendingDiscrete = expectedDiscrete - caughtDiscrete - missedDiscrete
+
+      const test = {
+        discrete: {
+          expected: expectedDiscrete,
+          caught: caughtDiscrete,
+          missed: missedDiscrete,
+          pending: pendingDiscrete,
+        },
+        continuous: {
+          trend:  { active: config.trendSlope !== 0, detected: patternFlags.trend },
+          period: { active: config.periodAmplitude > 0, detected: patternFlags.period },
+        },
+      }
+      const fp = totalFalsePositives()
+      const { verdict, reason } = computeVerdict(test, fp)
+
       const sig = createSignal(
         'narrative',
         {
           kind: 'test-report',
+          verdict, reason,
           runtimeMs,
+          test,
+          falsePositives: {
+            total: fp,
+            malformed: counts.malformed,
+            unkindish: counts.unkindish,
+            hallucinated: counts.hallucinated,
+            unmatched: counts.unmatched,
+          },
           patterns: {
             baseline: config.baseline,
             noise: config.noise,
@@ -685,25 +754,17 @@ const TEST_GENERATOR = {
             periodAmplitude: config.periodAmplitude,
             periodMs: config.periodMs,
           },
-          continuous: {
-            trendActive: config.trendSlope !== 0,
-            trendDetected: patternFlags.trend,
-            periodActive: config.periodAmplitude > 0,
-            periodDetected: patternFlags.period,
-          },
-          discrete: {
-            expected: expectedDiscrete,
-            caught: caughtDiscrete,
-            missed: missedDiscrete,
-            falsePositives: counts.falsePositives,
-            ledger: ledger.map(e => ({
-              id: e.id, kind: e.kind, at: e.at, magnitude: e.magnitude, caught: e.caught,
-            })),
+          ledger: ledger.map(e => ({
+            id: e.id, kind: e.kind, at: e.at, magnitude: e.magnitude, caught: e.caught,
+          })),
+          counts: {
+            emitted: counts.emitted,
+            detectionsReceived: counts.detectionsReceived,
           },
         },
         { processorId: instanceId, processorType: 'test-generator', roomNodeId, roomSystemKey },
       )
-      sig.tags = ['testdata', 'report']
+      sig.tags = ['testdata', 'report', `verdict:${verdict.toLowerCase().replace(/\s+/g, '-')}`]
       const stamped = appendTrace(sig, { roomNodeId, roomSystemKey, processorId: instanceId, processorType: 'test-generator' })
       dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'report' })
       bus.publish(eventsChannel(instanceId), stamped)
@@ -757,18 +818,34 @@ const TEST_GENERATOR = {
 
     const onInput = ({ signal }) => {
       if (!signalMatches(signal, filters)) return
-      // Detection contract: signal carries 'detection' tag plus a kind tag
-      // (one of step/anomaly/trend/periodic) OR content.kind === 'detection'
-      // with content.subkind set.
-      const tags = signal.tags || []
-      if (!tags.includes('detection')) return
       counts.detectionsReceived += 1
+
+      // Detection contract: signal carries 'detection' tag plus a kind tag
+      // (step/anomaly/trend/periodic). Anything else arriving on the
+      // results port is noise and counts as a false positive — the whole
+      // point is to make a self-loop fail loudly.
+      const tags = signal.tags || []
+      if (!tags.includes('detection')) {
+        counts.malformed += 1
+        return
+      }
       const subkind = tags.find(t => ['step','anomaly','trend','periodic'].includes(t))
                   || signal.content?.subkind
-      if (!subkind) { counts.falsePositives += 1; return }
+      if (!subkind) {
+        counts.unkindish += 1
+        return
+      }
 
-      if (subkind === 'trend') { patternFlags.trend = true; return }
-      if (subkind === 'periodic') { patternFlags.period = true; return }
+      if (subkind === 'trend') {
+        if (config.trendSlope !== 0) patternFlags.trend = true
+        else counts.hallucinated += 1
+        return
+      }
+      if (subkind === 'periodic') {
+        if (config.periodAmplitude > 0) patternFlags.period = true
+        else counts.hallucinated += 1
+        return
+      }
 
       // Discrete: match against unmatched ledger events of the same kind in
       // the recent past.
@@ -782,7 +859,7 @@ const TEST_GENERATOR = {
         candidate.caught = true
         candidate.detectionAt = detectedAt - startMs
       } else {
-        counts.falsePositives += 1
+        counts.unmatched += 1
       }
     }
 
@@ -799,7 +876,10 @@ const TEST_GENERATOR = {
         ledger.length = 0
         patternFlags.trend = false
         patternFlags.period = false
-        counts = { caught: 0, missed: 0, falsePositives: 0, emitted: 0, detectionsReceived: 0 }
+        counts = {
+          emitted: 0, detectionsReceived: 0,
+          malformed: 0, unkindish: 0, hallucinated: 0, unmatched: 0,
+        }
         seq = 0
         startMs = Date.now()
       } else if (action === 'report') {
