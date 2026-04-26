@@ -94,6 +94,19 @@ listed below.
   ones beyond the text label
 - [ ] Terminal detail view minimal — needs richer signal type
   descriptions when data model exists
+- [ ] **Breadcrumbs throughout the application.** The detail view
+  has breadcrumbs but other surfaces (system page, processor page,
+  rack/switchboard tabs, library drawer) don't. Caleb wants the
+  pattern applied consistently so the user always knows where they
+  are and can hop back to any ancestor in one click.
+- [ ] **3D destination preview on terminal hover.** Hovering a wall
+  terminal should pop a small 3D thumbnail of the component the
+  cable leads to (the peer room's owning node) so the user sees the
+  destination before navigating. Reuses the existing iso shape
+  rendering primitives (IsoSquare/IsoEllipse/IsoTriangle/MetaUnit).
+  Anchor next to the terminal, dismiss on mouse-leave or after a
+  short delay; should be quick enough to feel like a tooltip, not
+  a modal.
 
 ## Technical
 
