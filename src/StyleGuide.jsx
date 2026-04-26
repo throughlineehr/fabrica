@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { type, color, ui } from './styles'
 import { Checkbox } from './components/Checkbox'
 import { WiringDemo } from './components/wiring/WiringDemo'
+import { Rack } from './components/rack/Rack'
+import { PROCESSOR_LIBRARY } from './signals/library'
 
 const layout = {
   page: {
@@ -48,6 +50,59 @@ const systemColors = [
   { name: 'S1 Fill', value: color.s1.fill },
   { name: 'S1 Stroke', value: color.s1.stroke },
 ]
+
+// Seed processor instances + demo state for the RACK section.
+// Demo only — no real bus, no real runtime. Shows panels rendering
+// from manifests with realistic-shaped state values.
+function RackDemo() {
+  const defs = PROCESSOR_LIBRARY
+  const [instances, setInstances] = useState(() =>
+    defs.map((def, i) => ({
+      id: `demo-${def.id}`,
+      defId: def.id,
+      def,
+      config: { ...(def.defaultConfig || {}) },
+      _idx: i,
+    })),
+  )
+  const [cables, setCables] = useState([
+    {
+      id: 'c-demo-1',
+      sourceInstanceId: 'demo-heartbeat', sourcePortId: 'pulse',
+      targetInstanceId: 'demo-tracer',    targetPortId: 'in',
+      color: color.s1.fill,
+    },
+  ])
+  const processorState = {
+    'demo-heartbeat':           { beat: true },
+    'demo-logger':              { count: 42, idle: true },
+    'demo-websocket-transducer':{ connected: true, msgCount: 23 },
+    'demo-digest':              { bufferCount: 3, algedonic: false },
+  }
+  const onConfigChange = (instanceId, patch) => {
+    setInstances(prev => prev.map(p => p.id === instanceId ? { ...p, config: { ...p.config, ...patch } } : p))
+  }
+  const onAddCable = (cab) => {
+    const id = 'c-' + Math.random().toString(36).slice(2, 8)
+    // Resolve cable color from the source processor's port
+    const src = instances.find(p => p.id === cab.sourceInstanceId)
+    const port = src?.def?.ports?.outputs?.find(p => p.id === cab.sourcePortId)
+    const c = color.s3.fill
+    setCables(prev => [...prev, { id, ...cab, color: c, port }])
+  }
+  const onRemoveCable = (id) => setCables(prev => prev.filter(c => c.id !== id))
+  return (
+    <Rack
+      processors={instances.map(inst => ({ instance: inst, def: inst.def }))}
+      processorState={processorState}
+      cables={cables}
+      onConfigChange={onConfigChange}
+      onAddCable={onAddCable}
+      onRemoveCable={onRemoveCable}
+      systemColor="s3"
+    />
+  )
+}
 
 export default function StyleGuide() {
   const [demoChecked, setDemoChecked] = useState({ a: true, b: false, c: true, m: true, e: false, n: false, alertKey: true })
@@ -276,6 +331,19 @@ export default function StyleGuide() {
           See <code>INTERNAL-WIRING-DESIGN.md</code> for the full spec.
         </p>
         <WiringDemo />
+      </div>
+
+      <div style={layout.section}>
+        <p style={type.label}>RACK</p>
+        <h2 style={{ ...type.h2, margin: '0 0 8px' }}>Processor panels</h2>
+        <p style={{ ...type.body, marginBottom: 24, maxWidth: 720 }}>
+          The five core processors rendered from their declarative panel
+          manifests. Fixed 360px height, variable widthHP. Drag a jack to
+          another to patch; click a connected jack to detach; click a cable
+          midspan to select, Delete to remove. See{' '}
+          <code>PROCESSOR-PANEL-SPEC.md</code> for the full spec.
+        </p>
+        <RackDemo />
       </div>
 
       <div>

@@ -35,6 +35,17 @@ const HEARTBEAT = {
   },
   placement: 'any',
   defaultConfig: { intervalMs: 3000 },
+  panel: {
+    widthHP: 4,
+    bg: 'mid',
+    accent: 's1',
+    fixtures: [
+      { type: 'knob',  id: 'rate', x: 0, y: 1, size: 'lg',
+        bind: 'config.intervalMs', range: [100, 10000], step: 100, unit: 'ms', label: 'rate' },
+      { type: 'led',   id: 'beat', x: 1, y: 5, bind: 'state.beat', color: 's1', label: 'beat' },
+      { type: 'jack',  id: 'out',  x: 1, y: 8, kind: 'output', port: 'pulse', color: 's1', label: 'out' },
+    ],
+  },
   create(config, runtime) {
     const { bus, instanceId, roomNodeId, roomSystemKey, filters } = runtime
     let timer = null
@@ -83,6 +94,16 @@ const TRACER = {
   },
   placement: 'any',
   defaultConfig: {},
+  panel: {
+    widthHP: 4,
+    bg: 'mid',
+    accent: 's3',
+    fixtures: [
+      { type: 'jack',    id: 'in',    x: 1, y: 0, kind: 'input',  port: 'in',  color: 's3', label: 'in' },
+      { type: 'divider', id: 'd',     x: 0, y: 5, w: 4, h: 1, orient: 'h' },
+      { type: 'jack',    id: 'out',   x: 1, y: 8, kind: 'output', port: 'out', color: 's3', label: 'out' },
+    ],
+  },
   create(_config, runtime) {
     const { bus, instanceId, roomNodeId, roomSystemKey, filters } = runtime
     let unsub = null
@@ -123,6 +144,16 @@ const LOGGER = {
   },
   placement: 'any',
   defaultConfig: {},
+  panel: {
+    widthHP: 4,
+    bg: 'mid',
+    accent: 's4',
+    fixtures: [
+      { type: 'jack',    id: 'in',    x: 1, y: 0, kind: 'input', port: 'in', color: 's4', label: 'in' },
+      { type: 'display', id: 'count', x: 0, y: 4, w: 4, h: 2, bind: 'state.count', label: 'events' },
+      { type: 'led',     id: 'idle',  x: 1, y: 9, bind: 'state.idle', color: 's4', label: 'idle' },
+    ],
+  },
   create(_config, runtime) {
     const { bus, instanceId, roomNodeId, roomSystemKey, filters } = runtime
     let unsub = null
@@ -170,6 +201,27 @@ const WEBSOCKET_TRANSDUCER = {
     signalType: 'event',   // metric | event | narrative | alert
     tags: [],
     reconnect: { maxAttempts: 10, baseDelayMs: 500, maxDelayMs: 30000 },
+  },
+  panel: {
+    widthHP: 8,
+    bg: 'mid',
+    accent: 's1',
+    fixtures: [
+      { type: 'textInput', id: 'url',    x: 0, y: 0, w: 8, h: 1,
+        bind: 'config.url', placeholder: 'ws://...', label: 'url' },
+      { type: 'dropdown',  id: 'parse',  x: 0, y: 3, w: 4, h: 1,
+        bind: 'config.parse', options: [{ value: 'text', label: 'text' }, { value: 'json', label: 'json' }], label: 'parse' },
+      { type: 'dropdown',  id: 'sigType',x: 4, y: 3, w: 4, h: 1,
+        bind: 'config.signalType', options: [
+          { value: 'metric',    label: 'metric' },
+          { value: 'event',     label: 'event' },
+          { value: 'narrative', label: 'narrative' },
+          { value: 'alert',     label: 'alert' },
+        ], label: 'type' },
+      { type: 'led',       id: 'conn',   x: 1, y: 6, bind: 'state.connected', color: 's1', label: 'conn' },
+      { type: 'display',   id: 'count',  x: 3, y: 6, w: 5, h: 1, bind: 'state.msgCount', label: 'msgs' },
+      { type: 'jack',      id: 'out',    x: 5, y: 9, kind: 'output', port: 'out', color: 's1', label: 'out' },
+    ],
   },
   create(config, runtime) {
     const { bus, instanceId, roomNodeId, roomSystemKey, filters } = runtime
@@ -316,6 +368,22 @@ const DIGEST = {
     maxBuffer: 5,
     systemPrompt: DIGEST_DEFAULT_PROMPT,
     tags: [],
+  },
+  panel: {
+    widthHP: 12,
+    bg: 'dark',
+    accent: 's2',
+    fixtures: [
+      { type: 'jack',    id: 'in',       x: 1, y: 0, kind: 'input', port: 'in', color: 's3', label: 'in' },
+      { type: 'knob',    id: 'debounce', x: 4, y: 0, size: 'md',
+        bind: 'config.debounceMs', range: [1000, 60000], step: 1000, unit: 'ms', label: 'debounce' },
+      { type: 'knob',    id: 'buffer',   x: 8, y: 0, size: 'md',
+        bind: 'config.maxBuffer',  range: [1, 50], step: 1, label: 'buffer' },
+      { type: 'display', id: 'bufCount', x: 3, y: 6, w: 6, h: 1, bind: 'state.bufferCount', label: 'buffered' },
+      { type: 'led',     id: 'algedonic',x: 10, y: 6, bind: 'state.algedonic', color: 'algedonic', label: 'alg' },
+      { type: 'jack',    id: 'themes',   x: 3, y: 9, kind: 'output', port: 'themes', color: 's2', label: 'themes' },
+      { type: 'jack',    id: 'alerts',   x: 8, y: 9, kind: 'output', port: 'alerts', color: 'algedonic', label: 'alerts' },
+    ],
   },
   create(config, runtime) {
     const { bus, instanceId, roomNodeId, roomSystemKey, filters, llm } = runtime
