@@ -62,6 +62,38 @@ export function Knob({ id, label, value, range = [0, 1], step, unit, color: acce
     }
   }
 
+  // Drag-to-rotate. Vertical drag is the synth-native gesture (up = increase).
+  // 200px traverses the whole range; hold Shift for ~5x precision.
+  const dragRef = useRef(null)
+  const onPointerDown = (e) => {
+    if (readOnly || !onChange) return
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragRef.current = { startY: e.clientY, startValue: value, span: range[1] - range[0] }
+  }
+  const onPointerMove = (e) => {
+    const d = dragRef.current
+    if (!d) return
+    const dy = d.startY - e.clientY // up = increase
+    const sensitivity = e.shiftKey ? 1000 : 200
+    const delta = (dy / sensitivity) * d.span
+    let next = d.startValue + delta
+    if (step) next = Math.round(next / step) * step
+    next = clamp(next, range[0], range[1])
+    if (next !== value) onChange(next)
+  }
+  const onPointerUp = (e) => {
+    if (!dragRef.current) return
+    e.currentTarget.releasePointerCapture?.(e.pointerId)
+    dragRef.current = null
+  }
+  const onDoubleClick = (e) => {
+    // Double-click resets to the midpoint of the range — handy escape hatch.
+    if (readOnly || !onChange) return
+    e.preventDefault()
+    onChange((range[0] + range[1]) / 2)
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, width: '100%', height: '100%' }}>
       <button
@@ -75,6 +107,12 @@ export function Knob({ id, label, value, range = [0, 1], step, unit, color: acce
         aria-label={label || id}
         aria-readonly={readOnly ? 'true' : undefined}
         onKeyDown={handleKey}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onDoubleClick={onDoubleClick}
+        title={readOnly ? display : `${display} — drag to change, Shift for fine, double-click for centre`}
         style={{
           width: '60%', aspectRatio: '1 / 1',
           minWidth: 18, minHeight: 18,
@@ -82,8 +120,9 @@ export function Knob({ id, label, value, range = [0, 1], step, unit, color: acce
           background: accent.fill,
           border: `2px solid ${accent.stroke}`,
           padding: 0,
-          cursor: readOnly ? 'default' : 'pointer',
+          cursor: readOnly ? 'default' : 'ns-resize',
           position: 'relative',
+          touchAction: 'none', // prevent scroll-while-dragging on touch
         }}
       >
         {/* Pointer line — single 2px line from center to edge */}
@@ -254,21 +293,37 @@ export function Slider({ id, label, value, range = [0, 1], step, orient = 'h', r
 
 export function Button({ id, label, onAction }) {
   const t = useA11yType()
+  const [hover, setHover] = useState(false)
+  const [flash, setFlash] = useState(false)
+
+  const handleClick = () => {
+    onAction?.()
+    // Brief inverted flash so the user can SEE the button worked even when
+    // the action is invisible (a server emit, a state change elsewhere).
+    setFlash(true)
+    setTimeout(() => setFlash(false), 140)
+  }
+
+  const inverted = flash
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', padding: 2 }}>
       <button
         type="button"
         aria-label={label || id}
-        onClick={() => onAction?.()}
+        onClick={handleClick}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        onBlur={() => setHover(false)}
         style={{
           width: '100%', height: '100%',
-          background: color.white,
+          background: inverted ? color.primary : (hover ? color.hoverBg : color.white),
           border: `1.5px solid ${color.primary}`,
-          color: color.primary,
+          color: inverted ? color.white : color.primary,
           ...t.mono, fontSize: 10,
           textTransform: 'uppercase',
           padding: '2px 6px',
           cursor: 'pointer',
+          transition: 'background 80ms linear, color 80ms linear',
         }}
       >{label || id}</button>
     </div>
