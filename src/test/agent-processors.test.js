@@ -81,7 +81,6 @@ describe('agent processor commands', () => {
     expect(inst.filters.types).toEqual(['metric'])
     // Other filter fields preserved
     expect(inst.filters.tags).toBeNull()
-    expect(inst.filters.inputTerminals).toBeNull()
   })
 
   it('updateProcessorFilters can clear a field with null', () => {

@@ -193,7 +193,7 @@ describe('signal plumbing (no React)', () => {
     const h = harness()
     const loggerEvents = []
     h.place('logger', 'log-1', h.rootId, 's3', {
-      filters: { types: ['alert'], tags: null, inputTerminals: null, outputTerminals: null },
+      filters: { types: ['alert'], tags: null },
     })
     h.bus.subscribe(eventsChannel('log-1'), s => loggerEvents.push(s))
 

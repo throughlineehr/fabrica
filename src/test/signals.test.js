@@ -143,29 +143,10 @@ describe('filters', () => {
     logger.stop()
   })
 
-  it('logger filters by input terminal: internal signals excluded when filter is set', async () => {
-    const { defaultFilters } = await import('../signals/filter')
-    const filters = { ...defaultFilters(), inputTerminals: ['s5-out'] }
-    const logger = getProcessorDef('logger').create({}, {
-      bus, instanceId: 'inst-1', roomNodeId: 'n', roomSystemKey: 's3', filters,
-    })
-    const events = []
-    bus.subscribe(eventsChannel('inst-1'), (s) => events.push(s))
-    logger.start()
-    // Matches: signal arrives via the subscribed terminal
-    const arrived = createSignal('metric', {}, {})
-    arrived.arrivalTerminal = 's5-out'
-    bus.publish(roomChannel('n', 's3'), arrived)
-    // Does not match: signal arrived via a different terminal
-    const wrong = createSignal('metric', {}, {})
-    wrong.arrivalTerminal = 's4-out'
-    bus.publish(roomChannel('n', 's3'), wrong)
-    // Does not match: no arrivalTerminal at all (internal signal)
-    const internal = createSignal('metric', {}, {})
-    bus.publish(roomChannel('n', 's3'), internal)
-    expect(events).toHaveLength(1)
-    logger.stop()
-  })
+  // Removed: 'logger filters by input terminal …'. Terminal-based filtering
+  // moved out of `filters` and into the cable graph (B1). What used to be
+  // filters.inputTerminals=[…] is now expressed as cables from those
+  // terminals into the processor's input jacks.
 })
 
 describe('processor runtime', () => {

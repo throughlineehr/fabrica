@@ -1,23 +1,19 @@
 import { describe, it, expect } from 'vitest'
 import { signalMatches, normalizeFilters, defaultFilters } from '../signals/filter'
 
-function sig({ type = 'metric', tags = [], arrivalTerminal = undefined } = {}) {
-  return { id: 'x', type, tags, arrivalTerminal }
+function sig({ type = 'metric', tags = [] } = {}) {
+  return { id: 'x', type, tags }
 }
 
 describe('defaultFilters / normalizeFilters', () => {
   it('defaultFilters returns null for every axis', () => {
-    expect(defaultFilters()).toEqual({
-      types: null, tags: null, inputTerminals: null, outputTerminals: null,
-    })
+    expect(defaultFilters()).toEqual({ types: null, tags: null })
   })
 
   it('normalizeFilters maps undefined / empty to null', () => {
     const n = normalizeFilters({})
     expect(n.types).toBeNull()
     expect(n.tags).toBeNull()
-    expect(n.inputTerminals).toBeNull()
-    expect(n.outputTerminals).toBeNull()
   })
 
   it('normalizeFilters treats empty tags array as null', () => {
@@ -25,13 +21,16 @@ describe('defaultFilters / normalizeFilters', () => {
   })
 
   it('normalizeFilters preserves non-empty arrays', () => {
-    const n = normalizeFilters({
-      types: ['metric'], tags: ['urgent'], inputTerminals: ['t1'], outputTerminals: ['t2'],
-    })
+    const n = normalizeFilters({ types: ['metric'], tags: ['urgent'] })
     expect(n.types).toEqual(['metric'])
     expect(n.tags).toEqual(['urgent'])
-    expect(n.inputTerminals).toEqual(['t1'])
-    expect(n.outputTerminals).toEqual(['t2'])
+  })
+
+  it('normalizeFilters drops legacy terminal fields silently', () => {
+    // Older instances may have inputTerminals/outputTerminals on disk; the
+    // normalizer simply does not read them. Routing concerns moved to cables.
+    const n = normalizeFilters({ types: ['metric'], inputTerminals: ['t1'], outputTerminals: ['t2'] })
+    expect(n).toEqual({ types: ['metric'], tags: null })
   })
 })
 
@@ -74,72 +73,11 @@ describe('signalMatches — tags', () => {
   })
 })
 
-describe('signalMatches — inputTerminals', () => {
-  it('passes when arrivalTerminal is in allowlist', () => {
-    expect(signalMatches(
-      sig({ arrivalTerminal: 's3-out' }),
-      { inputTerminals: ['s3-out', 's4-out'] }
-    )).toBe(true)
-  })
-
-  it('fails when arrivalTerminal is not in allowlist', () => {
-    expect(signalMatches(
-      sig({ arrivalTerminal: 's5-out' }),
-      { inputTerminals: ['s3-out'] }
-    )).toBe(false)
-  })
-
-  it('excludes internal signals (no arrivalTerminal) when terminals are restricted', () => {
-    // This is the gotcha called out in SIGNALS.md §7
-    expect(signalMatches(
-      sig({ arrivalTerminal: undefined }),
-      { inputTerminals: ['s3-out'] }
-    )).toBe(false)
-  })
-
-  it('includes internal signals when no inputTerminals filter is set', () => {
-    expect(signalMatches(
-      sig({ arrivalTerminal: undefined }),
-      { types: ['metric'] }
-    )).toBe(true)
-  })
-})
-
 describe('signalMatches — combined filters', () => {
   it('all axes must pass for the signal to match', () => {
-    const filter = {
-      types: ['metric'],
-      tags: ['urgent'],
-      inputTerminals: ['s3-out'],
-    }
-    // Passes everything
-    expect(signalMatches(
-      sig({ type: 'metric', tags: ['urgent'], arrivalTerminal: 's3-out' }),
-      filter,
-    )).toBe(true)
-    // Fails type
-    expect(signalMatches(
-      sig({ type: 'event', tags: ['urgent'], arrivalTerminal: 's3-out' }),
-      filter,
-    )).toBe(false)
-    // Fails tag
-    expect(signalMatches(
-      sig({ type: 'metric', tags: ['routine'], arrivalTerminal: 's3-out' }),
-      filter,
-    )).toBe(false)
-    // Fails terminal
-    expect(signalMatches(
-      sig({ type: 'metric', tags: ['urgent'], arrivalTerminal: 's5-out' }),
-      filter,
-    )).toBe(false)
-  })
-
-  it('outputTerminals does NOT affect signalMatches (it is enforced by forwarders)', () => {
-    // outputTerminals controls publishing, not subscribing — signalMatches
-    // ignores it.
-    expect(signalMatches(
-      sig({ type: 'metric' }),
-      { outputTerminals: ['s5-out'] },
-    )).toBe(true)
+    const filter = { types: ['metric'], tags: ['urgent'] }
+    expect(signalMatches(sig({ type: 'metric', tags: ['urgent'] }), filter)).toBe(true)
+    expect(signalMatches(sig({ type: 'event',  tags: ['urgent'] }), filter)).toBe(false)
+    expect(signalMatches(sig({ type: 'metric', tags: ['routine'] }), filter)).toBe(false)
   })
 })

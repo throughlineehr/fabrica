@@ -404,8 +404,9 @@ COMMANDS:
     addProcessor(nodeId, systemKey, defId, config?)  → add processor to a room
     removeProcessor(nodeId, systemKey, instanceId)   → remove from room
     updateProcessorFilters(nodeId, systemKey, instanceId, patch)
-        patch keys: types[] | tags[] | inputTerminals[] | outputTerminals[]
+        patch keys: types[] | tags[]
         null on a key = no constraint on that axis
+        (terminal-list filtering moved to cables — see addCable)
     updateProcessorConfig(nodeId, systemKey, instanceId, configPatch)
         operational config (e.g. { intervalMs: 2000 } for heartbeat)
     openProcessor(nodeId, systemKey, instanceId)     → navigate to processor page
