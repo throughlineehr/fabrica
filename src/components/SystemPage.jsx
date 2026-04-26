@@ -4,6 +4,7 @@ import { RoomShell } from './room/RoomShell'
 import { TerminalDetail } from './room/TerminalDetail'
 import { Switchboard } from './room/Switchboard'
 import { LibraryDrawer } from './room/LibraryDrawer'
+import { Keycap } from './Keycap'
 import { Rack } from './rack/Rack'
 import { getProcessorDef } from '../signals/library'
 import { useTranslation } from '../i18n/index.jsx'
@@ -47,6 +48,20 @@ export function SystemPage({
     return () => window.removeEventListener('keydown', handler, true)
   }, [onBack])
 
+  // L toggles the library drawer. Skip when typing in form fields (notably
+  // the drawer's own search input) and when modifier keys are held.
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+      if (e.key.toUpperCase() !== 'L') return
+      e.preventDefault()
+      setLibraryOpen(o => !o)
+    }
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [])
+
   // Build the {instance, def} list for the Rack
   const rackProcessors = useMemo(() => processors.map(inst => ({
     instance: inst,
@@ -55,27 +70,38 @@ export function SystemPage({
 
   // Library trigger lives at top-right, just under the back button. Fixed-
   // positioned so it sits over the room without competing with wall
-  // terminals for edge space. Aria-expanded reflects the drawer state.
+  // terminals for edge space. The Keycap to its left advertises the
+  // L hotkey (press L to toggle).
   const libraryTrigger = (
-    <button
-      type="button"
-      aria-label={libraryOpen ? 'Close library' : 'Open library'}
-      aria-expanded={libraryOpen}
-      onClick={() => setLibraryOpen(o => !o)}
-      style={{
-        position: 'fixed',
-        top: 80, right: 32,
-        width: 36, height: 36,
-        background: libraryOpen ? color.primary : color.white,
-        color: libraryOpen ? color.white : color.primary,
-        border: `1px solid ${color.border}`,
-        cursor: 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: Z_INDEX.menu - 1,
-      }}
-    >
-      <Library size={18} strokeWidth={1.5} aria-hidden="true" />
-    </button>
+    <div style={{
+      position: 'fixed',
+      top: 80, right: 32,
+      display: 'flex', alignItems: 'center', gap: 8,
+      zIndex: Z_INDEX.menu - 1,
+      pointerEvents: 'none',
+    }}>
+      <span style={{ pointerEvents: 'auto' }}>
+        <Keycap>L</Keycap>
+      </span>
+      <button
+        type="button"
+        aria-label={libraryOpen ? 'Close library (L)' : 'Open library (L)'}
+        aria-keyshortcuts="L"
+        aria-expanded={libraryOpen}
+        onClick={() => setLibraryOpen(o => !o)}
+        style={{
+          width: 36, height: 36,
+          background: libraryOpen ? color.primary : color.white,
+          color: libraryOpen ? color.white : color.primary,
+          border: `1px solid ${color.border}`,
+          cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'auto',
+        }}
+      >
+        <Library size={18} strokeWidth={1.5} aria-hidden="true" />
+      </button>
+    </div>
   )
 
   const drawer = (
