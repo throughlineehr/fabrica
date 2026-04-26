@@ -193,6 +193,7 @@ export default {
     save: 'Save',
     tabSwitchboard: 'Switchboard',
     tabIO: 'Inputs / Outputs',
+    tabRack: 'Rack',
     liveLog: 'Live log',
     noSignalsYet: 'No signals yet',
     hops: 'hops:',
