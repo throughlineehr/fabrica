@@ -25,6 +25,8 @@ import { getProcessorDef } from './signals/library'
 import { computeRoomSubscriptions, enumerateRooms, roomKey as makeRoomKey } from './signals/topology'
 import { wireTopology } from './signals/wiring'
 import { defaultFilters } from './signals/filter' // used by runtime effect for instances without filters set
+import { pruneCablesByRoom, pruneCablesByProcessor, pruneProcessorsByRoom } from './commands'
+import { liveProcessorIdsByRoom } from './queries'
 
 function App() {
   const { epilepsy, toggleEpilepsy, toggleDyslexia, toggleColorBlind, setFontVisibility } = useAccessibility()
@@ -85,52 +87,21 @@ function App() {
   // Prune processors AND cables whose room no longer exists in the tree
   // (node was deleted). Checked during render so the runtime effect below
   // sees the pruned state on the same pass. Cables are also pruned when
-  // their endpoint processors disappear.
+  // their endpoint processors disappear. Pure pruners live in src/commands/.
   const [prevTreeForPrune, setPrevTreeForPrune] = useState(tree)
   if (tree !== prevTreeForPrune) {
     setPrevTreeForPrune(tree)
     const liveRooms = new Set(enumerateRooms(tree).map(r => makeRoomKey(r.nodeId, r.systemKey)))
-    setProcessors(prev => {
-      let changed = false
-      const next = {}
-      for (const [key, list] of Object.entries(prev)) {
-        if (liveRooms.has(key)) next[key] = list
-        else changed = true
-      }
-      return changed ? next : prev
-    })
-    setCables(prev => {
-      let changed = false
-      const next = {}
-      for (const [key, list] of Object.entries(prev)) {
-        if (liveRooms.has(key)) next[key] = list
-        else changed = true
-      }
-      return changed ? next : prev
-    })
+    setProcessors(prev => pruneProcessorsByRoom(prev, liveRooms).processors)
+    setCables(prev => pruneCablesByRoom(prev, liveRooms).cables)
   }
 
   // Prune cables whose endpoint processors disappeared (processor removed
-  // but room still exists). Sync state to prop, guarded by ref equality.
+  // but room still exists).
   const [prevProcsForCablePrune, setPrevProcsForCablePrune] = useState(processors)
   if (processors !== prevProcsForCablePrune) {
     setPrevProcsForCablePrune(processors)
-    setCables(prev => {
-      let changed = false
-      const next = {}
-      for (const [roomKey, list] of Object.entries(prev)) {
-        const liveIds = new Set((processors[roomKey] || []).map(p => p.id))
-        const refsLive = (d) => {
-          if (!d) return false
-          if (d.kind === 'jack') return liveIds.has(d.instanceId)
-          return true
-        }
-        const filtered = list.filter(c => refsLive(c.source) && refsLive(c.target))
-        if (filtered.length !== list.length) changed = true
-        next[roomKey] = filtered
-      }
-      return changed ? next : prev
-    })
+    setCables(prev => pruneCablesByProcessor(prev, liveProcessorIdsByRoom(processors)).cables)
   }
 
   // Start/stop running instances in sync with the processors state.

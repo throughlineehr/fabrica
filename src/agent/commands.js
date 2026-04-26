@@ -13,8 +13,9 @@ import {
   detachNode, duplicateSubtree, validateModel, exportModelCompact,
 } from '../tree/index'
 import { parseShorthand } from '../tree/shorthand'
-import { getProcessorDef, canPlaceProcessor } from '../signals/library'
-import { defaultFilters } from '../signals/filter'
+import { getProcessorDef } from '../signals/library'
+import * as cmd from '../commands'
+import * as q from '../queries'
 
 export function createAgentAPI({
   getModel, setModel,
@@ -25,9 +26,6 @@ export function createAgentAPI({
   accessibility, language, aiConfig,
   announce,
 }) {
-  // Small helpers — keep commands terse
-  const roomKey = (nodeId, systemKey) => `${nodeId}:${systemKey}`
-
   return {
     // ================================================================
     // Model: tree mutations
@@ -150,88 +148,77 @@ export function createAgentAPI({
     // Every mutation goes through these commands so audit logging and undo
     // see the same thing the agent does.
 
+    // All processor mutations delegate to pure commands in src/commands/.
+    // The wrapper here just plugs them into React state and announces.
+
     addProcessor: (nodeId, systemKey, defId, config) => {
-      const def = getProcessorDef(defId)
-      if (!def) return { ok: false, error: `Unknown processor: ${defId}` }
-      if (!canPlaceProcessor(def, systemKey)) {
-        return { ok: false, error: `Processor "${defId}" cannot be placed in ${systemKey}` }
-      }
       if (!getProcessors || !setProcessors) return { ok: false, error: 'Processors runtime not available' }
-      const instance = {
-        id: crypto.randomUUID(),
-        defId,
-        config: { ...(def.defaultConfig || {}), ...(config || {}) },
-        filters: defaultFilters(),
+      let result
+      setProcessors(prev => {
+        const out = cmd.addProcessor(prev, { nodeId, systemKey, defId, config })
+        result = out.result
+        return out.processors
+      })
+      if (result?.ok) {
+        const def = getProcessorDef(defId)
+        announce?.(`${def?.name || defId} added`)
       }
-      const key = roomKey(nodeId, systemKey)
-      setProcessors(prev => ({ ...prev, [key]: [...(prev[key] || []), instance] }))
-      announce?.(`${def.name} added`)
-      return { ok: true, instanceId: instance.id }
+      return result
     },
 
     removeProcessor: (nodeId, systemKey, instanceId) => {
       if (!getProcessors || !setProcessors) return { ok: false, error: 'Processors runtime not available' }
-      const key = roomKey(nodeId, systemKey)
-      const list = getProcessors()[key] || []
-      const inst = list.find(p => p.id === instanceId)
+      const inst = q.findProcessor(getProcessors(), { nodeId, systemKey, instanceId })
       if (!inst) return { ok: false, error: 'Processor not found' }
       const def = getProcessorDef(inst.defId)
-      setProcessors(prev => ({
-        ...prev,
-        [key]: (prev[key] || []).filter(p => p.id !== instanceId),
-      }))
-      announce?.(`${def?.name || 'Processor'} removed`)
-      return { ok: true }
+      let result
+      setProcessors(prev => {
+        const out = cmd.removeProcessor(prev, { nodeId, systemKey, instanceId })
+        result = out.result
+        return out.processors
+      })
+      if (result?.ok) announce?.(`${def?.name || 'Processor'} removed`)
+      return result
     },
 
     // Merge a filter patch into an instance's filters. Example patch:
     //   { types: ['metric'] }  — restrict to metric-only
     //   { tags: null }         — clear tag filter
-    //   { inputTerminals: ['s4-out'] }  — restrict incoming to one terminal
     updateProcessorFilters: (nodeId, systemKey, instanceId, patch) => {
       if (!getProcessors || !setProcessors) return { ok: false, error: 'Processors runtime not available' }
-      const key = roomKey(nodeId, systemKey)
-      const list = getProcessors()[key] || []
-      if (!list.find(p => p.id === instanceId)) return { ok: false, error: 'Processor not found' }
-      setProcessors(prev => ({
-        ...prev,
-        [key]: (prev[key] || []).map(inst =>
-          inst.id === instanceId
-            ? { ...inst, filters: { ...(inst.filters || defaultFilters()), ...(patch || {}) } }
-            : inst,
-        ),
-      }))
-      announce?.('Processor filters updated')
-      return { ok: true }
+      let result
+      setProcessors(prev => {
+        const out = cmd.updateProcessorFilters(prev, { nodeId, systemKey, instanceId, patch })
+        result = out.result
+        return out.processors
+      })
+      if (result?.ok) announce?.('Processor filters updated')
+      return result
     },
 
     // Operational config (e.g. heartbeat intervalMs). Separate from filters.
     updateProcessorConfig: (nodeId, systemKey, instanceId, configPatch) => {
       if (!getProcessors || !setProcessors) return { ok: false, error: 'Processors runtime not available' }
-      const key = roomKey(nodeId, systemKey)
-      const list = getProcessors()[key] || []
-      if (!list.find(p => p.id === instanceId)) return { ok: false, error: 'Processor not found' }
-      setProcessors(prev => ({
-        ...prev,
-        [key]: (prev[key] || []).map(inst =>
-          inst.id === instanceId ? { ...inst, config: { ...(inst.config || {}), ...(configPatch || {}) } } : inst,
-        ),
-      }))
-      announce?.('Processor config updated')
-      return { ok: true }
+      let result
+      setProcessors(prev => {
+        const out = cmd.updateProcessorConfig(prev, { nodeId, systemKey, instanceId, configPatch })
+        result = out.result
+        return out.processors
+      })
+      if (result?.ok) announce?.('Processor config updated')
+      return result
     },
 
     openProcessor: (nodeId, systemKey, instanceId) => {
       if (!getProcessors) return { ok: false, error: 'Processors runtime not available' }
-      const list = getProcessors()[roomKey(nodeId, systemKey)] || []
-      if (!list.find(p => p.id === instanceId)) return { ok: false, error: 'Processor not found' }
+      if (!q.findProcessor(getProcessors(), { nodeId, systemKey, instanceId })) return { ok: false, error: 'Processor not found' }
       navigate.openProcessor?.(nodeId, systemKey, instanceId)
       return { ok: true, view: 'processor', nodeId, systemKey, instanceId }
     },
 
     listProcessors: (nodeId, systemKey) => {
       if (!getProcessors) return { ok: false, error: 'Processors runtime not available' }
-      const list = getProcessors()[roomKey(nodeId, systemKey)] || []
+      const list = q.listProcessors(getProcessors(), { nodeId, systemKey })
       return {
         ok: true,
         processors: list.map(p => ({
@@ -251,38 +238,31 @@ export function createAgentAPI({
 
     addCable: (nodeId, systemKey, source, target, color) => {
       if (!getCables || !setCables) return { ok: false, error: 'Cables runtime not available' }
-      if (!source || !target) return { ok: false, error: 'Source and target descriptors required' }
-      const key = roomKey(nodeId, systemKey)
-      const id = 'c-' + crypto.randomUUID().slice(0, 8)
+      let result
       setCables(prev => {
-        const next = { ...prev }
-        const list = next[key] || []
-        next[key] = [...list, { id, source, target, color }]
-        return next
+        const out = cmd.addCable(prev, { nodeId, systemKey, source, target, color })
+        result = out.result
+        return out.cables
       })
-      announce?.('Cable created')
-      return { ok: true, cableId: id }
+      if (result?.ok) announce?.('Cable created')
+      return result
     },
 
     removeCable: (nodeId, systemKey, cableId) => {
       if (!getCables || !setCables) return { ok: false, error: 'Cables runtime not available' }
-      const key = roomKey(nodeId, systemKey)
-      let removed = false
+      let result
       setCables(prev => {
-        const list = prev[key] || []
-        const filtered = list.filter(c => c.id !== cableId)
-        if (filtered.length === list.length) return prev
-        removed = true
-        return { ...prev, [key]: filtered }
+        const out = cmd.removeCable(prev, { nodeId, systemKey, cableId })
+        result = out.result
+        return out.cables
       })
-      if (!removed) return { ok: false, error: 'Cable not found' }
-      announce?.('Cable removed')
-      return { ok: true }
+      if (result?.ok) announce?.('Cable removed')
+      return result
     },
 
     listCables: (nodeId, systemKey) => {
       if (!getCables) return { ok: false, error: 'Cables runtime not available' }
-      return { ok: true, cables: getCables()[roomKey(nodeId, systemKey)] || [] }
+      return { ok: true, cables: q.listCables(getCables(), { nodeId, systemKey }) }
     },
 
     // ================================================================
