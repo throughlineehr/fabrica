@@ -133,19 +133,26 @@ export function CableTerminal({ terminal, active, onClick, tuning, connections, 
           borderRadius: '50%',
         }}
       >
-        {/* Cable SVG — positioned at dot center, overflows in all directions.
-            Two stacked paths: a wider dark stroke acts as outline, the
-            colored stroke fills it. Combined with the dot's outer ring,
-            the terminal reads as one continuous shape with one outline,
-            not two separate pieces. */}
+        {/* Whole terminal (cable + dot + hollow center) drawn as one SVG.
+            Two stacked layers — wider dark UNDER the colored fills — paint
+            the union of cable-stroke and dot-circle as a single shape with
+            a single continuous outline. No internal seam at the cable/dot
+            junction. The hollow center sits on top.
+
+            For audit yellow the dark outline carries WCAG 1.4.11 (≥3:1)
+            for the whole component identifier. For high-contrast fills
+            the outline is a small visual addition; same outline language
+            across all terminals. */}
         <svg style={{
           position: 'absolute',
           left: 0, top: 0,
           width: TERMINAL_SIZE, height: TERMINAL_SIZE,
           overflow: 'visible',
           pointerEvents: 'none',
-          zIndex: 0,
         }} aria-hidden="true">
+          {/* Dark backdrop — wider cable + larger dot, painted as one
+              region. The boolean union is implicit: where they overlap,
+              same color, no visible boundary. */}
           <path
             d={cablePath(terminal.wall, BEND, VISIBLE)}
             fill="none"
@@ -155,6 +162,14 @@ export function CableTerminal({ terminal, active, onClick, tuning, connections, 
             strokeLinejoin="round"
             transform={`translate(${TERMINAL_SIZE / 2}, ${TERMINAL_SIZE / 2})`}
           />
+          <circle
+            cx={TERMINAL_SIZE / 2}
+            cy={TERMINAL_SIZE / 2}
+            r={TERMINAL_SIZE / 2 + 2}
+            fill={c.stroke}
+          />
+          {/* Colored fill — normal-width cable + normal dot, painted on top
+              of the dark backdrop. Where they overlap, same color, no seam. */}
           <path
             d={cablePath(terminal.wall, BEND, VISIBLE)}
             fill="none"
@@ -164,34 +179,21 @@ export function CableTerminal({ terminal, active, onClick, tuning, connections, 
             strokeLinejoin="round"
             transform={`translate(${TERMINAL_SIZE / 2}, ${TERMINAL_SIZE / 2})`}
           />
+          <circle
+            cx={TERMINAL_SIZE / 2}
+            cy={TERMINAL_SIZE / 2}
+            r={TERMINAL_SIZE / 2}
+            fill={cableColor}
+          />
+          {/* Hollow center — top layer */}
+          <circle
+            cx={TERMINAL_SIZE / 2}
+            cy={TERMINAL_SIZE / 2}
+            r={HOLLOW_SIZE / 2}
+            fill={active ? cableColor : color.white}
+            style={{ transition: 'fill 0.15s' }}
+          />
         </svg>
-
-        {/* Dot — fill is the channel color; an outset 2px ring in c.stroke
-            wraps the dot AND aligns with the cable's dark outline. The
-            terminal reads as one shape with one continuous border. For
-            audit yellow this carries WCAG 1.4.11 (≥3:1) for the whole
-            component identifier. For high-contrast fills the border is
-            still part of the design — same outline language. */}
-        <div aria-hidden="true" style={{
-          position: 'relative',
-          width: TERMINAL_SIZE,
-          height: TERMINAL_SIZE,
-          borderRadius: '50%',
-          background: cableColor,
-          boxShadow: `0 0 0 2px ${c.stroke}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1,
-        }}>
-          <div style={{
-            width: HOLLOW_SIZE,
-            height: HOLLOW_SIZE,
-            borderRadius: '50%',
-            background: active ? cableColor : color.white,
-            transition: 'background 0.15s',
-          }} />
-        </div>
       </button>
 
       {wallSide && labelContent}
