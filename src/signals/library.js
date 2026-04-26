@@ -14,6 +14,25 @@ import { signalMatches } from './filter'
 
 export const SIGNAL_TYPES = ['metric', 'event', 'narrative', 'alert']
 
+// Convention: every processor declares 4 input ports (top of panel) for
+// visual consistency. Most core processors today only functionally consume
+// the first input; the rest are reserved for future control inputs (reset,
+// rate-CV, gate, etc.) — declared so panel layouts read as one family.
+const FOUR_INPUTS = [
+  { id: 'in1', label: '1', accepts: { types: null, tags: null } },
+  { id: 'in2', label: '2', accepts: { types: null, tags: null } },
+  { id: 'in3', label: '3', accepts: { types: null, tags: null } },
+  { id: 'in4', label: '4', accepts: { types: null, tags: null } },
+]
+// Top-row input jack fixtures — the standard 4-across layout used by every
+// core panel. Plugin-author convention: inputs always at y=0-1.
+const FOUR_INPUT_FIXTURES = (colorKey) => [
+  { type: 'jack', id: 'jin1', x: 0, y: 0, kind: 'input', port: 'in1', color: colorKey, label: '1' },
+  { type: 'jack', id: 'jin2', x: 2, y: 0, kind: 'input', port: 'in2', color: colorKey, label: '2' },
+  { type: 'jack', id: 'jin3', x: 4, y: 0, kind: 'input', port: 'in3', color: colorKey, label: '3' },
+  { type: 'jack', id: 'jin4', x: 6, y: 0, kind: 'input', port: 'in4', color: colorKey, label: '4' },
+]
+
 // If the instance restricts its outputs to specific terminals, stamp that
 // onto the signal so forwarders route it. Null passes through — broadcast to all.
 function withOutputRouting(signal, filters) {
@@ -24,26 +43,38 @@ function withOutputRouting(signal, filters) {
 const HEARTBEAT = {
   id: 'heartbeat',
   name: 'Heartbeat',
-  description: 'Emits a metric signal on a regular interval. Source only — no inputs.',
+  description: 'Emits a metric signal on a regular interval. Source only — no inputs functionally bound; control inputs reserved.',
   hasInputs: false,
   hasOutputs: true,
   ports: {
-    inputs: [],
-    outputs: [
-      { id: 'pulse', label: 'pulse', emits: { types: ['metric'], tags: [] } },
-    ],
+    inputs: FOUR_INPUTS,
+    outputs: Array.from({ length: 8 }, (_, i) => ({
+      id: `out${i + 1}`, label: String(i + 1),
+      emits: { types: ['metric'], tags: [] },
+    })),
   },
   placement: 'any',
   defaultConfig: { intervalMs: 3000 },
   panel: {
-    widthHP: 4,
+    widthHP: 8,
     bg: 'mid',
     accent: 's1',
     fixtures: [
-      { type: 'knob',  id: 'rate', x: 0, y: 1, size: 'lg',
+      ...FOUR_INPUT_FIXTURES('s1'),
+      // Centred large rate knob
+      { type: 'knob',  id: 'rate', x: 2, y: 3, size: 'lg',
         bind: 'config.intervalMs', range: [100, 10000], step: 100, unit: 'ms', label: 'rate' },
-      { type: 'led',   id: 'beat', x: 1, y: 5, bind: 'state.beat', color: 's1', label: 'beat' },
-      { type: 'jack',  id: 'out',  x: 1, y: 8, kind: 'output', port: 'pulse', color: 's1', label: 'out' },
+      // Beat LED next to the knob
+      { type: 'led',   id: 'beat', x: 6, y: 4, bind: 'state.beat', color: 's1', label: 'beat' },
+      // 8 outputs in a 4×2 grid at the bottom
+      { type: 'jack', id: 'jout1', x: 0, y: 9,  kind: 'output', port: 'out1', color: 's1', label: '1' },
+      { type: 'jack', id: 'jout2', x: 2, y: 9,  kind: 'output', port: 'out2', color: 's1', label: '2' },
+      { type: 'jack', id: 'jout3', x: 4, y: 9,  kind: 'output', port: 'out3', color: 's1', label: '3' },
+      { type: 'jack', id: 'jout4', x: 6, y: 9,  kind: 'output', port: 'out4', color: 's1', label: '4' },
+      { type: 'jack', id: 'jout5', x: 0, y: 11, kind: 'output', port: 'out5', color: 's1', label: '5' },
+      { type: 'jack', id: 'jout6', x: 2, y: 11, kind: 'output', port: 'out6', color: 's1', label: '6' },
+      { type: 'jack', id: 'jout7', x: 4, y: 11, kind: 'output', port: 'out7', color: 's1', label: '7' },
+      { type: 'jack', id: 'jout8', x: 6, y: 11, kind: 'output', port: 'out8', color: 's1', label: '8' },
     ],
   },
   create(config, runtime) {
@@ -85,23 +116,27 @@ const TRACER = {
   hasInputs: true,
   hasOutputs: true,
   ports: {
-    inputs: [
-      { id: 'in', label: 'in', accepts: { types: null, tags: null } },
-    ],
-    outputs: [
-      { id: 'out', label: 'out', emits: { types: null, tags: [] } },
-    ],
+    inputs: FOUR_INPUTS,
+    outputs: Array.from({ length: 4 }, (_, i) => ({
+      id: `out${i + 1}`, label: String(i + 1),
+      emits: { types: null, tags: [] },
+    })),
   },
   placement: 'any',
   defaultConfig: {},
   panel: {
-    widthHP: 4,
+    widthHP: 8,
     bg: 'mid',
     accent: 's3',
     fixtures: [
-      { type: 'jack',    id: 'in',    x: 1, y: 0, kind: 'input',  port: 'in',  color: 's3', label: 'in' },
-      { type: 'divider', id: 'd',     x: 0, y: 5, w: 4, h: 1, orient: 'h' },
-      { type: 'jack',    id: 'out',   x: 1, y: 8, kind: 'output', port: 'out', color: 's3', label: 'out' },
+      ...FOUR_INPUT_FIXTURES('s3'),
+      { type: 'divider', id: 'd1', x: 0, y: 4, w: 8, h: 1, orient: 'h' },
+      { type: 'label',   id: 'lbl', x: 2, y: 6, w: 4, text: 'TRACE', size: 'sm', color: 's3' },
+      // 4 outputs in a 2×2 grid centered at the bottom
+      { type: 'jack', id: 'jout1', x: 2, y: 9,  kind: 'output', port: 'out1', color: 's3', label: '1' },
+      { type: 'jack', id: 'jout2', x: 4, y: 9,  kind: 'output', port: 'out2', color: 's3', label: '2' },
+      { type: 'jack', id: 'jout3', x: 2, y: 11, kind: 'output', port: 'out3', color: 's3', label: '3' },
+      { type: 'jack', id: 'jout4', x: 4, y: 11, kind: 'output', port: 'out4', color: 's3', label: '4' },
     ],
   },
   create(_config, runtime) {
@@ -137,21 +172,19 @@ const LOGGER = {
   hasInputs: true,
   hasOutputs: false,
   ports: {
-    inputs: [
-      { id: 'in', label: 'in', accepts: { types: null, tags: null } },
-    ],
+    inputs: FOUR_INPUTS,
     outputs: [],
   },
   placement: 'any',
   defaultConfig: {},
   panel: {
-    widthHP: 4,
+    widthHP: 8,
     bg: 'mid',
     accent: 's4',
     fixtures: [
-      { type: 'jack',    id: 'in',    x: 1, y: 0, kind: 'input', port: 'in', color: 's4', label: 'in' },
-      { type: 'display', id: 'count', x: 0, y: 4, w: 4, h: 2, bind: 'state.count', label: 'events' },
-      { type: 'led',     id: 'idle',  x: 1, y: 9, bind: 'state.idle', color: 's4', label: 'idle' },
+      ...FOUR_INPUT_FIXTURES('s4'),
+      { type: 'display', id: 'count', x: 1, y: 4, w: 6, h: 2, bind: 'state.count', label: 'events' },
+      { type: 'led',     id: 'idle',  x: 3, y: 9, bind: 'state.idle', color: 's4', label: 'idle' },
     ],
   },
   create(_config, runtime) {
@@ -186,7 +219,7 @@ const WEBSOCKET_TRANSDUCER = {
   hasInputs: false,
   hasOutputs: true,
   ports: {
-    inputs: [],
+    inputs: FOUR_INPUTS,
     outputs: [
       { id: 'out', label: 'out', emits: { types: null, tags: ['transducer', 'websocket'] } },
     ],
@@ -207,20 +240,21 @@ const WEBSOCKET_TRANSDUCER = {
     bg: 'mid',
     accent: 's1',
     fixtures: [
-      { type: 'textInput', id: 'url',    x: 0, y: 0, w: 8, h: 1,
+      ...FOUR_INPUT_FIXTURES('s1'),
+      { type: 'textInput', id: 'url',    x: 0, y: 3, w: 8, h: 1,
         bind: 'config.url', placeholder: 'ws://...', label: 'url' },
-      { type: 'dropdown',  id: 'parse',  x: 0, y: 3, w: 4, h: 1,
+      { type: 'dropdown',  id: 'parse',  x: 0, y: 5, w: 4, h: 1,
         bind: 'config.parse', options: [{ value: 'text', label: 'text' }, { value: 'json', label: 'json' }], label: 'parse' },
-      { type: 'dropdown',  id: 'sigType',x: 4, y: 3, w: 4, h: 1,
+      { type: 'dropdown',  id: 'sigType',x: 4, y: 5, w: 4, h: 1,
         bind: 'config.signalType', options: [
           { value: 'metric',    label: 'metric' },
           { value: 'event',     label: 'event' },
           { value: 'narrative', label: 'narrative' },
           { value: 'alert',     label: 'alert' },
         ], label: 'type' },
-      { type: 'led',       id: 'conn',   x: 1, y: 6, bind: 'state.connected', color: 's1', label: 'conn' },
-      { type: 'display',   id: 'count',  x: 3, y: 6, w: 5, h: 1, bind: 'state.msgCount', label: 'msgs' },
-      { type: 'jack',      id: 'out',    x: 5, y: 9, kind: 'output', port: 'out', color: 's1', label: 'out' },
+      { type: 'led',       id: 'conn',   x: 1, y: 8, bind: 'state.connected', color: 's1', label: 'conn' },
+      { type: 'display',   id: 'count',  x: 2, y: 8, w: 5, h: 1, bind: 'state.msgCount', label: 'msgs' },
+      { type: 'jack',      id: 'jout',   x: 3, y: 11, kind: 'output', port: 'out', color: 's1', label: 'out' },
     ],
   },
   create(config, runtime) {
@@ -353,9 +387,7 @@ const DIGEST = {
   hasInputs: true,
   hasOutputs: true,
   ports: {
-    inputs: [
-      { id: 'in', label: 'in', accepts: { types: null, tags: null } },
-    ],
+    inputs: FOUR_INPUTS,
     outputs: [
       { id: 'themes', label: 'themes', emits: { types: ['narrative'], tags: ['digest', 'theme'] } },
       { id: 'alerts', label: 'alerts', emits: { types: ['alert'],     tags: ['digest', 'alert'] } },
@@ -374,15 +406,22 @@ const DIGEST = {
     bg: 'mid',  // Fabrica core convention: all core processors share one bg.
     accent: 's2',
     fixtures: [
-      { type: 'jack',    id: 'in',       x: 1, y: 0, kind: 'input', port: 'in', color: 's3', label: 'in' },
-      { type: 'knob',    id: 'debounce', x: 4, y: 0, size: 'md',
+      // 4 inputs at top — match the convention. Slight horizontal stretch
+      // since the panel is 12HP wide; jacks at x=0,3,6,9.
+      { type: 'jack', id: 'jin1', x: 0, y: 0, kind: 'input', port: 'in1', color: 's3', label: '1' },
+      { type: 'jack', id: 'jin2', x: 3, y: 0, kind: 'input', port: 'in2', color: 's3', label: '2' },
+      { type: 'jack', id: 'jin3', x: 6, y: 0, kind: 'input', port: 'in3', color: 's3', label: '3' },
+      { type: 'jack', id: 'jin4', x: 9, y: 0, kind: 'input', port: 'in4', color: 's3', label: '4' },
+      // Body controls
+      { type: 'knob',    id: 'debounce', x: 1, y: 4, size: 'md',
         bind: 'config.debounceMs', range: [1000, 60000], step: 1000, unit: 'ms', label: 'debounce' },
-      { type: 'knob',    id: 'buffer',   x: 8, y: 0, size: 'md',
+      { type: 'knob',    id: 'buffer',   x: 5, y: 4, size: 'md',
         bind: 'config.maxBuffer',  range: [1, 50], step: 1, label: 'buffer' },
-      { type: 'display', id: 'bufCount', x: 3, y: 6, w: 6, h: 1, bind: 'state.bufferCount', label: 'buffered' },
-      { type: 'led',     id: 'algedonic',x: 10, y: 6, bind: 'state.algedonic', color: 'algedonic', label: 'alg' },
-      { type: 'jack',    id: 'themes',   x: 3, y: 9, kind: 'output', port: 'themes', color: 's2', label: 'themes' },
-      { type: 'jack',    id: 'alerts',   x: 8, y: 9, kind: 'output', port: 'alerts', color: 'algedonic', label: 'alerts' },
+      { type: 'led',     id: 'algedonic',x: 9, y: 5, bind: 'state.algedonic', color: 'algedonic', label: 'alg' },
+      { type: 'display', id: 'bufCount', x: 1, y: 8, w: 8, h: 1, bind: 'state.bufferCount', label: 'buffered' },
+      // Outputs at bottom
+      { type: 'jack', id: 'jthemes', x: 3, y: 11, kind: 'output', port: 'themes', color: 's2', label: 'themes' },
+      { type: 'jack', id: 'jalerts', x: 7, y: 11, kind: 'output', port: 'alerts', color: 'algedonic', label: 'alerts' },
     ],
   },
   create(config, runtime) {
