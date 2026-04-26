@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react'
-import { Lightbulb, Plus, ChevronRight, Trash2, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react'
+import { Lightbulb, Plus, ChevronRight, Trash2, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, X } from 'lucide-react'
 import { color, ui } from '../../styles'
 import { useA11yType } from '../../hooks/useA11yType'
 import { useTranslation } from '../../i18n/index.jsx'
@@ -7,6 +7,7 @@ import { getProcessorDef, SIGNAL_TYPES } from '../../signals/library'
 import { defaultFilters } from '../../signals/filter'
 import { Checkbox } from '../Checkbox'
 import { ProcessorLibraryModal } from './ProcessorLibraryModal'
+import { nextFreeOutputPort, nextFreeInputPort } from '../rack/portAllocation'
 
 // The switchboard shows one row per processor. Each row has a dot for every
 // cable on the room's walls — same dots in both Incoming and Outgoing columns
@@ -166,14 +167,133 @@ const lastCellStyle = { ...cellStyle, borderRight: 'none' }
 
 const PAGE_SIZE = 10
 
+// --- Internal connections cell --------------------------------------------
+// Per-row list of cables flowing INTO this row's processor from other
+// processors in the same room. Each entry = one cable. Each entry's
+// select changes the source processor (port auto-assigned to the next
+// free output of the picked source). Add (+) creates a new cable from
+// the first eligible source. Delete (×) removes the cable.
+
+function InternalConnections({ targetInstance, targetDef, otherProcessors, cables, onAddCable, onRemoveCable, t, tr }) {
+  // Cables targeting this row, where the source is a jack on another
+  // processor in the room.
+  const incoming = useMemo(() => cables.filter(c =>
+    c?.target?.kind === 'jack' && c.target.instanceId === targetInstance.id &&
+    c?.source?.kind === 'jack' && c.source.instanceId !== targetInstance.id
+  ), [cables, targetInstance.id])
+
+  // Pick the first eligible source: any other processor with at least one
+  // free output port AND we haven't exhausted this row's input ports.
+  const findEligibleSource = () => {
+    const tgtIn = nextFreeInputPort(cables, targetInstance.id, targetDef)
+    if (!tgtIn.portId || tgtIn.allTaken) return null
+    for (const { inst, def } of otherProcessors) {
+      const out = nextFreeOutputPort(cables, inst.id, def)
+      if (out.portId && !out.allTaken) return { inst, def, srcPortId: out.portId, tgtPortId: tgtIn.portId }
+    }
+    return null
+  }
+
+  const handleAdd = () => {
+    const elig = findEligibleSource()
+    if (!elig) return
+    onAddCable?.({
+      source: { kind: 'jack', instanceId: elig.inst.id, portId: elig.srcPortId },
+      target: { kind: 'jack', instanceId: targetInstance.id, portId: elig.tgtPortId },
+      color: color.primary, // black-dot vibe — internal cables are black
+    })
+  }
+
+  const handleChangeSource = (cable, newSourceInstanceId) => {
+    // Remove old, add new with auto-assigned next-free port on the new source.
+    const newDef = otherProcessors.find(p => p.inst.id === newSourceInstanceId)?.def
+    if (!newDef) return
+    const out = nextFreeOutputPort(
+      cables.filter(c => c.id !== cable.id),
+      newSourceInstanceId,
+      newDef,
+    )
+    if (!out.portId) return
+    onRemoveCable?.(cable.id)
+    onAddCable?.({
+      source: { kind: 'jack', instanceId: newSourceInstanceId, portId: out.portId },
+      target: cable.target,
+      color: cable.color || color.primary,
+    })
+  }
+
+  const eligible = findEligibleSource()
+  const sourceOptions = otherProcessors.map(({ inst, def }) => ({
+    value: inst.id,
+    label: def.name,
+  }))
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', minHeight: 24 }}>
+      {incoming.map(cable => {
+        const sourceProc = otherProcessors.find(p => p.inst.id === cable.source.instanceId)
+        return (
+          <span key={cable.id} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            border: `1px solid ${color.border}`, padding: '2px 6px',
+            background: color.white,
+          }}>
+            {/* black dot */}
+            <span aria-hidden="true" style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: color.primary, flexShrink: 0,
+            }} />
+            <select
+              aria-label={`Source for internal connection`}
+              value={cable.source.instanceId}
+              onChange={(e) => handleChangeSource(cable, e.target.value)}
+              style={{
+                ...t.mono, fontSize: 11,
+                background: 'none', border: 'none',
+                color: color.primary, padding: 0, cursor: 'pointer',
+              }}
+            >
+              {sourceOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onRemoveCable?.(cable.id) }}
+              aria-label={`Remove internal connection from ${sourceProc?.def?.name || cable.source.instanceId}`}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', color: color.muted }}
+            ><X size={12} strokeWidth={1.5} aria-hidden="true" /></button>
+          </span>
+        )
+      })}
+      {eligible && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); handleAdd() }}
+          aria-label={tr('systemPage.addProcessor') /* re-use; says "add" */}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 2,
+            border: `1px dashed ${color.border}`, padding: '2px 6px',
+            background: 'none', cursor: 'pointer',
+            ...t.mono, fontSize: 11, color: color.muted,
+          }}
+        ><Plus size={12} strokeWidth={1.5} aria-hidden="true" /></button>
+      )}
+    </div>
+  )
+}
+
 export function Switchboard({
   systemKey, sysColor, terminals,
   processors,
+  cables = [],
   onAddProcessor, onRemoveProcessor, onUpdateProcessor, onOpenProcessor,
+  onAddCable, onRemoveCable,
 }) {
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const [libraryOpen, setLibraryOpen] = useState(false)
+  const [showInternal, setShowInternal] = useState(false)
   const rowRefs = useRef({}) // instanceId → <tr> element, for arrow-key focus movement
 
   const showAlgedonic = systemKey === 's5'
@@ -253,6 +373,17 @@ export function Switchboard({
           <Plus size={14} strokeWidth={1.5} />
           {tr('systemPage.processor')}
         </button>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 16, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={showInternal}
+            onChange={(e) => setShowInternal(e.target.checked)}
+            style={{ cursor: 'pointer' }}
+          />
+          <span style={{ ...t.mono, fontSize: 12, color: color.secondary }}>
+            internal connections
+          </span>
+        </label>
       </div>
 
       {enriched.length === 0 && (
@@ -269,7 +400,7 @@ export function Switchboard({
           role="grid"
           aria-label={tr('systemPage.switchboard')}
           aria-rowcount={enriched.length + 1}
-          aria-colcount={6}
+          aria-colcount={showInternal ? 7 : 6}
           style={{
             width: '100%', borderCollapse: 'collapse',
             border: `1px solid ${color.border}`,
@@ -279,10 +410,13 @@ export function Switchboard({
             <tr role="row" aria-rowindex={1} style={{ background: sysColor ? `${sysColor}18` : 'transparent' }}>
               <th role="columnheader" aria-colindex={1} style={thStyle}>{tr('systemPage.incoming')}</th>
               <th role="columnheader" aria-colindex={2} style={thStyle}>{tr('systemPage.processor')}</th>
-              <th role="columnheader" aria-colindex={3} style={thStyle}>{tr('systemPage.outgoing')}</th>
-              <th role="columnheader" aria-colindex={4} style={thStyle}>{tr('systemPage.filterTypes')}</th>
-              <th role="columnheader" aria-colindex={5} style={thStyle}>{tr('systemPage.filterTags')}</th>
-              <th role="columnheader" aria-colindex={6} style={{ ...thStyle, borderRight: 'none', textAlign: 'right' }}>&nbsp;</th>
+              {showInternal && (
+                <th role="columnheader" aria-colindex={3} style={thStyle}>internal in</th>
+              )}
+              <th role="columnheader" aria-colindex={showInternal ? 4 : 3} style={thStyle}>{tr('systemPage.outgoing')}</th>
+              <th role="columnheader" aria-colindex={showInternal ? 5 : 4} style={thStyle}>{tr('systemPage.filterTypes')}</th>
+              <th role="columnheader" aria-colindex={showInternal ? 6 : 5} style={thStyle}>{tr('systemPage.filterTags')}</th>
+              <th role="columnheader" aria-colindex={showInternal ? 7 : 6} style={{ ...thStyle, borderRight: 'none', textAlign: 'right' }}>&nbsp;</th>
             </tr>
           </thead>
           <tbody>
@@ -355,7 +489,20 @@ export function Switchboard({
                       <ChevronRight size={12} strokeWidth={1.5} color={color.muted} aria-hidden="true" />
                     </button>
                   </td>
-                  <td role="gridcell" aria-colindex={3} style={cellStyle}>
+                  {showInternal && (
+                    <td role="gridcell" aria-colindex={3} style={cellStyle}>
+                      <InternalConnections
+                        targetInstance={inst}
+                        targetDef={def}
+                        otherProcessors={enriched.filter(p => p.inst.id !== inst.id)}
+                        cables={cables}
+                        onAddCable={onAddCable}
+                        onRemoveCable={onRemoveCable}
+                        t={t} tr={tr}
+                      />
+                    </td>
+                  )}
+                  <td role="gridcell" aria-colindex={showInternal ? 4 : 3} style={cellStyle}>
                     <TerminalDotRow
                       terminals={roomTerminals}
                       selected={filters.outputTerminals}
@@ -363,21 +510,21 @@ export function Switchboard({
                       disabled={!def.hasOutputs}
                     />
                   </td>
-                  <td role="gridcell" aria-colindex={4} style={cellStyle}>
+                  <td role="gridcell" aria-colindex={showInternal ? 5 : 4} style={cellStyle}>
                     <TypeChipRow
                       selected={filters.types}
                       onChange={(next) => updateFilter(inst, { types: next })}
                       disabled={!def.hasInputs}
                     />
                   </td>
-                  <td role="gridcell" aria-colindex={5} style={cellStyle}>
+                  <td role="gridcell" aria-colindex={showInternal ? 6 : 5} style={cellStyle}>
                     <TagsInput
                       tags={filters.tags}
                       onChange={(next) => updateFilter(inst, { tags: next })}
                       disabled={!def.hasInputs}
                     />
                   </td>
-                  <td role="gridcell" aria-colindex={6} style={{ ...lastCellStyle, textAlign: 'right' }}>
+                  <td role="gridcell" aria-colindex={showInternal ? 7 : 6} style={{ ...lastCellStyle, textAlign: 'right' }}>
                     {onRemoveProcessor && (
                       <button
                         aria-label={`${tr('systemPage.removeProcessor')} ${displayName}`}
@@ -400,6 +547,7 @@ export function Switchboard({
               <tr key={`empty-${i}`} aria-hidden="true" role="presentation">
                 <td style={cellStyle}>&nbsp;</td>
                 <td style={cellStyle}>&nbsp;</td>
+                {showInternal && <td style={cellStyle}>&nbsp;</td>}
                 <td style={cellStyle}>&nbsp;</td>
                 <td style={cellStyle}>&nbsp;</td>
                 <td style={cellStyle}>&nbsp;</td>

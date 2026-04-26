@@ -77,9 +77,15 @@ function App() {
     return wireTopology(bus, topology)
   }, [bus, topology])
 
-  // Prune processors whose room no longer exists in the tree (node was deleted).
-  // Checked during render (not in effect) so the runtime effect below sees
-  // the pruned state on the same pass.
+  // Cables — keyed by `${nodeId}:${systemKey}`. Lifted to App so the
+  // Switchboard and Rack tabs stay perma-synced (one model, two views).
+  // Each cable: { id, source: <descriptor>, target: <descriptor>, color }.
+  const [cables, setCables] = useState({})
+
+  // Prune processors AND cables whose room no longer exists in the tree
+  // (node was deleted). Checked during render so the runtime effect below
+  // sees the pruned state on the same pass. Cables are also pruned when
+  // their endpoint processors disappear.
   const [prevTreeForPrune, setPrevTreeForPrune] = useState(tree)
   if (tree !== prevTreeForPrune) {
     setPrevTreeForPrune(tree)
@@ -90,6 +96,38 @@ function App() {
       for (const [key, list] of Object.entries(prev)) {
         if (liveRooms.has(key)) next[key] = list
         else changed = true
+      }
+      return changed ? next : prev
+    })
+    setCables(prev => {
+      let changed = false
+      const next = {}
+      for (const [key, list] of Object.entries(prev)) {
+        if (liveRooms.has(key)) next[key] = list
+        else changed = true
+      }
+      return changed ? next : prev
+    })
+  }
+
+  // Prune cables whose endpoint processors disappeared (processor removed
+  // but room still exists). Sync state to prop, guarded by ref equality.
+  const [prevProcsForCablePrune, setPrevProcsForCablePrune] = useState(processors)
+  if (processors !== prevProcsForCablePrune) {
+    setPrevProcsForCablePrune(processors)
+    setCables(prev => {
+      let changed = false
+      const next = {}
+      for (const [roomKey, list] of Object.entries(prev)) {
+        const liveIds = new Set((processors[roomKey] || []).map(p => p.id))
+        const refsLive = (d) => {
+          if (!d) return false
+          if (d.kind === 'jack') return liveIds.has(d.instanceId)
+          return true
+        }
+        const filtered = list.filter(c => refsLive(c.source) && refsLive(c.target))
+        if (filtered.length !== list.length) changed = true
+        next[roomKey] = filtered
       }
       return changed ? next : prev
     })
@@ -364,8 +402,10 @@ function App() {
   const modelRef = useRef(model)
   const processorsRef = useRef(processors)
   const navStateRef = useRef({ focusedId, paneId, systemView, processorView })
+  const cablesRef = useRef(cables)
   useEffect(() => { modelRef.current = model }, [model])
   useEffect(() => { processorsRef.current = processors }, [processors])
+  useEffect(() => { cablesRef.current = cables }, [cables])
   useEffect(() => { navStateRef.current = { focusedId, paneId, systemView, processorView } }, [focusedId, paneId, systemView, processorView])
 
   const agentAPI = useMemo(() => createAgentAPI({
@@ -373,6 +413,8 @@ function App() {
     setModel,
     getProcessors: () => processorsRef.current,
     setProcessors,
+    getCables: () => cablesRef.current,
+    setCables,
     getNavState: () => navStateRef.current,
     navigate: {
       overview: handleBack, // repeated until overview
@@ -453,6 +495,7 @@ function App() {
             tree={tree}
             systemKey={systemView.systemKey}
             processors={processors[`${systemView.nodeId}:${systemView.systemKey}`] || []}
+            cables={cables[`${systemView.nodeId}:${systemView.systemKey}`] || []}
             onAddProcessor={(def) => agentAPI.addProcessor(systemView.nodeId, systemView.systemKey, def.id)}
             onRemoveProcessor={(instanceId) => agentAPI.removeProcessor(systemView.nodeId, systemView.systemKey, instanceId)}
             onUpdateProcessor={(instanceId, updates) => {
@@ -461,6 +504,8 @@ function App() {
               if (updates?.config) agentAPI.updateProcessorConfig(systemView.nodeId, systemView.systemKey, instanceId, updates.config)
             }}
             onOpenProcessor={(instanceId) => agentAPI.openProcessor(systemView.nodeId, systemView.systemKey, instanceId)}
+            onAddCable={(cab) => agentAPI.addCable(systemView.nodeId, systemView.systemKey, cab.source, cab.target, cab.color)}
+            onRemoveCable={(cableId) => agentAPI.removeCable(systemView.nodeId, systemView.systemKey, cableId)}
             onBack={handleSystemBack}
             onNavigate={(targetNodeId, targetSystemKey) => {
               handleSystemBack()

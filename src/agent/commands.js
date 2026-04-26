@@ -19,6 +19,7 @@ import { defaultFilters } from '../signals/filter'
 export function createAgentAPI({
   getModel, setModel,
   getProcessors, setProcessors,
+  getCables, setCables,
   getNavState, navigate,
   panels, filters,
   accessibility, language, aiConfig,
@@ -238,6 +239,50 @@ export function createAgentAPI({
           config: p.config, filters: p.filters,
         })),
       }
+    },
+
+    // ================================================================
+    // Cables — internal wiring within a room. Both Switchboard and
+    // Rack views drive the same cable list per room. A cable's
+    // source/target is a descriptor:
+    //   { kind: 'jack',     instanceId, portId }
+    //   { kind: 'terminal', terminalId, nodeId, systemKey, color }
+    // ================================================================
+
+    addCable: (nodeId, systemKey, source, target, color) => {
+      if (!getCables || !setCables) return { ok: false, error: 'Cables runtime not available' }
+      if (!source || !target) return { ok: false, error: 'Source and target descriptors required' }
+      const key = roomKey(nodeId, systemKey)
+      const id = 'c-' + crypto.randomUUID().slice(0, 8)
+      setCables(prev => {
+        const next = { ...prev }
+        const list = next[key] || []
+        next[key] = [...list, { id, source, target, color }]
+        return next
+      })
+      announce?.('Cable created')
+      return { ok: true, cableId: id }
+    },
+
+    removeCable: (nodeId, systemKey, cableId) => {
+      if (!getCables || !setCables) return { ok: false, error: 'Cables runtime not available' }
+      const key = roomKey(nodeId, systemKey)
+      let removed = false
+      setCables(prev => {
+        const list = prev[key] || []
+        const filtered = list.filter(c => c.id !== cableId)
+        if (filtered.length === list.length) return prev
+        removed = true
+        return { ...prev, [key]: filtered }
+      })
+      if (!removed) return { ok: false, error: 'Cable not found' }
+      announce?.('Cable removed')
+      return { ok: true }
+    },
+
+    listCables: (nodeId, systemKey) => {
+      if (!getCables) return { ok: false, error: 'Cables runtime not available' }
+      return { ok: true, cables: getCables()[roomKey(nodeId, systemKey)] || [] }
     },
 
     // ================================================================

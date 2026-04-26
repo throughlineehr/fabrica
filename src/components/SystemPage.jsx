@@ -16,33 +16,14 @@ const TAB_DEFS = [
 export function SystemPage({
   nodeId, nodeName, node, tree, systemKey,
   processors,
+  cables = [],
   onAddProcessor, onRemoveProcessor, onUpdateProcessor, onOpenProcessor,
+  onAddCable, onRemoveCable,
   onBack, onNavigate,
 }) {
   const { t: tr } = useTranslation()
   const t = useA11yType()
   const [activeTab, setActiveTab] = useState('switchboard')
-
-  // Cables in the Rack tab are session-local for now. Will promote to
-  // App state + agent commands when the dispatcher lands per
-  // INTERNAL-WIRING-DESIGN.md §13. Today they're visual-only — broadcast
-  // is still in effect under the bus.
-  const [cables, setCables] = useState([])
-
-  // Prune cables when processors disappear. React 19 "sync state to prop"
-  // pattern (per SIGNALS.md §6): an `if` guard with state-tracked prev,
-  // not a ref, not an effect.
-  const [prevProcs, setPrevProcs] = useState(processors)
-  if (processors !== prevProcs) {
-    setPrevProcs(processors)
-    const liveIds = new Set(processors.map(p => p.id))
-    const refsLive = (d) => {
-      if (!d) return false
-      if (d.kind === 'jack') return liveIds.has(d.instanceId)
-      return true // terminals always live as long as the room exists
-    }
-    setCables(prev => prev.filter(c => refsLive(c.source) && refsLive(c.target)))
-  }
 
   useEffect(() => {
     const handler = (e) => {
@@ -54,12 +35,6 @@ export function SystemPage({
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)
   }, [onBack])
-
-  const onAddCable = (cab) => {
-    const id = 'c-' + Math.random().toString(36).slice(2, 8)
-    setCables(prev => [...prev, { id, ...cab }])
-  }
-  const onRemoveCable = (id) => setCables(prev => prev.filter(c => c.id !== id))
 
   // Build the {instance, def} list for the Rack
   const rackProcessors = useMemo(() => processors.map(inst => ({
@@ -100,10 +75,13 @@ export function SystemPage({
                   sysColor={sysColor}
                   terminals={terminals}
                   processors={processors}
+                  cables={cables}
                   onAddProcessor={onAddProcessor}
                   onRemoveProcessor={onRemoveProcessor}
                   onUpdateProcessor={onUpdateProcessor}
                   onOpenProcessor={onOpenProcessor}
+                  onAddCable={onAddCable}
+                  onRemoveCable={onRemoveCable}
                 />
               ) : (
                 <Rack
