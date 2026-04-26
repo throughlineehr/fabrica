@@ -39,9 +39,23 @@ function resolveAccent(key) {
 
 // --- Knob -----------------------------------------------------------------
 
+// Pick the highest-contrast token (color.black or color.white) against the
+// given hex fill. YIQ-based brightness threshold; cheap and good enough
+// for picking "is this swatch dark or light." Used to keep the knob
+// pointer readable across the whole accent palette.
+function highContrastInk(hexFill) {
+  if (typeof hexFill !== 'string' || hexFill[0] !== '#' || hexFill.length < 7) return color.black
+  const r = parseInt(hexFill.slice(1, 3), 16)
+  const g = parseInt(hexFill.slice(3, 5), 16)
+  const b = parseInt(hexFill.slice(5, 7), 16)
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000
+  return yiq >= 160 ? color.black : color.white
+}
+
 export function Knob({ id, label, value, range = [0, 1], step, unit, color: accentKey, readOnly, onChange }) {
   const t = useA11yType()
   const accent = resolveAccent(accentKey)
+  const pointerColor = highContrastInk(accent.fill)
   const inputId = useId()
   const fraction = valueToFraction(value, range)
   // Knob pointer rotates -135° (min) to +135° (max), 270° sweep
@@ -125,12 +139,14 @@ export function Knob({ id, label, value, range = [0, 1], step, unit, color: acce
           touchAction: 'none', // prevent scroll-while-dragging on touch
         }}
       >
-        {/* Pointer line — single 2px line from center to edge */}
+        {/* Pointer line — single 2px line from center to edge. Black or
+            white whichever has more contrast against the knob's fill, so
+            the indicator stays readable across the whole accent palette. */}
         <span aria-hidden="true" style={{
           position: 'absolute',
           left: '50%', top: '50%',
           width: 2, height: '40%',
-          background: accent.stroke,
+          background: pointerColor,
           transform: `translate(-50%, -100%) rotate(${angle}deg)`,
           transformOrigin: '50% 100%',
         }} />
