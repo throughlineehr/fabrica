@@ -591,36 +591,14 @@ export function Switchboard({
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-        <button
-          aria-label={tr('systemPage.addProcessor')}
-          onClick={() => onOpenLibrary?.()}
-          style={{
-            ...t.mono, color: color.primary, background: 'none',
-            border: `1px solid ${color.border}`,
-            padding: '6px 12px', cursor: 'pointer',
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-          }}
-        >
-          <Plus size={14} strokeWidth={1.5} />
-          {tr('systemPage.processor')}
-        </button>
         <ModeSwitch mode={mode} onChange={setMode} t={t} />
       </div>
 
-      {enriched.length === 0 && (
-        <div style={{
-          border: `1px dashed ${color.border}`,
-          padding: '40px 24px', marginBottom: 20, textAlign: 'center',
-        }}>
-          <p style={{ ...t.mono, color: color.muted, margin: 0 }}>{tr('systemPage.noProcessors')}</p>
-        </div>
-      )}
-
-      {enriched.length > 0 && !isInternal && (
+      {!isInternal && (
         <table
           role="grid"
           aria-label={tr('systemPage.switchboard')}
-          aria-rowcount={enriched.length + 1}
+          aria-rowcount={enriched.length + 2}
           aria-colcount={6}
           style={{
             width: '100%', borderCollapse: 'collapse',
@@ -750,7 +728,40 @@ export function Switchboard({
                 </tr>
               )
             })}
-            {Array.from({ length: emptyRows }).map((_, i) => (
+            {/* Inline "add processor" row — sits in the first available
+                slot below the last real row. Click or Enter opens the
+                library drawer. Replaces the prior top-of-page button
+                because it reads more naturally as a list affordance. */}
+            <tr
+              role="row"
+              tabIndex={0}
+              aria-rowindex={enriched.length + 2}
+              onClick={() => onOpenLibrary?.()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onOpenLibrary?.()
+                }
+              }}
+              aria-label={tr('systemPage.addProcessor')}
+              style={{ cursor: 'pointer' }}
+            >
+              <td colSpan={6} style={{
+                ...lastCellStyle,
+                padding: '14px 12px',
+                color: color.muted,
+                borderRight: 'none',
+              }}>
+                <span style={{
+                  ...t.mono, fontSize: 12,
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                }}>
+                  <Plus size={14} strokeWidth={1.5} aria-hidden="true" />
+                  {tr('systemPage.addProcessor')}
+                </span>
+              </td>
+            </tr>
+            {Array.from({ length: Math.max(0, emptyRows - 1) }).map((_, i) => (
               <tr key={`empty-${i}`} aria-hidden="true" role="presentation">
                 <td style={cellStyle}>&nbsp;</td>
                 <td style={cellStyle}>&nbsp;</td>

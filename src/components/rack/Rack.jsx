@@ -15,6 +15,7 @@
 // at the room edges.
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { Plus } from 'lucide-react'
 import { color } from '../../styles'
 import { useA11yType } from '../../hooks/useA11yType'
 import { Panel } from './Panel'
@@ -136,6 +137,7 @@ export function Rack({
   onBroadcastChange,
   onAddCable,
   onRemoveCable,
+  onOpenLibrary,
   systemColor = 's3',
 }) {
   const t = useA11yType()
@@ -327,7 +329,11 @@ export function Rack({
     return patching.source.color || color.primary
   }, [patching])
 
-  const totalWidth = processors.reduce((sum, { def }) => sum + (def.panel?.widthHP || 4) * 24, 0)
+  const ADD_SLOT_HP = 4 // 4HP-wide "+ add processor" slot to the right of the last panel
+  const ADD_SLOT_WIDTH = ADD_SLOT_HP * 24
+  const totalWidth =
+    processors.reduce((sum, { def }) => sum + (def.panel?.widthHP || 4) * 24, 0) +
+    ADD_SLOT_WIDTH
 
   return (
     <div
@@ -359,6 +365,27 @@ export function Rack({
             systemColor={systemColor}
           />
         ))}
+        <button
+          type="button"
+          onClick={() => onOpenLibrary?.()}
+          aria-label="Add processor"
+          style={{
+            flex: '0 0 auto',
+            width: ADD_SLOT_WIDTH,
+            height: PANEL_HEIGHT,
+            background: color.surfaceMuted,
+            border: `1px dashed ${color.border}`,
+            cursor: 'pointer',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: 8,
+            color: color.muted,
+            ...t.mono, fontSize: 10,
+            textTransform: 'uppercase', letterSpacing: '0.05em',
+          }}
+        >
+          <Plus size={20} strokeWidth={1.5} aria-hidden="true" />
+          <span>add</span>
+        </button>
       </div>
 
       {/* Cable layer — viewport-fixed so it escapes all ancestor overflow */}

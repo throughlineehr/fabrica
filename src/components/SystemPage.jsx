@@ -168,6 +168,7 @@ export function SystemPage({
                   }
                   onAddCable={onAddCable}
                   onRemoveCable={onRemoveCable}
+                  onOpenLibrary={() => setLibraryOpen(true)}
                   systemColor={systemKey}
                 />
               )}
