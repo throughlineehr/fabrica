@@ -168,7 +168,7 @@ describe('axe smoke — Switchboard', () => {
     const { container } = render(withProviders(
       <Switchboard
         systemKey="s3"
-        sysColor="#0039A6"
+        sysColor="#0891b2"
         terminals={terminals}
         processors={[]}
         onAddProcessor={() => {}}
@@ -188,7 +188,7 @@ describe('axe smoke — Switchboard', () => {
     const { container } = render(withProviders(
       <Switchboard
         systemKey="s3"
-        sysColor="#0039A6"
+        sysColor="#0891b2"
         terminals={terminals}
         processors={processors}
         onAddProcessor={() => {}}
