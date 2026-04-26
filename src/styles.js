@@ -36,12 +36,12 @@ export const color = {
   s2: { fill: '#EE352E', stroke: '#8A1A14' },  // red       — fill 4.5:1 ✓, stroke 9.0:1 ✓
   s1: { fill: '#00933C', stroke: '#00521F' },  // green     — fill 4.0:1 ✓, stroke 9.0:1 ✓
 
-  // Cable / channel colors — Beer's audit is canonically yellow.
-  // Pure vivid yellow (#FCCC0A type) cannot hit ≥3:1 on white — it caps
-  // around 1.7:1 because yellow is intrinsically too luminous. To honor the
-  // canon AND the AA hard constraint, audit is gold-toned: yellow at the
-  // exact 3:1 boundary. Brighter is achievable only by abandoning AA.
-  audit: { fill: '#ca8a04', stroke: '#713f12' },     // gold-yellow — fill 3.0:1 ✓, stroke 9.5:1 ✓
+  // Cable / channel colors — Beer's audit is canonically yellow. Pure
+  // vivid yellow on white cannot hit ≥3:1 (caps ~1.7:1, yellow's
+  // intrinsic luminance), so audit lives in the amber-orange zone:
+  // hue-shifted toward orange so it doesn't read as muddy gold/brown,
+  // luminance-shifted dark enough to clear the AA contrast bar.
+  audit: { fill: '#b45309', stroke: '#78350f' },     // amber-orange — fill 4.6:1 ✓, stroke 9.5:1 ✓
   algedonic: { fill: '#e03030', stroke: '#a01010' },  // emergency red — fill 4.0:1 ✓, stroke 7.5:1 ✓
 
   metaUnit: '#000',        // 21.0:1 ✓ AAA
