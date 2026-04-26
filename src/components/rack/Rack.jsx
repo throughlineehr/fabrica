@@ -135,6 +135,7 @@ export function Rack({
   cables = [],
   onConfigChange,
   onBroadcastChange,
+  onAction,
   onAddCable,
   onRemoveCable,
   onOpenLibrary,
@@ -362,6 +363,7 @@ export function Rack({
             state={processorState[instance.id]}
             onConfigChange={(patch) => onConfigChange?.(instance.id, patch)}
             onBroadcastChange={(next) => onBroadcastChange?.(instance.id, next)}
+            onAction={(action) => onAction?.(instance.id, action)}
             systemColor={systemColor}
           />
         ))}

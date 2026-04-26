@@ -94,9 +94,12 @@ function App() {
   const [cables, setCables] = useState({})
 
   // Single dispatcher for the whole app. onTerminal walks the topology
-  // index to bridge across rooms via peer terminals.
+  // index to bridge across rooms via peer terminals. The ref reads happen
+  // inside the callback (which fires async during dispatch), not during
+  // render — eslint can't prove that, so we tell it explicitly.
   const dispatcher = useMemo(() => {
     let self
+    // eslint-disable-next-line react-hooks/refs -- ref read happens inside the onTerminal callback, fired async during dispatch
     self = createDispatcher({
       onTerminal: (fromRoomKey, terminalId, signal, hopCount) => {
         const peers = topologyIndexRef.current.get(`${fromRoomKey}|${terminalId}`) || []
@@ -146,14 +149,20 @@ function App() {
     setCables(prev => pruneCablesByProcessor(prev, liveProcessorIdsByRoom(processors)).cables)
   }
 
+  // Live handle map by instanceId. Populated by the runtime effect below;
+  // looked up by `processorAction` when a panel button fires so we can
+  // call onAction without restarting the processor.
+  const handlesRef = useRef(new Map())
+
   // Start/stop running instances in sync with the processors state.
-  // Each processor.create() returns { start, stop, onInput? }. We register
-  // onInput with the dispatcher so cable deliveries reach the processor;
-  // emits flow back through dispatcher.emit. Rebuilds all on every change —
-  // simple and correct for small counts.
+  // Each processor.create() returns { start, stop, onInput?, onAction? }.
+  // We register onInput with the dispatcher so cable deliveries reach the
+  // processor; emits flow back through dispatcher.emit. Rebuilds all on
+  // every change — simple and correct for small counts.
   useEffect(() => {
     if (!bus) return
     const running = []
+    handlesRef.current = new Map()
     for (const [key, instances] of Object.entries(processors)) {
       const [nodeId, systemKey] = key.split(':')
       for (const inst of instances) {
@@ -174,6 +183,7 @@ function App() {
           inputHandler: handle.onInput || (() => {}),
         })
         handle.start()
+        handlesRef.current.set(inst.id, handle)
         running.push({ handle, instanceId: inst.id })
       }
     }
@@ -182,8 +192,17 @@ function App() {
         handle.stop()
         dispatcher.unregisterProcessor(instanceId)
       }
+      handlesRef.current = new Map()
     }
   }, [bus, dispatcher, processors, llm])
+
+  // Invoke a panel button's action against the running handle. The processor
+  // decides what the action means (schedule a test event, reset state, ping
+  // a connection, etc.).
+  const processorAction = useCallback((instanceId, action) => {
+    const handle = handlesRef.current.get(instanceId)
+    handle?.onAction?.(action)
+  }, [])
 
   // Processor CRUD flows through the agent API (agentAPI.addProcessor /
   // removeProcessor / updateProcessorFilters). See SystemPage render below.
@@ -534,6 +553,7 @@ function App() {
               if ('broadcast' in (updates || {})) agentAPI.setProcessorBroadcast(systemView.nodeId, systemView.systemKey, instanceId, updates.broadcast)
             }}
             onOpenProcessor={(instanceId) => agentAPI.openProcessor(systemView.nodeId, systemView.systemKey, instanceId)}
+            onProcessorAction={processorAction}
             onAddCable={(cab) => agentAPI.addCable(systemView.nodeId, systemView.systemKey, cab.source, cab.target, cab.color)}
             onRemoveCable={(cableId) => agentAPI.removeCable(systemView.nodeId, systemView.systemKey, cableId)}
             onBack={handleSystemBack}

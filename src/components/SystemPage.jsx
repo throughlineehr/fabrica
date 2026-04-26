@@ -21,7 +21,7 @@ export function SystemPage({
   nodeId, nodeName, node, tree, systemKey,
   processors,
   cables = [],
-  onAddProcessor, onRemoveProcessor, onUpdateProcessor, onOpenProcessor,
+  onAddProcessor, onRemoveProcessor, onUpdateProcessor, onOpenProcessor, onProcessorAction,
   onAddCable, onRemoveCable,
   onBack, onNavigate,
 }) {
@@ -166,6 +166,7 @@ export function SystemPage({
                   onBroadcastChange={(instanceId, broadcast) =>
                     onUpdateProcessor?.(instanceId, { broadcast })
                   }
+                  onAction={onProcessorAction}
                   onAddCable={onAddCable}
                   onRemoveCable={onRemoveCable}
                   onOpenLibrary={() => setLibraryOpen(true)}

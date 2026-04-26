@@ -27,7 +27,17 @@ export const PROCESSOR_CATEGORIES = [
   { id: 'analysis',   label: 'Analysis',    description: 'Variety attenuation (digest, anomaly, …)' },
   { id: 'governance', label: 'Governance',  description: 'Decision machinery (parliament, policy, audit, …)' },
   { id: 'effector',   label: 'Effectors',   description: 'Outbound side of transducers' },
+  { id: 'testing',    label: 'Testing',     description: 'Synthetic sources and validators for verifying detector pipelines' },
 ]
+
+// Box-Muller for Gaussian noise. Given uniform random in (0,1), returns
+// a sample from N(0,1); scale by stddev for arbitrary spread.
+function gaussianSample() {
+  let u = 0, v = 0
+  while (u === 0) u = Math.random()
+  while (v === 0) v = Math.random()
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)
+}
 
 // Convention: every processor declares 4 input ports (top of panel) for
 // visual consistency. Most core processors today only functionally consume
@@ -548,7 +558,392 @@ const DIGEST = {
   },
 }
 
-export const PROCESSOR_LIBRARY = [HEARTBEAT, TRACER, LOGGER, WEBSOCKET_TRANSDUCER, DIGEST]
+// TEST GENERATOR ----------------------------------------------------------
+// Synthetic signal source for verifying detector / analyser pipelines. Emits
+// a continuous numerical stream tagged with the active patterns, accepts
+// detection events back on its input, and tracks which scheduled events
+// were caught vs missed in an internal ledger. Periodic structured reports
+// flow out of the `report` port.
+//
+// The "expected input" is the ledger: every scheduled discrete test event
+// (step / anomaly) becomes an entry that's flipped to `caught: true` when a
+// matching detection arrives within `matchToleranceMs`. Continuous patterns
+// (trend / period) are tracked as boolean "ever-detected" flags.
+
+const TEST_GENERATOR = {
+  id: 'test-generator',
+  name: 'Test Generator',
+  description: 'Synthetic numerical stream for detector validation. Mix baseline, noise, trend, periodicity, scheduled steps and anomalies. Tracks which emitted events get caught by downstream detectors.',
+  category: 'testing',
+  hasInputs: true,
+  hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'detections', label: 'detections', accepts: { types: null, tags: ['detection'] } },
+    ],
+    outputs: [
+      { id: 'data',   label: 'data',   emits: { types: ['metric'],    tags: ['testdata'] } },
+      { id: 'report', label: 'report', emits: { types: ['narrative'], tags: ['testdata', 'report'] } },
+    ],
+  },
+  placement: 'any',
+  defaultConfig: {
+    intervalMs: 500,
+    baseline: 50,
+    noise: 2,
+    trendSlope: 0,
+    periodAmplitude: 0,
+    periodMs: 30000,
+    stepDelta: 20,
+    anomalyValue: 100,
+    matchToleranceMs: 3000,
+    reportIntervalMs: 15000,
+  },
+  panel: {
+    widthHP: 14,
+    bg: 'mid',
+    accent: 's4',
+    fixtures: [
+      // Detections input at top-left (2x2 due to default jack size).
+      { type: 'jack', id: 'jin', x: 0, y: 0, kind: 'input', port: 'detections', color: 's4', label: 'in' },
+      // Pattern knobs (row y=2-3)
+      { type: 'knob', id: 'baseline',        x: 0,  y: 2, size: 'md',
+        bind: 'config.baseline',        range: [0, 200],     step: 1,    label: 'base' },
+      { type: 'knob', id: 'noise',           x: 2,  y: 2, size: 'md',
+        bind: 'config.noise',           range: [0, 20],      step: 0.5,  label: 'noise' },
+      { type: 'knob', id: 'trendSlope',      x: 4,  y: 2, size: 'md',
+        bind: 'config.trendSlope',      range: [-5, 5],      step: 0.1,  unit: '/s', label: 'trend' },
+      { type: 'knob', id: 'periodAmplitude', x: 6,  y: 2, size: 'md',
+        bind: 'config.periodAmplitude', range: [0, 50],      step: 1,    label: 'amp' },
+      { type: 'knob', id: 'periodMs',        x: 8,  y: 2, size: 'md',
+        bind: 'config.periodMs',        range: [1000, 120000], step: 1000, unit: 'ms', label: 'period' },
+      { type: 'knob', id: 'intervalMs',      x: 10, y: 2, size: 'md',
+        bind: 'config.intervalMs',      range: [100, 5000],  step: 100,  unit: 'ms', label: 'rate' },
+      // Inject row (y=5-6: knobs span 2 rows; buttons sit on y=5)
+      { type: 'knob',   id: 'stepDelta',     x: 0,  y: 5, size: 'md',
+        bind: 'config.stepDelta',     range: [-50, 50], step: 1, label: 'Δstep' },
+      { type: 'button', id: 'btnStep',       x: 2,  y: 5, w: 2, h: 1, action: 'step',    label: 'step' },
+      { type: 'knob',   id: 'anomalyValue',  x: 4,  y: 5, size: 'md',
+        bind: 'config.anomalyValue',  range: [0, 200],  step: 1, label: 'spike' },
+      { type: 'button', id: 'btnAnomaly',    x: 6,  y: 5, w: 2, h: 1, action: 'anomaly', label: 'spike' },
+      { type: 'button', id: 'btnReport',     x: 8,  y: 5, w: 2, h: 1, action: 'report',  label: 'report' },
+      { type: 'button', id: 'btnReset',      x: 10, y: 5, w: 2, h: 1, action: 'reset',   label: 'reset' },
+      // Live ledger — small displays so they fit four-across
+      { type: 'display', id: 'caught',   x: 0,  y: 8, w: 3, h: 1, bind: 'state.caught',          label: 'caught' },
+      { type: 'display', id: 'missed',   x: 3,  y: 8, w: 3, h: 1, bind: 'state.missed',          label: 'missed' },
+      { type: 'display', id: 'falsePos', x: 6,  y: 8, w: 3, h: 1, bind: 'state.falsePositives',  label: 'false+' },
+      { type: 'display', id: 'emitted',  x: 9,  y: 8, w: 3, h: 1, bind: 'state.emitted',         label: 'emitted' },
+      // Outputs — data jack on left, report jack on right
+      { type: 'jack', id: 'jdata',   x: 3,  y: 11, kind: 'output', port: 'data',   color: 's4', label: 'data' },
+      { type: 'jack', id: 'jreport', x: 9,  y: 11, kind: 'output', port: 'report', color: 's2', label: 'report' },
+    ],
+  },
+  create(config, runtime) {
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    let timer = null
+    let reportTimer = null
+    let startMs = 0
+    let seq = 0
+
+    // Ledger of discrete scheduled events (steps + anomalies). Each entry:
+    //   { id, kind: 'step'|'anomaly', at: ms-relative-to-startMs, magnitude, caught, detectionAt? }
+    const ledger = []
+    const cumulativeStepOffset = () => ledger
+      .filter(e => e.kind === 'step' && (Date.now() - startMs) >= e.at)
+      .reduce((s, e) => s + e.magnitude, 0)
+
+    // Continuous-pattern detection flags (set true when any detection arrives
+    // matching a currently-active pattern).
+    const patternFlags = { trend: false, period: false }
+
+    let counts = { caught: 0, missed: 0, falsePositives: 0, emitted: 0, detectionsReceived: 0 }
+
+    const buildReport = () => {
+      const runtimeMs = Date.now() - startMs
+      const expectedDiscrete = ledger.length
+      const caughtDiscrete = ledger.filter(e => e.caught).length
+      const missedDiscrete = ledger.filter(e => !e.caught && (Date.now() - startMs) > e.at + (config.matchToleranceMs || 3000)).length
+      // Recompute counts so the panel + report agree.
+      counts.caught = caughtDiscrete
+      counts.missed = missedDiscrete
+      const sig = createSignal(
+        'narrative',
+        {
+          kind: 'test-report',
+          runtimeMs,
+          patterns: {
+            baseline: config.baseline,
+            noise: config.noise,
+            trendSlope: config.trendSlope,
+            periodAmplitude: config.periodAmplitude,
+            periodMs: config.periodMs,
+          },
+          continuous: {
+            trendActive: config.trendSlope !== 0,
+            trendDetected: patternFlags.trend,
+            periodActive: config.periodAmplitude > 0,
+            periodDetected: patternFlags.period,
+          },
+          discrete: {
+            expected: expectedDiscrete,
+            caught: caughtDiscrete,
+            missed: missedDiscrete,
+            falsePositives: counts.falsePositives,
+            ledger: ledger.map(e => ({
+              id: e.id, kind: e.kind, at: e.at, magnitude: e.magnitude, caught: e.caught,
+            })),
+          },
+        },
+        { processorId: instanceId, processorType: 'test-generator', roomNodeId, roomSystemKey },
+      )
+      sig.tags = ['testdata', 'report']
+      const stamped = appendTrace(sig, { roomNodeId, roomSystemKey, processorId: instanceId, processorType: 'test-generator' })
+      dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'report' })
+      bus.publish(eventsChannel(instanceId), stamped)
+    }
+
+    const tick = () => {
+      const now = Date.now()
+      const t = (now - startMs) / 1000
+      const tags = ['testdata']
+
+      let value = config.baseline
+      if (config.trendSlope) { value += config.trendSlope * t; tags.push('trending') }
+      if (config.periodAmplitude > 0) {
+        value += config.periodAmplitude * Math.sin(2 * Math.PI * (now - startMs) / config.periodMs)
+        tags.push('periodic')
+      }
+      value += cumulativeStepOffset()
+      // Anomaly: if there's a scheduled anomaly within ±intervalMs/2 of now, override the value.
+      const tol = (config.intervalMs || 500) / 2
+      const anomaly = ledger.find(e => e.kind === 'anomaly' && !e.fired && Math.abs((now - startMs) - e.at) < tol)
+      if (anomaly) {
+        value = anomaly.magnitude
+        anomaly.fired = true
+        tags.push('anomaly', `event:${anomaly.id}`)
+      }
+      // Step boundary: tag the first tick where a step engages.
+      const stepBoundary = ledger.find(e => e.kind === 'step' && !e.fired && (now - startMs) >= e.at)
+      if (stepBoundary) {
+        stepBoundary.fired = true
+        tags.push('step', `event:${stepBoundary.id}`)
+      }
+      if (tags.length === 1) tags.push('baseline')
+      // Add gaussian noise last so the test event tags still align with the
+      // "intended" value modulo measurement noise.
+      if (config.noise > 0) value += gaussianSample() * config.noise
+
+      seq += 1
+      counts.emitted = seq
+      const sig = createSignal(
+        'metric',
+        { key: 'test', value, seq, eventId: stepBoundary?.id || anomaly?.id || null },
+        { processorId: instanceId, processorType: 'test-generator', roomNodeId, roomSystemKey },
+      )
+      sig.tags = tags
+      const stamped = appendTrace(sig, {
+        roomNodeId, roomSystemKey, processorId: instanceId, processorType: 'test-generator',
+      })
+      dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'data' })
+      bus.publish(eventsChannel(instanceId), stamped)
+    }
+
+    const onInput = ({ signal }) => {
+      if (!signalMatches(signal, filters)) return
+      // Detection contract: signal carries 'detection' tag plus a kind tag
+      // (one of step/anomaly/trend/periodic) OR content.kind === 'detection'
+      // with content.subkind set.
+      const tags = signal.tags || []
+      if (!tags.includes('detection')) return
+      counts.detectionsReceived += 1
+      const subkind = tags.find(t => ['step','anomaly','trend','periodic'].includes(t))
+                  || signal.content?.subkind
+      if (!subkind) { counts.falsePositives += 1; return }
+
+      if (subkind === 'trend') { patternFlags.trend = true; return }
+      if (subkind === 'periodic') { patternFlags.period = true; return }
+
+      // Discrete: match against unmatched ledger events of the same kind in
+      // the recent past.
+      const detectedAt = signal.timestamp || Date.now()
+      const tol = config.matchToleranceMs || 3000
+      const candidate = ledger.find(e =>
+        e.kind === subkind && !e.caught &&
+        Math.abs((detectedAt - startMs) - e.at) <= tol
+      )
+      if (candidate) {
+        candidate.caught = true
+        candidate.detectionAt = detectedAt - startMs
+      } else {
+        counts.falsePositives += 1
+      }
+    }
+
+    const onAction = (action) => {
+      const now = Date.now()
+      if (action === 'step') {
+        const id = `step-${ledger.length + 1}`
+        // Arm the step ~1s in the future so the panel-press has time to settle.
+        ledger.push({ id, kind: 'step', at: (now - startMs) + 1000, magnitude: config.stepDelta, caught: false, fired: false })
+      } else if (action === 'anomaly') {
+        const id = `anomaly-${ledger.length + 1}`
+        ledger.push({ id, kind: 'anomaly', at: (now - startMs) + 1000, magnitude: config.anomalyValue, caught: false, fired: false })
+      } else if (action === 'reset') {
+        ledger.length = 0
+        patternFlags.trend = false
+        patternFlags.period = false
+        counts = { caught: 0, missed: 0, falsePositives: 0, emitted: 0, detectionsReceived: 0 }
+        seq = 0
+        startMs = Date.now()
+      } else if (action === 'report') {
+        buildReport()
+      }
+    }
+
+    return {
+      onInput,
+      onAction,
+      start() {
+        if (timer) return
+        startMs = Date.now()
+        timer = setInterval(tick, config.intervalMs || 500)
+        if (config.reportIntervalMs > 0) {
+          reportTimer = setInterval(buildReport, config.reportIntervalMs)
+        }
+      },
+      stop() {
+        if (timer) { clearInterval(timer); timer = null }
+        if (reportTimer) { clearInterval(reportTimer); reportTimer = null }
+      },
+    }
+  },
+}
+
+// TEST EXPLAINER ----------------------------------------------------------
+// LLM-backed processor that turns a Test Generator's structured report into
+// a plain-language pass/fail narrative. Designed to be wired downstream of
+// `test-generator.report` so a human reading the live feed can see what the
+// detector pipeline got right, what it missed, and what surprised it.
+//
+// One LLM call per report received. The prompt asks for a short paragraph
+// plus a one-line verdict so it integrates well with the live signal feed.
+
+const TEST_EXPLAINER_PROMPT = `You are an explainer for an automated testing harness. The user has wired a synthetic signal generator (which knows what test events it scheduled) to one or more detector processors, and wired the detection signals back to the generator. The generator emits a structured "test-report" signal periodically with this shape:
+
+{
+  patterns: { baseline, noise, trendSlope, periodAmplitude, periodMs },
+  continuous: { trendActive, trendDetected, periodActive, periodDetected },
+  discrete: { expected, caught, missed, falsePositives, ledger: [{id, kind, at, magnitude, caught}] },
+  runtimeMs
+}
+
+When you receive a report, write a brief plain-language summary (<= 4 sentences) covering:
+- which patterns were configured and whether the detectors caught them,
+- the discrete-event score (caught/missed/falsePositives),
+- one specific missed event if any (cite by id and kind),
+- a one-line verdict at the end starting with "VERDICT:" — one of "PASS", "PARTIAL", or "FAIL".
+
+Be concrete and concise. No greeting, no preamble, no markdown.`
+
+const TEST_EXPLAINER = {
+  id: 'test-explainer',
+  name: 'Test Explainer',
+  description: 'LLM agent that reads Test Generator reports and writes plain-language pass/fail narratives. Wire test-generator.report into this processor and route its narrative output to a Logger.',
+  category: 'testing',
+  hasInputs: true,
+  hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'reports', label: 'reports', accepts: { types: ['narrative'], tags: ['testdata', 'report'] } },
+    ],
+    outputs: [
+      { id: 'narrative', label: 'narrative', emits: { types: ['narrative'], tags: ['testdata', 'explanation'] } },
+    ],
+  },
+  placement: 'any',
+  defaultConfig: {
+    systemPrompt: TEST_EXPLAINER_PROMPT,
+  },
+  panel: {
+    widthHP: 8,
+    bg: 'mid',
+    accent: 's2',
+    fixtures: [
+      { type: 'jack', id: 'jin',   x: 0, y: 0, kind: 'input',  port: 'reports',  color: 's2', label: 'rpt' },
+      { type: 'led',  id: 'busy',  x: 4, y: 1, bind: 'state.busy', color: 's2', label: 'busy' },
+      { type: 'display', id: 'verdict', x: 0, y: 4, w: 8, h: 2, bind: 'state.lastVerdict', label: 'verdict' },
+      { type: 'display', id: 'count',   x: 0, y: 7, w: 4, h: 1, bind: 'state.explained',   label: 'reports' },
+      { type: 'jack', id: 'jout',  x: 3, y: 11, kind: 'output', port: 'narrative', color: 's2', label: 'out' },
+    ],
+  },
+  create(config, runtime) {
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters, llm } = runtime
+    let inFlight = false
+
+    const onInput = async ({ signal }) => {
+      if (signal?.content?.kind !== 'test-report') return
+      if (!signalMatches(signal, filters)) return
+      if (!llm?.prompt) {
+        // Surface the misconfiguration through the live feed so the user
+        // doesn't wonder why nothing comes out.
+        bus.publish(eventsChannel(instanceId), createSignal(
+          'alert',
+          { kind: 'no-llm', error: 'No LLM configured in runtime' },
+          { processorId: instanceId, processorType: 'test-explainer', roomNodeId, roomSystemKey },
+        ))
+        return
+      }
+      if (inFlight) return // back-pressure: drop overlapping reports
+      inFlight = true
+
+      let text
+      try {
+        text = await llm.prompt([
+          { role: 'system', content: config.systemPrompt || TEST_EXPLAINER_PROMPT },
+          { role: 'user',   content: JSON.stringify(signal.content) },
+        ])
+      } catch (err) {
+        bus.publish(eventsChannel(instanceId), createSignal(
+          'alert',
+          { kind: 'explainer-failed', error: String(err?.message || err) },
+          { processorId: instanceId, processorType: 'test-explainer', roomNodeId, roomSystemKey },
+        ))
+        inFlight = false
+        return
+      } finally {
+        // inFlight cleared in success path below; finally still runs.
+      }
+      inFlight = false
+
+      const verdictMatch = text.match(/VERDICT:\s*(PASS|PARTIAL|FAIL)/i)
+      const verdict = verdictMatch ? verdictMatch[1].toUpperCase() : 'UNKNOWN'
+
+      const out = createSignal(
+        'narrative',
+        {
+          text: text.trim(),
+          verdict,
+          source: { reportId: signal.id },
+        },
+        { processorId: instanceId, processorType: 'test-explainer', roomNodeId, roomSystemKey },
+      )
+      out.tags = ['testdata', 'explanation', `verdict:${verdict.toLowerCase()}`]
+      const stamped = appendTrace(out, {
+        roomNodeId, roomSystemKey, processorId: instanceId, processorType: 'test-explainer',
+      })
+      dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'narrative' })
+      bus.publish(eventsChannel(instanceId), stamped)
+    }
+
+    return {
+      onInput,
+      start() {},
+      stop() { inFlight = false },
+    }
+  },
+}
+
+export const PROCESSOR_LIBRARY = [HEARTBEAT, TRACER, LOGGER, WEBSOCKET_TRANSDUCER, DIGEST, TEST_GENERATOR, TEST_EXPLAINER]
 
 export function getProcessorDef(defId) {
   return PROCESSOR_LIBRARY.find(p => p.id === defId)
