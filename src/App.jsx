@@ -471,8 +471,11 @@ function App() {
             onRemoveProcessor={(instanceId) => agentAPI.removeProcessor(systemView.nodeId, systemView.systemKey, instanceId)}
             onUpdateProcessor={(instanceId, updates) => {
               // Switchboard sends { filters: {...} } patches when rows change.
+              // Rack sends { config: {...} } via Panel.onConfigChange.
+              // Panel's broadcast pill sends { broadcast: bool }.
               if (updates?.filters) agentAPI.updateProcessorFilters(systemView.nodeId, systemView.systemKey, instanceId, updates.filters)
               if (updates?.config) agentAPI.updateProcessorConfig(systemView.nodeId, systemView.systemKey, instanceId, updates.config)
+              if ('broadcast' in (updates || {})) agentAPI.setProcessorBroadcast(systemView.nodeId, systemView.systemKey, instanceId, updates.broadcast)
             }}
             onOpenProcessor={(instanceId) => agentAPI.openProcessor(systemView.nodeId, systemView.systemKey, instanceId)}
             onAddCable={(cab) => agentAPI.addCable(systemView.nodeId, systemView.systemKey, cab.source, cab.target, cab.color)}

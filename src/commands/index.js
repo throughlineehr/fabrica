@@ -16,6 +16,6 @@ export {
 
 export {
   addProcessor, removeProcessor,
-  updateProcessorFilters, updateProcessorConfig,
+  updateProcessorFilters, updateProcessorConfig, setProcessorBroadcast,
   pruneProcessorsByRoom,
 } from './processors'

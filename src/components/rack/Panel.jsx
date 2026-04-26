@@ -105,6 +105,7 @@ export function Panel({
   instance,
   state,
   onConfigChange,
+  onBroadcastChange,
   onAction,
   systemColor = 's3',
 }) {
@@ -125,8 +126,8 @@ export function Panel({
   const bg = BG_TOKEN[manifest.bg] || color.surface
   const fg = BODY_TEXT[manifest.bg] || color.primary
 
-  const broadcast = Boolean(instance?.config?.broadcast)
-  const setBroadcast = (next) => onConfigChange?.({ broadcast: next })
+  const broadcast = Boolean(instance?.broadcast)
+  const setBroadcast = (next) => onBroadcastChange?.(next)
 
   return (
     <div

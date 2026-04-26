@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   addCable, removeCable, pruneCablesByRoom, pruneCablesByProcessor,
   addProcessor, removeProcessor, updateProcessorFilters, updateProcessorConfig,
+  setProcessorBroadcast,
 } from '../commands'
 import { liveProcessorIdsByRoom, listInternalCables, usedPortKeys } from '../queries'
 
@@ -84,6 +85,15 @@ describe('processor commands', () => {
     const { processors: p1, result: r1 } = addProcessor({}, { ...room, defId: 'heartbeat' })
     const { processors: p2 } = updateProcessorConfig(p1, { ...room, instanceId: r1.instanceId, configPatch: { intervalMs: 999 } })
     expect(p2[key][0].config.intervalMs).toBe(999)
+  })
+
+  it('setProcessorBroadcast sets the top-level broadcast flag', () => {
+    const { processors: p1, result: r1 } = addProcessor({}, { ...room, defId: 'heartbeat' })
+    expect(p1[key][0].broadcast).toBeUndefined()
+    const { processors: p2 } = setProcessorBroadcast(p1, { ...room, instanceId: r1.instanceId, broadcast: true })
+    expect(p2[key][0].broadcast).toBe(true)
+    const { processors: p3 } = setProcessorBroadcast(p2, { ...room, instanceId: r1.instanceId, broadcast: false })
+    expect(p3[key][0].broadcast).toBe(false)
   })
 })
 

@@ -70,6 +70,25 @@ export function updateProcessorConfig(processorsByRoom, { nodeId, systemKey, ins
   return { processors: next, result: { ok: true } }
 }
 
+// Broadcast is a routing flag, not a config knob — it changes how the
+// dispatcher reads the cable graph for this processor. Top-level field on
+// the instance for that reason.
+export function setProcessorBroadcast(processorsByRoom, { nodeId, systemKey, instanceId, broadcast }) {
+  const key = roomKey(nodeId, systemKey)
+  const list = processorsByRoom[key] || []
+  if (!list.find(p => p.id === instanceId)) {
+    return { processors: processorsByRoom, result: { ok: false, error: 'Processor not found' } }
+  }
+  const next = {
+    ...processorsByRoom,
+    [key]: list.map(inst => inst.id === instanceId
+      ? { ...inst, broadcast: Boolean(broadcast) }
+      : inst,
+    ),
+  }
+  return { processors: next, result: { ok: true } }
+}
+
 // Prune processors whose room no longer exists.
 export function pruneProcessorsByRoom(processorsByRoom, liveRoomKeys) {
   let changed = false

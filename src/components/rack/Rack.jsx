@@ -119,6 +119,7 @@ export function Rack({
   processorState = {},
   cables = [],
   onConfigChange,
+  onBroadcastChange,
   onAddCable,
   onRemoveCable,
   systemColor = 's3',
@@ -336,6 +337,7 @@ export function Rack({
             instance={instance}
             state={processorState[instance.id]}
             onConfigChange={(patch) => onConfigChange?.(instance.id, patch)}
+            onBroadcastChange={(next) => onBroadcastChange?.(instance.id, next)}
             systemColor={systemColor}
           />
         ))}

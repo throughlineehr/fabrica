@@ -91,6 +91,9 @@ export function SystemPage({
                   onConfigChange={(instanceId, patch) =>
                     onUpdateProcessor?.(instanceId, { config: patch })
                   }
+                  onBroadcastChange={(instanceId, broadcast) =>
+                    onUpdateProcessor?.(instanceId, { broadcast })
+                  }
                   onAddCable={onAddCable}
                   onRemoveCable={onRemoveCable}
                   systemColor={systemKey}

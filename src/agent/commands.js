@@ -209,6 +209,21 @@ export function createAgentAPI({
       return result
     },
 
+    // Broadcast: top-level routing flag. When true, the dispatcher delivers
+    // outputs to every wall terminal in the room (overriding terminal cables);
+    // internal jack→jack cables are unaffected.
+    setProcessorBroadcast: (nodeId, systemKey, instanceId, broadcast) => {
+      if (!getProcessors || !setProcessors) return { ok: false, error: 'Processors runtime not available' }
+      let result
+      setProcessors(prev => {
+        const out = cmd.setProcessorBroadcast(prev, { nodeId, systemKey, instanceId, broadcast })
+        result = out.result
+        return out.processors
+      })
+      if (result?.ok) announce?.(broadcast ? 'Broadcast enabled' : 'Broadcast disabled')
+      return result
+    },
+
     openProcessor: (nodeId, systemKey, instanceId) => {
       if (!getProcessors) return { ok: false, error: 'Processors runtime not available' }
       if (!q.findProcessor(getProcessors(), { nodeId, systemKey, instanceId })) return { ok: false, error: 'Processor not found' }
