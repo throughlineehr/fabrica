@@ -136,6 +136,7 @@ export function Rack({
   onConfigChange,
   onBroadcastChange,
   onAction,
+  onOpenProcessor,
   onAddCable,
   onRemoveCable,
   onOpenLibrary,
@@ -365,6 +366,7 @@ export function Rack({
             onConfigChange={(patch) => onConfigChange?.(instance.id, patch)}
             onBroadcastChange={(next) => onBroadcastChange?.(instance.id, next)}
             onAction={(action) => onAction?.(instance.id, action)}
+            onOpen={onOpenProcessor ? () => onOpenProcessor(instance.id) : undefined}
             systemColor={systemColor}
           />
         ))}

@@ -181,6 +181,7 @@ export function SystemPage({
                     onUpdateProcessor?.(instanceId, { broadcast })
                   }
                   onAction={onProcessorAction}
+                  onOpenProcessor={onOpenProcessor}
                   onAddCable={onAddCable}
                   onRemoveCable={onRemoveCable}
                   onOpenLibrary={() => setLibraryOpen(true)}

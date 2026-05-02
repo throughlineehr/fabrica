@@ -107,6 +107,7 @@ export function Panel({
   onConfigChange,
   onBroadcastChange,
   onAction,
+  onOpen,
   systemColor = 's3',
 }) {
   const t = useA11yType()
@@ -143,15 +144,23 @@ export function Panel({
         border: `1px solid ${color.border}`,
       }}
     >
-      {/* Title strip */}
-      <div style={{
-        height: PANEL_TITLE_STRIP,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        position: 'relative',
-        background: color.surfaceMuted,
-        color: color.primary,
-        borderBottom: `1px solid ${color.border}`,
-      }}>
+      {/* Title strip — double-click opens the processor's detail page.
+          Limited to the title (not the whole panel) so it doesn't fight
+          knob drags / jack-patch interactions in the body. */}
+      <div
+        onDoubleClick={onOpen ? (e) => { e.stopPropagation(); onOpen() } : undefined}
+        title={onOpen ? 'Double-click to open processor' : undefined}
+        style={{
+          height: PANEL_TITLE_STRIP,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          position: 'relative',
+          background: color.surfaceMuted,
+          color: color.primary,
+          borderBottom: `1px solid ${color.border}`,
+          cursor: onOpen ? 'pointer' : 'default',
+          userSelect: 'none',
+        }}
+      >
         <span aria-hidden="true" style={{
           position: 'absolute', left: 6, top: '50%',
           width: 8, height: 8, marginTop: -4, borderRadius: '50%',
