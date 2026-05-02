@@ -2205,6 +2205,91 @@ const ANOMALY_DETECTOR = {
   },
 }
 
+// PULSE BATCHER -----------------------------------------------------------
+// Eurorack-style sample-and-hold across a window. Inputs are buffered
+// silently; on each flush tick (`batchMs`) the entire buffer is emitted in
+// a burst on the output port, then cleared. Useful for converting a
+// continuous stream into discrete pulses ("every 5 seconds, fire whatever
+// arrived during the window").
+
+const PULSE_BATCHER = {
+  id: 'pulse-batcher',
+  name: 'Pulse Batcher',
+  description: 'Buffers incoming signals silently and emits them in a burst on a periodic flush timer. Pass-through — each signal arrives downstream unchanged, just with everything-at-once timing.',
+  category: 'flow',
+  hasInputs: true,
+  hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'in', label: 'in', accepts: { types: null, tags: null } },
+    ],
+    outputs: [
+      { id: 'out', label: 'out', emits: { types: null, tags: null } },
+    ],
+  },
+  placement: 'any',
+  defaultConfig: {
+    batchMs: 5000,
+    maxBuffer: 1000, // safety cap — drops oldest when exceeded
+  },
+  panel: {
+    widthHP: 8,
+    bg: 'mid',
+    accent: 's3',
+    fixtures: [
+      { type: 'jack', id: 'jin', x: 0, y: 0, kind: 'input', port: 'in', color: 's3', label: 'in' },
+      { type: 'knob', id: 'batchMs', x: 1, y: 2, size: 'md',
+        bind: 'config.batchMs', range: [100, 60000], step: 100, unit: 'ms', label: 'batch' },
+      { type: 'knob', id: 'maxBuffer', x: 4, y: 2, size: 'md',
+        bind: 'config.maxBuffer', range: [10, 10000], step: 10, label: 'cap' },
+      { type: 'display', id: 'count',     x: 0, y: 5, w: 4, h: 1, bind: 'state.bufferCount', label: 'queued' },
+      { type: 'display', id: 'lastBurst', x: 4, y: 5, w: 4, h: 1, bind: 'state.lastBurstSize', label: 'last' },
+      { type: 'led',     id: 'pulse',     x: 3, y: 8, bind: 'state.pulseLed', color: 's3', label: 'pulse' },
+      { type: 'jack', id: 'jout', x: 3, y: 11, kind: 'output', port: 'out', color: 's3', label: 'out' },
+    ],
+  },
+  create(config, runtime) {
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    let buffer = []
+    let timer = null
+
+    const flush = () => {
+      if (buffer.length === 0) return
+      // Snapshot + clear before emitting so any signal that arrives during
+      // the burst goes into the next window, not this one.
+      const batch = buffer
+      buffer = []
+      for (const sig of batch) {
+        dispatcher.emit(sig, { fromInstanceId: instanceId, fromPortId: 'out' })
+      }
+      // A small marker on our events channel so the live feed shows the
+      // pulse boundary clearly (count + when).
+      bus.publish(eventsChannel(instanceId), createSignal(
+        'event',
+        { kind: 'pulse-flush', count: batch.length },
+        { processorId: instanceId, processorType: 'pulse-batcher', roomNodeId, roomSystemKey },
+      ))
+    }
+
+    return {
+      onInput({ signal }) {
+        if (!signalMatches(signal, filters)) return
+        buffer.push(signal)
+        const cap = config.maxBuffer ?? 1000
+        if (buffer.length > cap) buffer.shift() // drop oldest, prefer recent
+      },
+      start() {
+        if (timer) return
+        timer = setInterval(flush, config.batchMs ?? 5000)
+      },
+      stop() {
+        if (timer) { clearInterval(timer); timer = null }
+        buffer = []
+      },
+    }
+  },
+}
+
 // SUB-PATCHING -----------------------------------------------------------
 // A compound processor is a def that ships a `subRack` instead of (or in
 // addition to) a primitive `create`. Its create() spawns inner instances,
@@ -2478,7 +2563,7 @@ export const PROCESSOR_LIBRARY = [
   PERIOD_DETECTOR, STEP_DETECTOR, TREND_DETECTOR, ANOMALY_DETECTOR,
   SENTIMENT, KEYWORD_EXTRACTOR, ENTITY_EXTRACTOR,
   NEAR_DUP_DETECTOR, TOP_K_TRACKER,
-  SPLITTER,
+  SPLITTER, PULSE_BATCHER,
   // Compounds
   SENTIMENT_TRACKER,
 ]
