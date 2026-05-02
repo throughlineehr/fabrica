@@ -1177,7 +1177,349 @@ const PERIOD_DETECTOR = {
   },
 }
 
-export const PROCESSOR_LIBRARY = [HEARTBEAT, TRACER, LOGGER, WEBSOCKET_TRANSDUCER, DIGEST, TEST_GENERATOR, TEST_EXPLAINER, PERIOD_DETECTOR]
+// NLP PROCESSORS (non-LLM) ------------------------------------------------
+// Three composable text primitives that work without calling out to a
+// language model: Sentiment (lexicon polarity), Keyword Extractor (RAKE),
+// and Entity Extractor (regex-based URL/mention/hashtag/amount). They all
+// look for text in the input signal at content.text / .message / .label /
+// .body / .value and ignore signals that don't carry any.
+
+function extractText(signal) {
+  const c = signal?.content
+  if (!c) return null
+  if (typeof c === 'string') return c
+  if (typeof c.text === 'string') return c.text
+  if (typeof c.message === 'string') return c.message
+  if (typeof c.label === 'string') return c.label
+  if (typeof c.body === 'string') return c.body
+  if (typeof c.value === 'string') return c.value
+  return null
+}
+
+// Small AFINN-style polarity lexicon. Tuned for the kinds of operational
+// chatter Fabrica is going to see (slack, alerts, ops feedback). User can
+// override / extend via config.lexicon.
+const SENTIMENT_LEXICON = {
+  // positive
+  good: 2, great: 3, excellent: 4, love: 3, happy: 3, wonderful: 4,
+  fantastic: 4, amazing: 3, perfect: 3, beautiful: 3, success: 2, wins: 2,
+  win: 2, best: 3, awesome: 3, thanks: 2, helpful: 2, easy: 1, fast: 1,
+  smooth: 1, fixed: 2, resolved: 2, working: 1, deployed: 1, shipped: 2,
+  // negative
+  bad: -2, terrible: -4, hate: -3, awful: -3, broken: -3, fail: -3,
+  failed: -3, error: -2, urgent: -2, critical: -3, emergency: -4, crash: -3,
+  crashed: -3, slow: -1, stuck: -2, buggy: -2, dead: -2, problem: -2,
+  issue: -2, blocker: -3, outage: -4, regression: -2, leak: -2,
+  // negators
+  not: -1, no: -1, never: -1,
+}
+
+const SENTIMENT = {
+  id: 'sentiment',
+  name: 'Sentiment',
+  description: 'Lexicon-based polarity scorer. Extracts text from incoming signals, looks each token up in a small AFINN-style lexicon, and emits a metric signal with normalised polarity ∈ [-1, +1] plus a positive/negative/neutral tag.',
+  category: 'analysis',
+  hasInputs: true,
+  hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'in', label: 'in', accepts: { types: null, tags: null } },
+    ],
+    outputs: [
+      { id: 'score', label: 'score', emits: { types: ['metric'], tags: ['sentiment'] } },
+    ],
+  },
+  placement: 'any',
+  defaultConfig: {
+    threshold: 0.05,    // |polarity| above this = positive/negative; otherwise neutral
+    lexicon: null,      // optional override map; merged onto the built-in
+  },
+  panel: {
+    widthHP: 8,
+    bg: 'mid',
+    accent: 's2',
+    fixtures: [
+      { type: 'jack',  id: 'jin', x: 0, y: 0, kind: 'input', port: 'in', color: 's2', label: 'in' },
+      { type: 'knob',  id: 'threshold', x: 2, y: 2, size: 'md',
+        bind: 'config.threshold', range: [0, 0.5], step: 0.01, label: 'thr' },
+      { type: 'led',   id: 'pos', x: 1, y: 5, bind: 'state.lastPositive', color: 's1', label: '+' },
+      { type: 'led',   id: 'neg', x: 4, y: 5, bind: 'state.lastNegative', color: 's2', label: '−' },
+      { type: 'display', id: 'lastScore', x: 0, y: 8, w: 8, h: 1, bind: 'state.lastPolarity', label: 'polarity' },
+      { type: 'jack',  id: 'jout', x: 3, y: 11, kind: 'output', port: 'score', color: 's2', label: 'score' },
+    ],
+  },
+  create(config, runtime) {
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    const lexicon = { ...SENTIMENT_LEXICON, ...(config.lexicon || {}) }
+    const threshold = config.threshold ?? 0.05
+    return {
+      onInput({ signal }) {
+        if (!signalMatches(signal, filters)) return
+        const text = extractText(signal)
+        if (!text) return
+        const tokens = text.toLowerCase().match(/[a-z']+/g) || []
+        let score = 0, hits = 0
+        for (const tok of tokens) {
+          if (lexicon[tok] != null) { score += lexicon[tok]; hits += 1 }
+        }
+        const polarity = tokens.length > 0 ? score / tokens.length : 0
+        const polarityTag = polarity > threshold ? 'positive'
+                          : polarity < -threshold ? 'negative' : 'neutral'
+
+        const out = createSignal(
+          'metric',
+          {
+            key: 'sentiment',
+            value: polarity,
+            polarity,
+            score,
+            hits,
+            totalTokens: tokens.length,
+            polarityTag,
+            source: { signalId: signal.id, snippet: text.slice(0, 200) },
+          },
+          { processorId: instanceId, processorType: 'sentiment', roomNodeId, roomSystemKey },
+        )
+        out.tags = ['sentiment', polarityTag]
+        const stamped = appendTrace(out, {
+          roomNodeId, roomSystemKey, processorId: instanceId, processorType: 'sentiment',
+        })
+        dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'score' })
+        bus.publish(eventsChannel(instanceId), stamped)
+      },
+      start() {},
+      stop() {},
+    }
+  },
+}
+
+// Stopwords for RAKE (English, small). Plenty for typical chatter; users
+// can extend via config.stopwords.
+const RAKE_STOPWORDS = new Set([
+  'a','an','the','and','or','but','if','then','else','of','in','on','at',
+  'to','for','with','by','from','as','is','are','was','were','be','been',
+  'being','have','has','had','do','does','did','will','would','could',
+  'should','may','might','must','shall','can','this','that','these','those',
+  'i','you','he','she','it','we','they','me','him','her','us','them','my',
+  'your','his','hers','its','our','their','what','which','who','whom',
+  'so','than','too','very','just','about','also','here','there','where',
+  'when','why','how','all','any','both','each','few','more','most','other',
+  'some','such','no','nor','not','only','own','same','than','too','very',
+])
+
+// RAKE keyword extraction. Splits text on stopwords + punctuation into
+// candidate phrases, scores each word as (degree+freq)/freq (degree =
+// sum of phrase-lengths it appears in, minus self), sums word scores per
+// phrase, returns the top-K.
+function rake(text, opts) {
+  const stopwords = opts.stopwords || RAKE_STOPWORDS
+  const minPhraseLen = opts.minPhraseLen ?? 1
+  const maxPhraseLen = opts.maxPhraseLen ?? 4
+  const topK = opts.topK ?? 8
+
+  const lowered = text.toLowerCase()
+  const sentences = lowered.split(/[.!?,;:\n\r\t/()[\]{}<>"]+/)
+  const phrases = []
+  for (const sent of sentences) {
+    const tokens = sent.match(/[a-z][a-z'-]*/g) || []
+    let cur = []
+    const flush = () => {
+      if (cur.length >= minPhraseLen && cur.length <= maxPhraseLen) phrases.push(cur)
+      cur = []
+    }
+    for (const tok of tokens) {
+      if (stopwords.has(tok) || tok.length < 2) flush()
+      else cur.push(tok)
+    }
+    flush()
+  }
+  if (phrases.length === 0) return []
+
+  const freq = new Map()
+  const degree = new Map()
+  for (const phrase of phrases) {
+    for (const word of phrase) {
+      freq.set(word, (freq.get(word) || 0) + 1)
+      // degree contribution from this phrase = phrase.length - 1 (co-occurring others)
+      degree.set(word, (degree.get(word) || 0) + (phrase.length - 1))
+    }
+  }
+  const wordScore = new Map()
+  for (const [w, f] of freq) {
+    wordScore.set(w, ((degree.get(w) || 0) + f) / f)
+  }
+  const phraseScores = new Map()
+  for (const phrase of phrases) {
+    const t = phrase.join(' ')
+    if (phraseScores.has(t)) continue
+    phraseScores.set(t, phrase.reduce((s, w) => s + (wordScore.get(w) || 0), 0))
+  }
+  return Array.from(phraseScores.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topK)
+    .map(([phrase, score]) => ({ phrase, score: Number(score.toFixed(3)) }))
+}
+
+const KEYWORD_EXTRACTOR = {
+  id: 'keyword-extractor',
+  name: 'Keyword Extractor',
+  description: 'RAKE-based keyphrase extraction. No LLM. Splits each text input on stopwords and punctuation into candidate phrases, scores each by RAKE\'s degree/frequency formula, and emits a narrative signal carrying the top-K phrases.',
+  category: 'analysis',
+  hasInputs: true,
+  hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'in', label: 'in', accepts: { types: null, tags: null } },
+    ],
+    outputs: [
+      { id: 'keywords', label: 'keywords', emits: { types: ['narrative'], tags: ['keywords'] } },
+    ],
+  },
+  placement: 'any',
+  defaultConfig: {
+    topK: 8,
+    minPhraseLen: 1,
+    maxPhraseLen: 4,
+  },
+  panel: {
+    widthHP: 8,
+    bg: 'mid',
+    accent: 's3',
+    fixtures: [
+      { type: 'jack', id: 'jin', x: 0, y: 0, kind: 'input', port: 'in', color: 's3', label: 'in' },
+      { type: 'knob', id: 'topK',         x: 1, y: 2, size: 'md',
+        bind: 'config.topK',         range: [1, 32], step: 1, label: 'top-k' },
+      { type: 'knob', id: 'maxPhraseLen', x: 4, y: 2, size: 'md',
+        bind: 'config.maxPhraseLen', range: [1, 8], step: 1, label: 'max len' },
+      { type: 'display', id: 'lastTop', x: 0, y: 5, w: 8, h: 3, bind: 'state.lastTop', label: 'top phrases' },
+      { type: 'jack', id: 'jout', x: 3, y: 11, kind: 'output', port: 'keywords', color: 's3', label: 'kw' },
+    ],
+  },
+  create(config, runtime) {
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    return {
+      onInput({ signal }) {
+        if (!signalMatches(signal, filters)) return
+        const text = extractText(signal)
+        if (!text) return
+        const phrases = rake(text, {
+          topK: config.topK ?? 8,
+          minPhraseLen: config.minPhraseLen ?? 1,
+          maxPhraseLen: config.maxPhraseLen ?? 4,
+        })
+        if (phrases.length === 0) return
+        const out = createSignal(
+          'narrative',
+          {
+            kind: 'keywords',
+            phrases, // [{phrase, score}]
+            source: { signalId: signal.id, snippet: text.slice(0, 200) },
+          },
+          { processorId: instanceId, processorType: 'keyword-extractor', roomNodeId, roomSystemKey },
+        )
+        out.tags = ['keywords']
+        const stamped = appendTrace(out, {
+          roomNodeId, roomSystemKey, processorId: instanceId, processorType: 'keyword-extractor',
+        })
+        dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'keywords' })
+        bus.publish(eventsChannel(instanceId), stamped)
+      },
+      start() {},
+      stop() {},
+    }
+  },
+}
+
+// Default entity patterns. Order matters because we run them all and emit
+// one signal per kind that found ≥1 match.
+const ENTITY_PATTERNS = [
+  { kind: 'url',     re: /https?:\/\/[^\s)]+/g },
+  { kind: 'email',   re: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g },
+  { kind: 'mention', re: /@[a-zA-Z0-9_-]+/g },
+  { kind: 'hashtag', re: /#[a-zA-Z0-9_-]+/g },
+  { kind: 'amount',  re: /\$[\d,]+(?:\.\d+)?/g },
+  { kind: 'date',    re: /\b\d{4}-\d{2}-\d{2}\b/g },
+]
+
+const ENTITY_EXTRACTOR = {
+  id: 'entity-extractor',
+  name: 'Entity Extractor',
+  description: 'Regex-based extractor for URLs, emails, @mentions, #hashtags, $amounts, and ISO dates. Emits one event signal per kind that matched, with the list of values found.',
+  category: 'analysis',
+  hasInputs: true,
+  hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'in', label: 'in', accepts: { types: null, tags: null } },
+    ],
+    outputs: [
+      { id: 'entities', label: 'entities', emits: { types: ['event'], tags: ['entity'] } },
+    ],
+  },
+  placement: 'any',
+  defaultConfig: {},
+  panel: {
+    widthHP: 8,
+    bg: 'mid',
+    accent: 's4',
+    fixtures: [
+      { type: 'jack', id: 'jin', x: 0, y: 0, kind: 'input', port: 'in', color: 's4', label: 'in' },
+      { type: 'led', id: 'urlled',  x: 0, y: 2, bind: 'state.lastUrl',     color: 's3', label: 'url' },
+      { type: 'led', id: 'mentled', x: 2, y: 2, bind: 'state.lastMention', color: 's3', label: '@' },
+      { type: 'led', id: 'hashled', x: 4, y: 2, bind: 'state.lastHashtag', color: 's3', label: '#' },
+      { type: 'led', id: 'amtled',  x: 6, y: 2, bind: 'state.lastAmount',  color: 's3', label: '$' },
+      { type: 'display', id: 'count', x: 0, y: 5, w: 8, h: 1, bind: 'state.lastCount', label: 'matches' },
+      { type: 'jack', id: 'jout', x: 3, y: 11, kind: 'output', port: 'entities', color: 's4', label: 'ents' },
+    ],
+  },
+  create(config, runtime) {
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    return {
+      onInput({ signal }) {
+        if (!signalMatches(signal, filters)) return
+        const text = extractText(signal)
+        if (!text) return
+        for (const { kind, re } of ENTITY_PATTERNS) {
+          // Reset lastIndex defensively in case the regex object is shared
+          re.lastIndex = 0
+          const matches = []
+          let m
+          while ((m = re.exec(text)) !== null) {
+            matches.push(m[0])
+            // Avoid infinite loop on zero-length matches
+            if (m.index === re.lastIndex) re.lastIndex += 1
+          }
+          if (matches.length === 0) continue
+          const out = createSignal(
+            'event',
+            {
+              kind: 'entity',
+              entityKind: kind,
+              values: matches,
+              source: { signalId: signal.id, snippet: text.slice(0, 200) },
+            },
+            { processorId: instanceId, processorType: 'entity-extractor', roomNodeId, roomSystemKey },
+          )
+          out.tags = ['entity', kind]
+          const stamped = appendTrace(out, {
+            roomNodeId, roomSystemKey, processorId: instanceId, processorType: 'entity-extractor',
+          })
+          dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'entities' })
+          bus.publish(eventsChannel(instanceId), stamped)
+        }
+      },
+      start() {},
+      stop() {},
+    }
+  },
+}
+
+export const PROCESSOR_LIBRARY = [
+  HEARTBEAT, TRACER, LOGGER, WEBSOCKET_TRANSDUCER, DIGEST,
+  TEST_GENERATOR, TEST_EXPLAINER,
+  PERIOD_DETECTOR,
+  SENTIMENT, KEYWORD_EXTRACTOR, ENTITY_EXTRACTOR,
+]
 
 export function getProcessorDef(defId) {
   return PROCESSOR_LIBRARY.find(p => p.id === defId)
