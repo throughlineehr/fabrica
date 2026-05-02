@@ -2483,8 +2483,55 @@ export const PROCESSOR_LIBRARY = [
   SENTIMENT_TRACKER,
 ]
 
+// USER-SAVED COMPOUNDS ----------------------------------------------------
+// In-memory registry for compounds the user has saved at runtime (via
+// agentAPI.saveAsCompound or future UI). Lost on refresh — durable
+// persistence is its own debt item. Library consumers (LibraryDrawer,
+// runtime resolution) treat these on equal footing with built-ins via
+// getEffectiveLibrary / getProcessorDef.
+const userCompounds = []
+const librarySubscribers = new Set()
+
+export function registerUserCompound(def) {
+  if (!def?.id) throw new Error('registerUserCompound: def needs an id')
+  if (!def.subRack) throw new Error('registerUserCompound: def needs a subRack')
+  if (PROCESSOR_LIBRARY.some(p => p.id === def.id) || userCompounds.some(p => p.id === def.id)) {
+    throw new Error(`registerUserCompound: id "${def.id}" is already registered`)
+  }
+  // Wire up create() if the snapshot didn't (compoundFromRoom intentionally
+  // doesn't, to avoid circular imports).
+  if (!def.create) {
+    def.create = (config, runtime) => createCompoundInstance(def, config, runtime)
+  }
+  userCompounds.push(def)
+  for (const fn of librarySubscribers) fn()
+  return def
+}
+
+export function unregisterUserCompound(defId) {
+  const idx = userCompounds.findIndex(d => d.id === defId)
+  if (idx < 0) return false
+  userCompounds.splice(idx, 1)
+  for (const fn of librarySubscribers) fn()
+  return true
+}
+
+export function listUserCompounds() {
+  return [...userCompounds]
+}
+
+export function getEffectiveLibrary() {
+  return [...PROCESSOR_LIBRARY, ...userCompounds]
+}
+
+export function subscribeLibrary(fn) {
+  librarySubscribers.add(fn)
+  return () => librarySubscribers.delete(fn)
+}
+
 export function getProcessorDef(defId) {
   return PROCESSOR_LIBRARY.find(p => p.id === defId)
+      || userCompounds.find(p => p.id === defId)
 }
 
 export function canPlaceProcessor(def, systemKey) {

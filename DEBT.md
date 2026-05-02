@@ -186,10 +186,26 @@ resolved, others remain.
   animations, per-inner signal feeds. Substantial — needs the
   compound runtime to expose its inner handles and a Rack-like
   read-only renderer that shares cable + panel primitives.
-- [ ] **Save-as-library.** User builds a composition in a room, then
-  "Save as Processor" elevates it to a library entry. Needs a
-  declared boundary (which jacks become external ports) and a
-  category/role.
+- [x] **Save-as-library (data + agent command).** Pure
+  `compoundFromRoom` snapshot in `src/signals/compoundFromRoom.js`
+  takes a room's processors+cables and produces a compound def with
+  auto-derived outer ports (every unconnected inner jack becomes an
+  external port; caller can override via `expose`). Live registry
+  (`registerUserCompound` / `listUserCompounds` / `subscribeLibrary`
+  / `getEffectiveLibrary`) plus agent command
+  `agentAPI.saveAsCompound(nodeId, systemKey, name, opts?)` make it
+  end-to-end usable. The LibraryDrawer reads `getEffectiveLibrary`
+  and re-renders on subscribeLibrary fires, so saved compounds
+  appear instantly in the chip+card list.
+- [ ] **Save-as-library UI.** Currently the only entry point is the
+  agent command. A button in the library drawer (or room header)
+  should open a small form: name, description, category, and a
+  multi-select for which inner jacks become outer ports. Defaults
+  to the auto-derivation, lets users prune.
+- [ ] **Persistence for user compounds.** In-memory only today —
+  saved compounds vanish on refresh. Requires the broader
+  persistence story (DEBT.md → "No persistence — everything dies
+  on refresh").
 - [ ] **Versioning.** When a saved composition is edited, what
   happens to existing instances of it? Snapshot-at-instantiation vs
   live-template-binding decisions.

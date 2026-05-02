@@ -22,7 +22,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { X, Search } from 'lucide-react'
 import { color, type, panel as panelStyle } from '../../styles'
 import { useA11yType } from '../../hooks/useA11yType'
-import { PROCESSOR_LIBRARY, PROCESSOR_CATEGORIES, canPlaceProcessor } from '../../signals/library'
+import { getEffectiveLibrary, PROCESSOR_CATEGORIES, canPlaceProcessor, subscribeLibrary } from '../../signals/library'
 import { Z_INDEX } from '../../constants'
 
 const DRAWER_WIDTH = 400
@@ -97,6 +97,11 @@ export function LibraryDrawer({ open, systemKey, onAdd, onClose }) {
   const [activeCategory, setActiveCategory] = useState('all')
   const [compatibleOnly, setCompatibleOnly] = useState(true)
   const [focusedId, setFocusedId] = useState(null)
+  // Re-render hook for the user-saved compound list. Bumping this state on
+  // each subscribeLibrary callback invalidates the useMemos below so they
+  // pick up newly-registered (or removed) compounds.
+  const [libraryVersion, setLibraryVersion] = useState(0)
+  useEffect(() => subscribeLibrary(() => setLibraryVersion(v => v + 1)), [])
   const drawerRef = useRef(null)
   const searchRef = useRef(null)
 
@@ -104,7 +109,7 @@ export function LibraryDrawer({ open, systemKey, onAdd, onClose }) {
   // and the search string. Search matches name + description, case-insensitive.
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return PROCESSOR_LIBRARY.filter(def => {
+    return getEffectiveLibrary().filter(def => {
       if (compatibleOnly && !canPlaceProcessor(def, systemKey)) return false
       if (activeCategory !== 'all' && def.category !== activeCategory) return false
       if (q) {
@@ -113,18 +118,21 @@ export function LibraryDrawer({ open, systemKey, onAdd, onClose }) {
       }
       return true
     })
-  }, [search, activeCategory, compatibleOnly, systemKey])
+  // libraryVersion is in the dep list to recompute when user compounds change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, activeCategory, compatibleOnly, systemKey, libraryVersion])
 
   // Categories that have at least one processor matching the current
   // compatibility filter — so we don't render empty chips.
   const visibleCategories = useMemo(() => {
     const present = new Set(
-      PROCESSOR_LIBRARY
+      getEffectiveLibrary()
         .filter(def => !compatibleOnly || canPlaceProcessor(def, systemKey))
         .map(def => def.category)
     )
     return PROCESSOR_CATEGORIES.filter(c => present.has(c.id))
-  }, [compatibleOnly, systemKey])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compatibleOnly, systemKey, libraryVersion])
 
   // Effective focus = stored focus if it's still in the filtered list,
   // otherwise fall back to the first card. Derived during render so we

@@ -13,7 +13,8 @@ import {
   detachNode, duplicateSubtree, validateModel, exportModelCompact,
 } from '../tree/index'
 import { parseShorthand } from '../tree/shorthand'
-import { getProcessorDef } from '../signals/library'
+import { getProcessorDef, registerUserCompound, unregisterUserCompound, listUserCompounds } from '../signals/library'
+import { compoundFromRoom } from '../signals/compoundFromRoom'
 import * as cmd from '../commands'
 import * as q from '../queries'
 
@@ -278,6 +279,59 @@ export function createAgentAPI({
     listCables: (nodeId, systemKey) => {
       if (!getCables) return { ok: false, error: 'Cables runtime not available' }
       return { ok: true, cables: q.listCables(getCables(), { nodeId, systemKey }) }
+    },
+
+    // ================================================================
+    // Compound processors — snapshot a room's patch as a reusable def.
+    //
+    // saveAsCompound(nodeId, systemKey, name, opts?)
+    //   → { ok: true, defId } on success
+    //
+    // Auto-derives outer ports from unconnected inner jacks. The new def
+    // is registered with the live library so it appears in the drawer
+    // immediately and can be instantiated like any other processor.
+    // In-memory only — lost on refresh (durable persistence is its own
+    // debt item).
+    // ================================================================
+
+    saveAsCompound: (nodeId, systemKey, name, opts) => {
+      if (!getProcessors || !getCables) return { ok: false, error: 'Runtime not available' }
+      if (!name || typeof name !== 'string') return { ok: false, error: 'name (string) is required' }
+      const procs  = q.listProcessors(getProcessors(), { nodeId, systemKey })
+      const cables = q.listCables(getCables(),       { nodeId, systemKey })
+      if (procs.length === 0) return { ok: false, error: 'Room has no processors to snapshot' }
+      let def
+      try {
+        def = compoundFromRoom({
+          processors: procs,
+          cables,
+          name,
+          description: opts?.description || '',
+          category:    opts?.category    || 'analysis',
+          idHint:      opts?.idHint,
+          expose:      opts?.expose,
+        })
+        registerUserCompound(def)
+      } catch (err) {
+        return { ok: false, error: String(err.message || err) }
+      }
+      announce?.(`Saved ${procs.length}-processor patch as "${def.name}"`)
+      return { ok: true, defId: def.id, instances: procs.length, cables: cables.length }
+    },
+
+    listUserCompounds: () => ({
+      ok: true,
+      compounds: listUserCompounds().map(d => ({
+        id: d.id, name: d.name, description: d.description,
+        innerCount: d.subRack?.instances?.length || 0,
+      })),
+    }),
+
+    removeUserCompound: (defId) => {
+      const removed = unregisterUserCompound(defId)
+      if (!removed) return { ok: false, error: `No user compound with id "${defId}"` }
+      announce?.(`Compound "${defId}" removed from library`)
+      return { ok: true }
     },
 
     // ================================================================
