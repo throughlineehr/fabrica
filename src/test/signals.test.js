@@ -84,7 +84,8 @@ describe('library metadata', () => {
     expect(PROCESSOR_LIBRARY.map(p => p.id).sort()).toEqual([
       'digest', 'entity-extractor', 'heartbeat', 'keyword-extractor',
       'logger', 'near-duplicate-detector', 'period-detector', 'sentiment',
-      'test-explainer', 'test-generator', 'tracer', 'websocket-transducer',
+      'test-explainer', 'test-generator', 'top-k-tracker', 'tracer',
+      'websocket-transducer',
     ])
   })
 

@@ -1681,12 +1681,157 @@ const NEAR_DUP_DETECTOR = {
   },
 }
 
+// TOP-K TRACKER -----------------------------------------------------------
+// Generic windowed-frequency processor. Reads a configurable dot-path off
+// every incoming signal (default: `tags`), counts each value over the last
+// `windowMs` milliseconds, and emits a narrative signal periodically with
+// the top-K values ranked by count.
+//
+// The path can resolve to a string (counted once per signal) or an array
+// (each element counted). Combine with anything that emits structured
+// signals: tags off entity-extractor, polarityTag off sentiment, hashtags
+// pulled from entity-extractor's `values`, anything.
+
+function readPath(obj, path) {
+  if (!obj || !path) return undefined
+  return path.split('.').reduce((o, k) => (o == null ? o : o[k]), obj)
+}
+
+function valuesFromPath(signal, path) {
+  const v = readPath(signal, path)
+  if (v == null) return []
+  if (Array.isArray(v)) return v.map(x => String(x))
+  return [String(v)]
+}
+
+const TOP_K_TRACKER = {
+  id: 'top-k-tracker',
+  name: 'Top-K Tracker',
+  description: 'Reads a configurable dot-path off every incoming signal (default: `tags`), counts each value over a rolling window, and emits a narrative ranked top-K periodically. Generic enough to count anything: tag frequencies, entity kinds, polarity outcomes, hashtag mentions.',
+  category: 'analysis',
+  hasInputs: true,
+  hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'in', label: 'in', accepts: { types: null, tags: null } },
+    ],
+    outputs: [
+      { id: 'top', label: 'top', emits: { types: ['narrative'], tags: ['top-k'] } },
+    ],
+  },
+  placement: 'any',
+  defaultConfig: {
+    key: 'tags',          // dot-path off the signal — try 'content.entityKind', 'content.polarityTag', etc.
+    topK: 5,
+    windowMs: 30000,
+    reportIntervalMs: 5000,
+    minCount: 1,          // suppress values seen fewer than this many times in the window
+    maxBufferSize: 10000, // memory safety bound; oldest evicted past this
+  },
+  panel: {
+    widthHP: 10,
+    bg: 'mid',
+    accent: 's3',
+    fixtures: [
+      { type: 'jack', id: 'jin', x: 0, y: 0, kind: 'input', port: 'in', color: 's3', label: 'in' },
+      { type: 'knob', id: 'topK',         x: 0, y: 2, size: 'md',
+        bind: 'config.topK',         range: [1, 50], step: 1, label: 'top-k' },
+      { type: 'knob', id: 'windowMs',     x: 2, y: 2, size: 'md',
+        bind: 'config.windowMs',     range: [1000, 600000], step: 1000, unit: 'ms', label: 'window' },
+      { type: 'knob', id: 'reportIntervalMs', x: 4, y: 2, size: 'md',
+        bind: 'config.reportIntervalMs', range: [500, 60000], step: 500, unit: 'ms', label: 'rate' },
+      { type: 'knob', id: 'minCount',     x: 6, y: 2, size: 'md',
+        bind: 'config.minCount',     range: [1, 100], step: 1, label: 'min' },
+      { type: 'display', id: 'distinct', x: 0, y: 5, w: 4, h: 1, bind: 'state.distinct', label: 'distinct' },
+      { type: 'display', id: 'total',    x: 4, y: 5, w: 4, h: 1, bind: 'state.total',    label: 'samples' },
+      { type: 'display', id: 'lastTop',  x: 0, y: 8, w: 8, h: 1, bind: 'state.lastTop',  label: 'top now' },
+      { type: 'jack', id: 'jout', x: 4, y: 11, kind: 'output', port: 'top', color: 's3', label: 'top' },
+    ],
+  },
+  create(config, runtime) {
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    let buffer = [] // {value, timestamp}
+    let timer = null
+
+    const trim = (now) => {
+      const windowMs = config.windowMs ?? 30000
+      // Drop entries outside the window. Cheap because we always push to
+      // the end → buffer is age-sorted.
+      let drop = 0
+      while (drop < buffer.length && now - buffer[drop].timestamp > windowMs) drop++
+      if (drop > 0) buffer = buffer.slice(drop)
+      const cap = config.maxBufferSize ?? 10000
+      if (buffer.length > cap) buffer = buffer.slice(buffer.length - cap)
+    }
+
+    const tick = () => {
+      const now = Date.now()
+      trim(now)
+      if (buffer.length === 0) return
+
+      const counts = new Map()
+      for (const { value } of buffer) counts.set(value, (counts.get(value) || 0) + 1)
+      const total = buffer.length
+      const minCount = config.minCount ?? 1
+      const topK = Array.from(counts.entries())
+        .filter(([, c]) => c >= minCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, config.topK ?? 5)
+        .map(([value, count]) => ({
+          value, count,
+          share: Number((count / total).toFixed(3)),
+        }))
+      if (topK.length === 0) return
+
+      const out = createSignal(
+        'narrative',
+        {
+          kind: 'top-k',
+          key: config.key ?? 'tags',
+          windowMs: config.windowMs ?? 30000,
+          totalSamples: total,
+          distinct: counts.size,
+          topK,
+        },
+        { processorId: instanceId, processorType: 'top-k-tracker', roomNodeId, roomSystemKey },
+      )
+      out.tags = ['top-k', `key:${config.key ?? 'tags'}`]
+      const stamped = appendTrace(out, {
+        roomNodeId, roomSystemKey, processorId: instanceId, processorType: 'top-k-tracker',
+      })
+      dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'top' })
+      bus.publish(eventsChannel(instanceId), stamped)
+    }
+
+    return {
+      onInput({ signal }) {
+        if (!signalMatches(signal, filters)) return
+        const path = config.key ?? 'tags'
+        const values = valuesFromPath(signal, path)
+        if (values.length === 0) return
+        const now = Date.now()
+        for (const v of values) buffer.push({ value: v, timestamp: now })
+        // Light incremental trim so the buffer doesn't spike between ticks.
+        if (buffer.length > (config.maxBufferSize ?? 10000)) trim(now)
+      },
+      start() {
+        if (timer) return
+        timer = setInterval(tick, config.reportIntervalMs ?? 5000)
+      },
+      stop() {
+        if (timer) { clearInterval(timer); timer = null }
+        buffer = []
+      },
+    }
+  },
+}
+
 export const PROCESSOR_LIBRARY = [
   HEARTBEAT, TRACER, LOGGER, WEBSOCKET_TRANSDUCER, DIGEST,
   TEST_GENERATOR, TEST_EXPLAINER,
   PERIOD_DETECTOR,
   SENTIMENT, KEYWORD_EXTRACTOR, ENTITY_EXTRACTOR,
-  NEAR_DUP_DETECTOR,
+  NEAR_DUP_DETECTOR, TOP_K_TRACKER,
 ]
 
 export function getProcessorDef(defId) {
