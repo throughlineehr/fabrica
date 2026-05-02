@@ -43,6 +43,64 @@ function makeLocalIdMap(processors) {
 }
 
 /**
+ * Preview the outer ports a snapshot of this room would auto-derive.
+ * Used by the save-as-library UI to show users which ports will be
+ * exposed (and let them prune via checkbox before committing).
+ *
+ * Returns:
+ *   { inputs:  [{ outerId, instanceId, portId, processorName, portLabel }],
+ *     outputs: [{ outerId, instanceId, portId, processorName, portLabel }] }
+ *
+ * outerId / instanceId match what compoundFromRoom would produce, so the
+ * caller can pass the user-pruned subset back as `expose.inputs` /
+ * `expose.outputs` directly.
+ */
+export function previewAutoPorts({ processors = [], cables = [] }) {
+  if (processors.length === 0) return { inputs: [], outputs: [] }
+  const idMap = makeLocalIdMap(processors)
+
+  const incomingTo = new Set()
+  const outgoingFrom = new Set()
+  for (const c of cables || []) {
+    if (c?.source?.kind !== 'jack' || c?.target?.kind !== 'jack') continue
+    if (!idMap[c.source.instanceId] || !idMap[c.target.instanceId]) continue
+    incomingTo.add(`${idMap[c.target.instanceId]}|${c.target.portId}`)
+    outgoingFrom.add(`${idMap[c.source.instanceId]}|${c.source.portId}`)
+  }
+
+  const inputs = []
+  const outputs = []
+  for (const p of processors) {
+    const localId = idMap[p.id]
+    const def = getProcessorDef(p.defId)
+    if (!def) continue
+    for (const port of def.ports?.inputs || []) {
+      if (!incomingTo.has(`${localId}|${port.id}`)) {
+        inputs.push({
+          outerId: `${localId}-${port.id}`,
+          instanceId: localId,
+          portId: port.id,
+          processorName: def.name,
+          portLabel: port.label || port.id,
+        })
+      }
+    }
+    for (const port of def.ports?.outputs || []) {
+      if (!outgoingFrom.has(`${localId}|${port.id}`)) {
+        outputs.push({
+          outerId: `${localId}-${port.id}`,
+          instanceId: localId,
+          portId: port.id,
+          processorName: def.name,
+          portLabel: port.label || port.id,
+        })
+      }
+    }
+  }
+  return { inputs, outputs }
+}
+
+/**
  * Snapshot a room's flat patch into a compound def.
  *
  * @param {Object} args

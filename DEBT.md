@@ -204,11 +204,15 @@ resolved, others remain.
   immediately in the drawer's card list via `subscribeLibrary`.
   Auto-port-derivation does the boundary; per-port pruning UI is
   the next step.
-- [ ] **Save-as-library UI (per-port pruning).** Currently every
-  unconnected inner jack becomes an outer port. The save form
-  should let users uncheck boundary ports they don't want exposed,
-  and rename the auto-generated outerIds (currently of the form
-  `<localInstanceId>-<portId>`).
+- [x] **Save-as-library UI (per-port pruning).** The save form now
+  shows a checkbox list of every auto-derived input + output port
+  (each labelled "ProcessorName · port-label → outerId"); users can
+  uncheck the ones they don't want exposed before saving. "All /
+  none" toggle per side. SystemPage computes the preview via
+  previewAutoPorts and passes it down.
+- [ ] **Save-as-library UI (rename outer port ids).** outerIds are
+  still auto-generated `<localInstanceId>-<portId>`. A future
+  iteration could let users rename them inline before saving.
 - [ ] **Persistence for user compounds.** In-memory only today —
   saved compounds vanish on refresh. Requires the broader
   persistence story (DEBT.md → "No persistence — everything dies

@@ -96,7 +96,7 @@ function ProcessorCard({ def, focused, onAdd, onFocus, t }) {
   )
 }
 
-export function LibraryDrawer({ open, systemKey, onAdd, onSaveAsCompound, onClose }) {
+export function LibraryDrawer({ open, systemKey, autoPorts, onAdd, onSaveAsCompound, onClose }) {
   const t = useA11yType()
   const [search, setSearch] = useState('')
   const [activeCategory, setActiveCategory] = useState('all')
@@ -262,6 +262,7 @@ export function LibraryDrawer({ open, systemKey, onAdd, onSaveAsCompound, onClos
           <SavePatchForm
             t={t}
             error={saveError}
+            autoPorts={autoPorts || { inputs: [], outputs: [] }}
             onCancel={() => { setMode('browse'); setSaveError(null) }}
             onSubmit={async (form) => {
               setSaveError(null)
@@ -384,33 +385,77 @@ export function LibraryDrawer({ open, systemKey, onAdd, onSaveAsCompound, onClos
 }
 
 // Inline form for "save current room as a compound." Auto-port-derivation
-// runs server-side (compoundFromRoom on every unconnected jack), so this
-// form only collects the human-readable metadata. A future iteration adds
-// per-port pruning.
-function SavePatchForm({ t, error, onCancel, onSubmit }) {
+// (computed by SystemPage and passed via `autoPorts`) seeds the boundary
+// checkbox lists; users can uncheck ports they don't want exposed.
+function SavePatchForm({ t, error, autoPorts, onCancel, onSubmit }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('analysis')
   const [busy, setBusy] = useState(false)
+  // Initially all candidate ports are selected; user can uncheck.
+  const [selectedInputs, setSelectedInputs] = useState(
+    () => new Set((autoPorts.inputs || []).map(p => p.outerId))
+  )
+  const [selectedOutputs, setSelectedOutputs] = useState(
+    () => new Set((autoPorts.outputs || []).map(p => p.outerId))
+  )
   const nameRef = useRef(null)
   useEffect(() => { requestAnimationFrame(() => nameRef.current?.focus()) }, [])
+
+  const togglePort = (set, setter, outerId) => {
+    const next = new Set(set)
+    if (next.has(outerId)) next.delete(outerId)
+    else next.add(outerId)
+    setter(next)
+  }
 
   const submit = async () => {
     if (!name.trim() || busy) return
     setBusy(true)
-    await onSubmit({ name: name.trim(), description: description.trim(), category })
+    // Filter the auto-derived list down to the user-selected subset.
+    const expose = {
+      inputs:  (autoPorts.inputs  || []).filter(p => selectedInputs.has(p.outerId)),
+      outputs: (autoPorts.outputs || []).filter(p => selectedOutputs.has(p.outerId)),
+    }
+    await onSubmit({
+      name: name.trim(),
+      description: description.trim(),
+      category,
+      expose,
+    })
     setBusy(false)
   }
+
+  const PortRow = ({ port, checked, onToggle }) => (
+    <label style={{
+      display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0',
+      cursor: 'pointer',
+    }}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={() => onToggle(port.outerId)}
+        style={{ margin: 0, cursor: 'pointer' }}
+      />
+      <span style={{ ...t.mono, fontSize: 11, color: color.primary, flex: 1 }}>
+        {port.processorName} <span style={{ color: color.muted }}>·</span> {port.portLabel}
+      </span>
+      <span style={{ ...t.mono, fontSize: 9, color: color.muted, fontStyle: 'italic' }}>
+        → {port.outerId}
+      </span>
+    </label>
+  )
 
   return (
     <div style={{
       padding: '12px 16px',
       borderBottom: `1px solid ${color.borderLight}`,
       display: 'flex', flexDirection: 'column', gap: 10,
+      overflow: 'auto',
     }}>
       <p style={{ ...t.mono, fontSize: 11, color: color.muted, margin: 0 }}>
         Snapshots the current room (every processor + cable) into a reusable compound.
-        Outer ports are auto-derived from any inner jack that isn't internally cabled.
+        Outer ports default to every inner jack that isn't internally cabled — uncheck the ones you don't want exposed.
       </p>
 
       <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -462,6 +507,79 @@ function SavePatchForm({ t, error, onCancel, onSubmit }) {
           })}
         </select>
       </label>
+
+      {/* Per-port pruning */}
+      {(autoPorts.inputs.length > 0 || autoPorts.outputs.length > 0) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {autoPorts.inputs.length > 0 && (
+            <div>
+              <div style={{
+                display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+                marginBottom: 4,
+              }}>
+                <span style={{ ...t.label, fontSize: 9, color: color.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Inputs ({selectedInputs.size}/{autoPorts.inputs.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedInputs(prev =>
+                    prev.size === autoPorts.inputs.length ? new Set() : new Set(autoPorts.inputs.map(p => p.outerId))
+                  )}
+                  style={{
+                    ...t.mono, fontSize: 9, padding: 0,
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: color.primary, textTransform: 'uppercase', letterSpacing: '0.05em',
+                  }}
+                >{selectedInputs.size === autoPorts.inputs.length ? 'none' : 'all'}</button>
+              </div>
+              <div style={{ borderTop: `1px solid ${color.borderLight}` }}>
+                {autoPorts.inputs.map(p => (
+                  <PortRow
+                    key={p.outerId}
+                    port={p}
+                    checked={selectedInputs.has(p.outerId)}
+                    onToggle={(id) => togglePort(selectedInputs, setSelectedInputs, id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {autoPorts.outputs.length > 0 && (
+            <div>
+              <div style={{
+                display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+                marginBottom: 4,
+              }}>
+                <span style={{ ...t.label, fontSize: 9, color: color.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Outputs ({selectedOutputs.size}/{autoPorts.outputs.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOutputs(prev =>
+                    prev.size === autoPorts.outputs.length ? new Set() : new Set(autoPorts.outputs.map(p => p.outerId))
+                  )}
+                  style={{
+                    ...t.mono, fontSize: 9, padding: 0,
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: color.primary, textTransform: 'uppercase', letterSpacing: '0.05em',
+                  }}
+                >{selectedOutputs.size === autoPorts.outputs.length ? 'none' : 'all'}</button>
+              </div>
+              <div style={{ borderTop: `1px solid ${color.borderLight}` }}>
+                {autoPorts.outputs.map(p => (
+                  <PortRow
+                    key={p.outerId}
+                    port={p}
+                    checked={selectedOutputs.has(p.outerId)}
+                    onToggle={(id) => togglePort(selectedOutputs, setSelectedOutputs, id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <p role="alert" style={{ ...t.mono, fontSize: 11, color: color.s2.stroke, margin: 0 }}>

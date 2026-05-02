@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compoundFromRoom } from '../signals/compoundFromRoom'
+import { compoundFromRoom, previewAutoPorts } from '../signals/compoundFromRoom'
 import { getProcessorDef, createCompoundInstance } from '../signals/library'
 
 // Build a fake room patch with the given primitives and cables.
@@ -122,6 +122,32 @@ describe('compoundFromRoom', () => {
     expect(outputJacks.length).toBe(def.ports.outputs.length)
     for (const j of inputJacks) expect(j.y).toBe(0)
     for (const j of outputJacks) expect(j.y).toBe(11)
+  })
+
+  it('previewAutoPorts surfaces the same ports compoundFromRoom auto-derives, with display metadata', () => {
+    const { processors, cables } = makeRoom()
+    const preview = previewAutoPorts({ processors, cables })
+    const def = compoundFromRoom({ processors, cables, name: 'Pipe' })
+
+    // Same outerIds and counts
+    const previewIns  = new Set(preview.inputs.map(p => p.outerId))
+    const previewOuts = new Set(preview.outputs.map(p => p.outerId))
+    const defIns  = new Set(def.ports.inputs.map(p => p.id))
+    const defOuts = new Set(def.ports.outputs.map(p => p.id))
+    expect(previewIns).toEqual(defIns)
+    expect(previewOuts).toEqual(defOuts)
+
+    // Each entry has display metadata for the UI
+    for (const p of [...preview.inputs, ...preview.outputs]) {
+      expect(typeof p.processorName).toBe('string')
+      expect(typeof p.portLabel).toBe('string')
+      expect(typeof p.instanceId).toBe('string')
+      expect(typeof p.portId).toBe('string')
+    }
+  })
+
+  it('previewAutoPorts handles empty rooms gracefully', () => {
+    expect(previewAutoPorts({ processors: [], cables: [] })).toEqual({ inputs: [], outputs: [] })
   })
 
   it('round-trips: snapshot then re-instantiate via createCompoundInstance', () => {

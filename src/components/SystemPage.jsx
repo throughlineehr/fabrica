@@ -7,6 +7,7 @@ import { LibraryDrawer } from './room/LibraryDrawer'
 import { Keycap } from './Keycap'
 import { Rack } from './rack/Rack'
 import { getProcessorDef } from '../signals/library'
+import { previewAutoPorts } from '../signals/compoundFromRoom'
 import { useTranslation } from '../i18n/index.jsx'
 import { useA11yType } from '../hooks/useA11yType'
 import { color } from '../styles'
@@ -69,6 +70,14 @@ export function SystemPage({
     def: getProcessorDef(inst.defId),
   })).filter(p => p.def), [processors])
 
+  // Auto-derived port preview for the save-as-library form. Recomputed
+  // whenever the room's patch changes; the LibraryDrawer just renders
+  // checkboxes off this.
+  const autoPorts = useMemo(
+    () => previewAutoPorts({ processors, cables }),
+    [processors, cables],
+  )
+
   // Library trigger lives at top-right, just under the back button. Fixed-
   // positioned so it sits over the room without competing with wall
   // terminals for edge space. The Keycap to its left advertises the
@@ -109,6 +118,7 @@ export function SystemPage({
     <LibraryDrawer
       open={libraryOpen}
       systemKey={systemKey}
+      autoPorts={autoPorts}
       onAdd={(def) => onAddProcessor?.(def)}
       onSaveAsCompound={onSaveAsCompound
         ? (form) => onSaveAsCompound(nodeId, systemKey, form)
