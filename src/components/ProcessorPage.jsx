@@ -29,6 +29,91 @@ function ConfigSurface({ instance, def, onUpdateInstance, t }) {
   )
 }
 
+// Drill-in view for compound (sub-patched) processors. Read-only structural
+// inspection of the subRack: which inner instances exist, how they're
+// cabled, and how the outer ports / config bind to them.
+//
+// Future: full live-rack render with running inner panels, cables, and
+// per-inner signal feeds. Tracked in DEBT.md.
+function CompoundInspector({ def, t }) {
+  const sr = def.subRack
+  if (!sr) return null
+  const innerDefName = (defId) => getProcessorDef(defId)?.name || defId
+
+  const Row = ({ label, value }) => (
+    <div style={{ display: 'flex', gap: 8, padding: '4px 0', alignItems: 'baseline' }}>
+      <span style={{ ...t.label, minWidth: 96, color: color.muted }}>{label}</span>
+      <span style={{ ...t.mono, color: color.primary, flex: 1 }}>{value}</span>
+    </div>
+  )
+
+  const portOf = (instId, portId) => {
+    const innerDef = sr.instances.find(i => i.id === instId)
+    const name = innerDef ? innerDefName(innerDef.defId) : instId
+    return `${name}.${portId}`
+  }
+
+  return (
+    <section style={{ marginTop: 24 }}>
+      <h3 style={{ ...type.label, margin: 0, marginBottom: 12 }}>Composition</h3>
+      <p style={{ ...t.body, fontSize: 12, color: color.muted, marginTop: 0, marginBottom: 12 }}>
+        Sub-patched processor — composed of {sr.instances?.length || 0} inner instance{(sr.instances?.length || 0) === 1 ? '' : 's'}.
+      </p>
+
+      <div style={{ marginBottom: 16 }}>
+        <h4 style={{ ...type.label, margin: 0, marginBottom: 6, fontSize: 10 }}>Inner instances</h4>
+        {(sr.instances || []).map(inst => (
+          <Row key={inst.id} label={inst.id} value={innerDefName(inst.defId)} />
+        ))}
+      </div>
+
+      {(sr.cables || []).length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <h4 style={{ ...type.label, margin: 0, marginBottom: 6, fontSize: 10 }}>Inner cables</h4>
+          {sr.cables.map((c, i) => (
+            <Row
+              key={i}
+              label="cable"
+              value={`${portOf(c.source.instanceId, c.source.portId)} → ${portOf(c.target.instanceId, c.target.portId)}`}
+            />
+          ))}
+        </div>
+      )}
+
+      {Object.keys(sr.inputBindings || {}).length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <h4 style={{ ...type.label, margin: 0, marginBottom: 6, fontSize: 10 }}>Input bindings</h4>
+          {Object.entries(sr.inputBindings).map(([outerPort, b]) => (
+            <Row key={outerPort} label={outerPort} value={`→ ${portOf(b.instanceId, b.portId)}`} />
+          ))}
+        </div>
+      )}
+
+      {Object.keys(sr.outputBindings || {}).length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <h4 style={{ ...type.label, margin: 0, marginBottom: 6, fontSize: 10 }}>Output bindings</h4>
+          {Object.entries(sr.outputBindings).map(([outerPort, b]) => (
+            <Row key={outerPort} label={outerPort} value={`← ${portOf(b.instanceId, b.portId)}`} />
+          ))}
+        </div>
+      )}
+
+      {Object.keys(sr.paramBindings || {}).length > 0 && (
+        <div>
+          <h4 style={{ ...type.label, margin: 0, marginBottom: 6, fontSize: 10 }}>Parameter bindings</h4>
+          {Object.entries(sr.paramBindings).map(([outerKey, b]) => (
+            <Row
+              key={outerKey}
+              label={outerKey}
+              value={`→ ${portOf(b.instanceId, '').slice(0, -1)}.config.${b.configKey}`}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
 export function ProcessorPage({ instance, nodeId, nodeName, systemKey, onBack, onUpdateInstance }) {
   const t = useA11yType()
   const { t: tr } = useTranslation()
@@ -99,6 +184,7 @@ export function ProcessorPage({ instance, nodeId, nodeName, systemKey, onBack, o
             <h3 style={{ ...type.label, margin: 0, marginBottom: 12 }}>{tr('systemPage.configuration')}</h3>
             <ConfigSurface instance={instance} def={def} onUpdateInstance={onUpdateInstance} t={t} />
           </section>
+          {def.subRack && <CompoundInspector def={def} t={t} />}
         </div>
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

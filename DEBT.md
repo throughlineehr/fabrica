@@ -176,9 +176,16 @@ resolved, others remain.
   (set via panel knobs / `updateProcessorConfig`) into inner instance
   configs at instantiation. Sentiment Tracker exposes windowMs / topK
   / reportIntervalMs / threshold via this mechanism.
-- [ ] **Drill-in UX.** Existing `openProcessor` → `ProcessorPage` is
-  the natural place: that page becomes the rack-inside view when the
-  processor is composed. Breadcrumb back is mandatory.
+- [x] **Drill-in UX (read-only inspector).** ProcessorPage now
+  renders a CompoundInspector section beneath the config sidebar
+  when `def.subRack` is present: lists the inner instances, cables,
+  input/output bindings, and parameter bindings as a structural
+  read-out. Breadcrumb back already lives on the page.
+- [ ] **Drill-in UX (live rack-inside view).** The next layer:
+  render running inner panels with knob/LED states, cable
+  animations, per-inner signal feeds. Substantial — needs the
+  compound runtime to expose its inner handles and a Rack-like
+  read-only renderer that shares cable + panel primitives.
 - [ ] **Save-as-library.** User builds a composition in a room, then
   "Save as Processor" elevates it to a library entry. Needs a
   declared boundary (which jacks become external ports) and a
