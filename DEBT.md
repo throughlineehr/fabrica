@@ -181,11 +181,25 @@ resolved, others remain.
   when `def.subRack` is present: lists the inner instances, cables,
   input/output bindings, and parameter bindings as a structural
   read-out. Breadcrumb back already lives on the page.
-- [ ] **Drill-in UX (live rack-inside view).** The next layer:
-  render running inner panels with knob/LED states, cable
-  animations, per-inner signal feeds. Substantial — needs the
-  compound runtime to expose its inner handles and a Rack-like
-  read-only renderer that shares cable + panel primitives.
+- [x] **Drill-in UX (live rack-inside view).** ProcessorPage now
+  renders a CompoundInnerRack section in the right panel for
+  compound defs: synthesizes inner instances + cables from subRack,
+  applies the same config layering as the runtime (defaults <
+  subRack-declared < paramBindings from outer config), passes them
+  to the existing Rack as read-only. Inner panels render with
+  their actual config-effective knob positions; tugging an outer
+  paramBinding knob updates the inner panel knob too. Add-slot
+  hidden in drill-in mode (Rack.showAddSlot gated on onOpenLibrary).
+- [ ] **Drill-in interactive-inner.** Inner knobs aren't writable
+  in the drill-in view — drag them and the visual moves but config
+  doesn't persist (no-op handlers). Editing should either route
+  through the outer paramBindings (clean) or directly override the
+  inner instance config (powerful, more design required).
+- [ ] **Compound state plumbing for live LEDs/displays.** Inner
+  panel state-bindings (LEDs, displays) read from `state.X` which
+  is empty everywhere — broader debt. Especially noticeable in the
+  drill-in view since users expect "see what's happening inside"
+  but state-bound UI elements stay dark.
 - [x] **Save-as-library (data + agent command).** Pure
   `compoundFromRoom` snapshot in `src/signals/compoundFromRoom.js`
   takes a room's processors+cables and produces a compound def with

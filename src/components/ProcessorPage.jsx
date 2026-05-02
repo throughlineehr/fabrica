@@ -1,4 +1,4 @@
-import { useEffect, createElement } from 'react'
+import { useEffect, useMemo, createElement } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { color, type, ui } from '../styles'
 import { useA11yType } from '../hooks/useA11yType'
@@ -8,6 +8,7 @@ import { useSignalLog } from '../signals/useSignalLog'
 import { getProcessorDef } from '../signals/library'
 import { eventsChannel } from '../signals/bus'
 import { SignalFeed } from './room/SignalFeed'
+import { Rack } from './rack/Rack'
 import { getProcessorView } from './processors/registry'
 
 // Detail views (per-defId in components/processors/registry) render the
@@ -114,6 +115,77 @@ function CompoundInspector({ def, t }) {
   )
 }
 
+// Live drill-in: render the compound's sub-rack as a read-only Rack so the
+// user can see the inner panels + cables. Inner instance configs reflect
+// the outer compound's current config (paramBindings applied), so dragging
+// outer knobs updates the inner-panel knobs too. State-binding plumbing
+// (LEDs, displays for live runtime values) isn't wired here either —
+// shared limitation tracked in DEBT.md.
+function CompoundInnerRack({ outerInstance, def }) {
+  const inner = useMemo(() => {
+    const sr = def.subRack
+    if (!sr) return { processors: [], cables: [] }
+
+    const outerConfig = { ...(def.defaultConfig || {}), ...(outerInstance.config || {}) }
+
+    // Reproduce createCompoundInstance's config layering (defaults <
+    // subRack-declared < paramBindings) so inner panels render with the
+    // values their actual runtime instance was instantiated with.
+    const paramByInner = {}
+    for (const [outerKey, b] of Object.entries(sr.paramBindings || {})) {
+      if (outerConfig[outerKey] === undefined) continue
+      if (!paramByInner[b.instanceId]) paramByInner[b.instanceId] = {}
+      paramByInner[b.instanceId][b.configKey] = outerConfig[outerKey]
+    }
+
+    const processors = (sr.instances || []).map(inst => {
+      const innerDef = getProcessorDef(inst.defId)
+      if (!innerDef) return null
+      return {
+        instance: {
+          // Use a synthesized id so jack-data-attribute lookups don't
+          // collide with anything in the outer room.
+          id: `${outerInstance.id}/${inst.id}`,
+          defId: inst.defId,
+          config: {
+            ...(innerDef.defaultConfig || {}),
+            ...(inst.config || {}),
+            ...(paramByInner[inst.id] || {}),
+          },
+          filters: { types: null, tags: null },
+        },
+        def: innerDef,
+      }
+    }).filter(Boolean)
+
+    const cables = (sr.cables || []).map((c, i) => ({
+      id: `inner-c-${i}`,
+      source: { kind: 'jack', instanceId: `${outerInstance.id}/${c.source.instanceId}`, portId: c.source.portId },
+      target: { kind: 'jack', instanceId: `${outerInstance.id}/${c.target.instanceId}`, portId: c.target.portId },
+      color: color.primary,
+    }))
+
+    return { processors, cables }
+  }, [outerInstance, def])
+
+  return (
+    <Rack
+      processors={inner.processors}
+      cables={inner.cables}
+      systemColor="s3"
+      // No-op handlers — drill-in is read-only inspection. Tweaking inner
+      // knobs to influence runtime behaviour is the next iteration.
+      onConfigChange={() => {}}
+      onBroadcastChange={() => {}}
+      onAction={() => {}}
+      onAddCable={() => {}}
+      onRemoveCable={() => {}}
+      // No add slot when drill-in.
+      onOpenLibrary={undefined}
+    />
+  )
+}
+
 export function ProcessorPage({ instance, nodeId, nodeName, systemKey, onBack, onUpdateInstance }) {
   const t = useA11yType()
   const { t: tr } = useTranslation()
@@ -188,6 +260,14 @@ export function ProcessorPage({ instance, nodeId, nodeName, systemKey, onBack, o
         </div>
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {def.subRack && (
+            <div style={{ flex: '0 0 auto', padding: '24px 32px 0', borderBottom: `1px solid ${color.borderLight}` }}>
+              <h3 style={{ ...type.label, margin: 0, marginBottom: 12 }}>Inside</h3>
+              <div style={{ paddingBottom: 24 }}>
+                <CompoundInnerRack outerInstance={instance} def={def} />
+              </div>
+            </div>
+          )}
           <h3 style={{ ...type.label, margin: 0, padding: '24px 32px 0' }}>{tr('systemPage.liveLog')}</h3>
           <div style={{ flex: 1, overflow: 'auto' }}>
             <SignalFeed signals={eventLog} />
