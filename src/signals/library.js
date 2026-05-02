@@ -1514,11 +1514,179 @@ const ENTITY_EXTRACTOR = {
   },
 }
 
+// NEAR-DUPLICATE DETECTOR -------------------------------------------------
+// SimHash fingerprint over a rolling window of recent signals. New input is
+// hashed, then compared by Hamming distance against the fingerprints in the
+// window. Within `hammingThreshold` bits → "near-duplicate" (the original
+// signal is *not* forwarded to `unique`; instead a metadata event is fired
+// on `duplicate`). Otherwise the signal passes through `unique` and its
+// fingerprint joins the window.
+//
+// Wire NearDup.unique → downstream Digest/Logger/etc. to deduplicate; wire
+// NearDup.duplicate → a counter or alert to surface how much of the
+// incoming stream is repeats.
+
+// 32-bit FNV-1a — small, no deps, plenty for SimHash word voting.
+function fnv1a32(str) {
+  let h = 0x811c9dc5
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return h >>> 0
+}
+
+// 32-bit SimHash over a token list. Each token contributes ±1 to each bit
+// position based on the bits of its hash; final fingerprint takes a 1
+// where the cumulative vote is positive. Order-independent (bag-of-words).
+function simhash32(tokens) {
+  const counters = new Int32Array(32)
+  for (const tok of tokens) {
+    const h = fnv1a32(tok)
+    for (let i = 0; i < 32; i++) {
+      counters[i] += ((h >>> i) & 1) ? 1 : -1
+    }
+  }
+  let fp = 0
+  for (let i = 0; i < 32; i++) {
+    if (counters[i] > 0) fp |= (1 << i)
+  }
+  return fp >>> 0
+}
+
+// Hamming distance on 32-bit ints — bit-twiddle popcount of the XOR.
+function hamming32(a, b) {
+  let v = (a ^ b) >>> 0
+  v = v - ((v >>> 1) & 0x55555555)
+  v = (v & 0x33333333) + ((v >>> 2) & 0x33333333)
+  return (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
+}
+
+const NEAR_DUP_DETECTOR = {
+  id: 'near-duplicate-detector',
+  name: 'Near-Duplicate Detector',
+  description: 'SimHash-based deduplicator. Each incoming text signal is fingerprinted; if a fingerprint within `hammingThreshold` bits exists in the rolling window, the signal is suppressed from the `unique` output and a metadata event fires on `duplicate`. Otherwise the original passes through `unique` and its fingerprint joins the window.',
+  category: 'analysis',
+  hasInputs: true,
+  hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'in', label: 'in', accepts: { types: null, tags: null } },
+    ],
+    outputs: [
+      // Pass-through of the original signal when it's not a near-duplicate.
+      { id: 'unique',    label: 'unique',    emits: { types: null,    tags: ['unique-after-dedup'] } },
+      // New event describing the match — does NOT include the original.
+      { id: 'duplicate', label: 'duplicate', emits: { types: ['event'], tags: ['near-duplicate'] } },
+    ],
+  },
+  placement: 'any',
+  defaultConfig: {
+    hammingThreshold: 3,    // ≤3 bits differ on 32-bit fingerprint = ~9% — typical near-dup cutoff
+    windowMs: 60000,        // forget fingerprints older than this
+    windowSize: 200,        // hard cap on buffered fingerprints (memory bound)
+  },
+  panel: {
+    widthHP: 10,
+    bg: 'mid',
+    accent: 's3',
+    fixtures: [
+      { type: 'jack', id: 'jin', x: 0, y: 0, kind: 'input', port: 'in', color: 's3', label: 'in' },
+      { type: 'knob', id: 'hammingThreshold', x: 0, y: 2, size: 'md',
+        bind: 'config.hammingThreshold', range: [0, 12], step: 1, label: 'thr' },
+      { type: 'knob', id: 'windowMs', x: 2, y: 2, size: 'md',
+        bind: 'config.windowMs', range: [1000, 600000], step: 1000, unit: 'ms', label: 'window' },
+      { type: 'knob', id: 'windowSize', x: 4, y: 2, size: 'md',
+        bind: 'config.windowSize', range: [10, 2000], step: 10, label: 'cap' },
+      { type: 'display', id: 'unique',    x: 0, y: 5, w: 4, h: 1, bind: 'state.uniqueCount',    label: 'unique' },
+      { type: 'display', id: 'duplicate', x: 4, y: 5, w: 4, h: 1, bind: 'state.duplicateCount', label: 'dup' },
+      { type: 'display', id: 'window',    x: 0, y: 8, w: 8, h: 1, bind: 'state.windowSize',     label: 'in window' },
+      { type: 'jack', id: 'jUnique',    x: 1, y: 11, kind: 'output', port: 'unique',    color: 's3', label: 'uniq' },
+      { type: 'jack', id: 'jDuplicate', x: 7, y: 11, kind: 'output', port: 'duplicate', color: 's2', label: 'dup' },
+    ],
+  },
+  create(config, runtime) {
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    // Ring of recent unique fingerprints. Each entry:
+    //   { fingerprint, signalId, timestamp, snippet }
+    let window = []
+
+    return {
+      onInput({ signal }) {
+        if (!signalMatches(signal, filters)) return
+        const text = extractText(signal)
+        if (!text) return
+        const tokens = text.toLowerCase().match(/[a-z0-9]+/g) || []
+        if (tokens.length === 0) return
+
+        // Trim by age and cap.
+        const now = Date.now()
+        const maxAge = config.windowMs ?? 60000
+        if (window.length && now - window[0].timestamp > maxAge) {
+          window = window.filter(e => now - e.timestamp <= maxAge)
+        }
+        const cap = config.windowSize ?? 200
+
+        const fp = simhash32(tokens)
+        const threshold = config.hammingThreshold ?? 3
+
+        // Linear scan — fine up to cap=2000. For larger windows we'd want
+        // banded LSH; not worth it for this scale.
+        let match = null
+        for (const e of window) {
+          const d = hamming32(fp, e.fingerprint)
+          if (d <= threshold) { match = { entry: e, distance: d }; break }
+        }
+
+        const snippet = text.slice(0, 200)
+
+        if (match) {
+          const out = createSignal(
+            'event',
+            {
+              kind: 'near-duplicate',
+              distance: match.distance,
+              fingerprint: fp.toString(16).padStart(8, '0'),
+              originalSignalId: signal.id,
+              matchedSignalId: match.entry.signalId,
+              matchedAt: match.entry.timestamp,
+              snippet,
+              matchedSnippet: match.entry.snippet,
+            },
+            { processorId: instanceId, processorType: 'near-duplicate-detector', roomNodeId, roomSystemKey },
+          )
+          out.tags = ['near-duplicate']
+          const stamped = appendTrace(out, {
+            roomNodeId, roomSystemKey, processorId: instanceId, processorType: 'near-duplicate-detector',
+          })
+          dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'duplicate' })
+          bus.publish(eventsChannel(instanceId), stamped)
+          return
+        }
+
+        // Unique: register in window, then pass-through the original.
+        window.push({ fingerprint: fp, signalId: signal.id, timestamp: now, snippet })
+        if (window.length > cap) window.splice(0, window.length - cap)
+
+        const passthrough = {
+          ...signal,
+          tags: [...(signal.tags || []), 'unique-after-dedup'],
+        }
+        dispatcher.emit(passthrough, { fromInstanceId: instanceId, fromPortId: 'unique' })
+        bus.publish(eventsChannel(instanceId), passthrough)
+      },
+      start() {},
+      stop() { window = [] },
+    }
+  },
+}
+
 export const PROCESSOR_LIBRARY = [
   HEARTBEAT, TRACER, LOGGER, WEBSOCKET_TRANSDUCER, DIGEST,
   TEST_GENERATOR, TEST_EXPLAINER,
   PERIOD_DETECTOR,
   SENTIMENT, KEYWORD_EXTRACTOR, ENTITY_EXTRACTOR,
+  NEAR_DUP_DETECTOR,
 ]
 
 export function getProcessorDef(defId) {
