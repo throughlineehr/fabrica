@@ -39,6 +39,48 @@ function gaussianSample() {
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)
 }
 
+// Tiny pub-sub state container. Each processor's create() makes one and
+// updates it on observable events (a tick, a detection, a buffer change,
+// …); the runtime subscribes and pushes new state into React state so the
+// Panel's `state.X` bindings actually render. `pulse(key, ms)` flips a key
+// to true and clears it shortly after — the LED-blink primitive.
+//
+// On stop() the processor calls cleanup() to clear pending pulse timers
+// and drop listeners, so state from a torn-down handle can't leak into
+// React state for a not-yet-replaced instance id.
+function createStateBox(initial = {}) {
+  let state = { ...initial }
+  const listeners = new Set()
+  const pulseTimers = new Set()
+  const notify = () => { for (const fn of listeners) fn(state) }
+  return {
+    get: () => state,
+    update: (patch) => { state = { ...state, ...patch }; notify() },
+    pulse: (key, ms = 220) => {
+      state = { ...state, [key]: true }
+      notify()
+      const t = setTimeout(() => {
+        pulseTimers.delete(t)
+        state = { ...state, [key]: false }
+        notify()
+      }, ms)
+      pulseTimers.add(t)
+    },
+    subscribe: (fn) => {
+      listeners.add(fn)
+      // Push current state immediately so subscribers don't render stale
+      // until the first update.
+      fn(state)
+      return () => listeners.delete(fn)
+    },
+    cleanup: () => {
+      for (const t of pulseTimers) clearTimeout(t)
+      pulseTimers.clear()
+      listeners.clear()
+    },
+  }
+}
+
 // Convention: every processor declares 4 input ports (top of panel) for
 // visual consistency. Most core processors today only functionally consume
 // the first input; the rest are reserved for future control inputs (reset,
@@ -105,6 +147,7 @@ const HEARTBEAT = {
   },
   create(config, runtime) {
     const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey } = runtime
+    const stateBox = createStateBox({ beat: false })
     let timer = null
 
     const emit = () => {
@@ -119,6 +162,7 @@ const HEARTBEAT = {
       })
       emitOnAllOutputs(HEARTBEAT, dispatcher, instanceId, stamped)
       bus.publish(eventsChannel(instanceId), stamped)
+      stateBox.pulse('beat', 180)
     }
 
     return {
@@ -129,7 +173,10 @@ const HEARTBEAT = {
       },
       stop() {
         if (timer) { clearInterval(timer); timer = null }
+        stateBox.cleanup()
       },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
     }
   },
 }
@@ -210,18 +257,27 @@ const LOGGER = {
   create(_config, runtime) {
     const { bus, instanceId, filters } = runtime
     const shortId = instanceId.slice(0, 8)
+    // count = total signals seen; idle = lit when no signals in the last
+    // ~750ms (so the LED breathes in step with the input rate).
+    const stateBox = createStateBox({ count: 0, idle: true })
+    let idleTimer = null
     return {
       onInput({ signal }) {
         if (!signalMatches(signal, filters)) return
-        // Mirror to the browser console so the log persists across room
-        // navigation. The events channel still drives the in-app feed when
-        // the processor page is open.
         const tags = (signal.tags && signal.tags.length) ? ` [${signal.tags.join(',')}]` : ''
         console.log(`[logger ${shortId}] ${signal.type}${tags}`, signal)
         bus.publish(eventsChannel(instanceId), signal)
+        stateBox.update({ count: stateBox.get().count + 1, idle: false })
+        if (idleTimer) clearTimeout(idleTimer)
+        idleTimer = setTimeout(() => stateBox.update({ idle: true }), 750)
       },
       start() {},
-      stop() {},
+      stop() {
+        if (idleTimer) { clearTimeout(idleTimer); idleTimer = null }
+        stateBox.cleanup()
+      },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
     }
   },
 }
@@ -280,6 +336,7 @@ const WEBSOCKET_TRANSDUCER = {
   },
   create(config, runtime) {
     const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey } = runtime
+    const stateBox = createStateBox({ connected: false, msgCount: 0 })
     let socket = null
     let attempts = 0
     let stopRequested = false
@@ -292,6 +349,11 @@ const WEBSOCKET_TRANSDUCER = {
         { processorId: instanceId, processorType: 'websocket-transducer', roomNodeId, roomSystemKey },
       )
       bus.publish(eventsChannel(instanceId), sig)
+      // Reflect connection lifecycle on the panel LED
+      if (status === 'connected') stateBox.update({ connected: true })
+      else if (status === 'disconnected' || status === 'error' || status === 'giving-up') {
+        stateBox.update({ connected: false })
+      }
     }
 
     const emit = (raw) => {
@@ -320,6 +382,7 @@ const WEBSOCKET_TRANSDUCER = {
       })
       emitOnAllOutputs(WEBSOCKET_TRANSDUCER, dispatcher, instanceId, stamped)
       bus.publish(eventsChannel(instanceId), stamped)
+      stateBox.update({ msgCount: stateBox.get().msgCount + 1 })
     }
 
     const connect = () => {
@@ -374,7 +437,10 @@ const WEBSOCKET_TRANSDUCER = {
           try { socket.close() } catch { /* ignore */ }
           socket = null
         }
+        stateBox.cleanup()
       },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
     }
   },
 }
@@ -447,6 +513,7 @@ const DIGEST = {
   },
   create(config, runtime) {
     const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters, llm } = runtime
+    const stateBox = createStateBox({ bufferCount: 0, algedonic: false })
     let buffer = []
     let debounceTimer = null
     let flushing = false
@@ -534,11 +601,16 @@ const DIGEST = {
           { role: 'user', content: JSON.stringify({ signals: userPayload }) },
         ])
         const themes = parseThemes(text)
+        // Light the algedonic LED briefly if any theme is algedonic — a
+        // visual analogue of Beer's pain/pleasure fast-path firing.
+        const anyAlg = themes.some(th => th.significance === 'algedonic')
+        if (anyAlg) stateBox.pulse('algedonic', 2000)
         for (const theme of themes) emit(buildThemeSignal(theme, sources), 'themes')
       } catch (err) {
         emit(buildAlertSignal(String(err.message || err), sources), 'alerts')
       } finally {
         flushing = false
+        stateBox.update({ bufferCount: buffer.length })
       }
     }
 
@@ -547,6 +619,7 @@ const DIGEST = {
         if (hasTraced(signal, instanceId)) return
         if (!signalMatches(signal, filters)) return
         buffer.push(signal)
+        stateBox.update({ bufferCount: buffer.length })
 
         if (debounceTimer) clearTimeout(debounceTimer)
         const debounceMs = config.debounceMs ?? 60000
@@ -559,7 +632,10 @@ const DIGEST = {
       stop() {
         if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
         buffer = []
+        stateBox.cleanup()
       },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
     }
   },
 }
@@ -678,6 +754,23 @@ const TEST_GENERATOR = {
     }
     const totalFalsePositives = () =>
       counts.malformed + counts.unkindish + counts.hallucinated + counts.unmatched
+
+    // Live state for the panel displays (caught/missed/falsePos/emitted).
+    // Updated whenever counts or the ledger change.
+    const stateBox = createStateBox({ caught: 0, missed: 0, falsePositives: 0, emitted: 0 })
+    const refreshPanelState = () => {
+      const now = Date.now()
+      const tol = config.matchToleranceMs || 3000
+      const caught = ledger.filter(e => e.caught).length
+      const missed = ledger.filter(e =>
+        !e.caught && (now - startMs) > e.at + tol
+      ).length
+      stateBox.update({
+        caught, missed,
+        falsePositives: totalFalsePositives(),
+        emitted: counts.emitted,
+      })
+    }
 
     const computeVerdict = (test, fp) => {
       const d = test.discrete
@@ -814,11 +907,13 @@ const TEST_GENERATOR = {
       })
       dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'data' })
       bus.publish(eventsChannel(instanceId), stamped)
+      refreshPanelState()
     }
 
     const onInput = ({ signal }) => {
       if (!signalMatches(signal, filters)) return
       counts.detectionsReceived += 1
+      const updateAfter = () => refreshPanelState()
 
       // Detection contract: signal carries 'detection' tag plus a kind tag
       // (step/anomaly/trend/periodic). Anything else arriving on the
@@ -827,24 +922,24 @@ const TEST_GENERATOR = {
       const tags = signal.tags || []
       if (!tags.includes('detection')) {
         counts.malformed += 1
-        return
+        updateAfter(); return
       }
       const subkind = tags.find(t => ['step','anomaly','trend','periodic'].includes(t))
                   || signal.content?.subkind
       if (!subkind) {
         counts.unkindish += 1
-        return
+        updateAfter(); return
       }
 
       if (subkind === 'trend') {
         if (config.trendSlope !== 0) patternFlags.trend = true
         else counts.hallucinated += 1
-        return
+        updateAfter(); return
       }
       if (subkind === 'periodic') {
         if (config.periodAmplitude > 0) patternFlags.period = true
         else counts.hallucinated += 1
-        return
+        updateAfter(); return
       }
 
       // Discrete: match against unmatched ledger events of the same kind in
@@ -861,6 +956,7 @@ const TEST_GENERATOR = {
       } else {
         counts.unmatched += 1
       }
+      updateAfter()
     }
 
     const onAction = (action) => {
@@ -882,6 +978,7 @@ const TEST_GENERATOR = {
         }
         seq = 0
         startMs = Date.now()
+        refreshPanelState()
       } else if (action === 'report') {
         buildReport()
       }
@@ -898,9 +995,12 @@ const TEST_GENERATOR = {
           reportTimer = setInterval(buildReport, config.reportIntervalMs)
         }
       },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
       stop() {
         if (timer) { clearInterval(timer); timer = null }
         if (reportTimer) { clearInterval(reportTimer); reportTimer = null }
+        stateBox.cleanup()
       },
     }
   },
@@ -965,14 +1065,13 @@ const TEST_EXPLAINER = {
   },
   create(config, runtime) {
     const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters, llm } = runtime
+    const stateBox = createStateBox({ busy: false, lastVerdict: '', explained: 0 })
     let inFlight = false
 
     const onInput = async ({ signal }) => {
       if (signal?.content?.kind !== 'test-report') return
       if (!signalMatches(signal, filters)) return
       if (!llm?.prompt) {
-        // Surface the misconfiguration through the live feed so the user
-        // doesn't wonder why nothing comes out.
         bus.publish(eventsChannel(instanceId), createSignal(
           'alert',
           { kind: 'no-llm', error: 'No LLM configured in runtime' },
@@ -982,6 +1081,7 @@ const TEST_EXPLAINER = {
       }
       if (inFlight) return // back-pressure: drop overlapping reports
       inFlight = true
+      stateBox.update({ busy: true })
 
       let text
       try {
@@ -996,9 +1096,8 @@ const TEST_EXPLAINER = {
           { processorId: instanceId, processorType: 'test-explainer', roomNodeId, roomSystemKey },
         ))
         inFlight = false
+        stateBox.update({ busy: false })
         return
-      } finally {
-        // inFlight cleared in success path below; finally still runs.
       }
       inFlight = false
 
@@ -1020,12 +1119,19 @@ const TEST_EXPLAINER = {
       })
       dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'narrative' })
       bus.publish(eventsChannel(instanceId), stamped)
+      stateBox.update({
+        busy: false,
+        lastVerdict: verdict,
+        explained: stateBox.get().explained + 1,
+      })
     }
 
     return {
       onInput,
       start() {},
-      stop() { inFlight = false },
+      stop() { inFlight = false; stateBox.cleanup() },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
     }
   },
 }
@@ -1092,6 +1198,7 @@ const PERIOD_DETECTOR = {
   },
   create(config, runtime) {
     const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    const stateBox = createStateBox({ detected: false, periodMs: 0, confidence: 0, samples: 0 })
     const buffer = [] // {value, timestamp}
     let timer = null
 
@@ -1136,7 +1243,16 @@ const PERIOD_DETECTOR = {
 
     const check = () => {
       const detection = detectPeriod()
-      if (!detection) return
+      stateBox.update({ samples: buffer.length })
+      if (!detection) {
+        stateBox.update({ detected: false })
+        return
+      }
+      stateBox.update({
+        detected: true,
+        periodMs: Math.round(detection.periodMs),
+        confidence: Number(detection.confidence.toFixed(3)),
+      })
       const sig = createSignal(
         'event',
         {
@@ -1172,7 +1288,10 @@ const PERIOD_DETECTOR = {
       stop() {
         if (timer) { clearInterval(timer); timer = null }
         buffer.length = 0
+        stateBox.cleanup()
       },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
     }
   },
 }
@@ -1252,6 +1371,7 @@ const SENTIMENT = {
     const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
     const lexicon = { ...SENTIMENT_LEXICON, ...(config.lexicon || {}) }
     const threshold = config.threshold ?? 0.05
+    const stateBox = createStateBox({ lastPositive: false, lastNegative: false, lastPolarity: 0 })
     return {
       onInput({ signal }) {
         if (!signalMatches(signal, filters)) return
@@ -1286,9 +1406,15 @@ const SENTIMENT = {
         })
         dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'score' })
         bus.publish(eventsChannel(instanceId), stamped)
+        // Pulse the matching LED, reset polarity readout
+        stateBox.update({ lastPolarity: Number(polarity.toFixed(3)) })
+        if (polarityTag === 'positive') stateBox.pulse('lastPositive', 600)
+        else if (polarityTag === 'negative') stateBox.pulse('lastNegative', 600)
       },
       start() {},
-      stop() {},
+      stop() { stateBox.cleanup() },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
     }
   },
 }
@@ -1397,6 +1523,7 @@ const KEYWORD_EXTRACTOR = {
   },
   create(config, runtime) {
     const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    const stateBox = createStateBox({ lastTop: '' })
     return {
       onInput({ signal }) {
         if (!signalMatches(signal, filters)) return
@@ -1408,6 +1535,8 @@ const KEYWORD_EXTRACTOR = {
           maxPhraseLen: config.maxPhraseLen ?? 4,
         })
         if (phrases.length === 0) return
+        // Show the top 3 phrases in the panel display, comma-separated.
+        stateBox.update({ lastTop: phrases.slice(0, 3).map(p => p.phrase).join(', ') })
         const out = createSignal(
           'narrative',
           {
@@ -1425,7 +1554,9 @@ const KEYWORD_EXTRACTOR = {
         bus.publish(eventsChannel(instanceId), stamped)
       },
       start() {},
-      stop() {},
+      stop() { stateBox.cleanup() },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
     }
   },
 }
@@ -1474,22 +1605,30 @@ const ENTITY_EXTRACTOR = {
   },
   create(config, runtime) {
     const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    const stateBox = createStateBox({
+      lastUrl: false, lastMention: false, lastHashtag: false, lastAmount: false,
+      lastCount: 0,
+    })
+    // Map each entity-kind to the state key whose LED it lights.
+    const ledKeyFor = {
+      url: 'lastUrl', mention: 'lastMention', hashtag: 'lastHashtag', amount: 'lastAmount',
+    }
     return {
       onInput({ signal }) {
         if (!signalMatches(signal, filters)) return
         const text = extractText(signal)
         if (!text) return
+        let totalThisRound = 0
         for (const { kind, re } of ENTITY_PATTERNS) {
-          // Reset lastIndex defensively in case the regex object is shared
           re.lastIndex = 0
           const matches = []
           let m
           while ((m = re.exec(text)) !== null) {
             matches.push(m[0])
-            // Avoid infinite loop on zero-length matches
             if (m.index === re.lastIndex) re.lastIndex += 1
           }
           if (matches.length === 0) continue
+          totalThisRound += matches.length
           const out = createSignal(
             'event',
             {
@@ -1506,10 +1645,16 @@ const ENTITY_EXTRACTOR = {
           })
           dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'entities' })
           bus.publish(eventsChannel(instanceId), stamped)
+          // Pulse the matching LED if this kind has one (url/mention/hashtag/amount).
+          const ledKey = ledKeyFor[kind]
+          if (ledKey) stateBox.pulse(ledKey, 500)
         }
+        if (totalThisRound > 0) stateBox.update({ lastCount: totalThisRound })
       },
       start() {},
-      stop() {},
+      stop() { stateBox.cleanup() },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
     }
   },
 }
@@ -1607,9 +1752,8 @@ const NEAR_DUP_DETECTOR = {
   },
   create(config, runtime) {
     const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
-    // Ring of recent unique fingerprints. Each entry:
-    //   { fingerprint, signalId, timestamp, snippet }
     let window = []
+    const stateBox = createStateBox({ uniqueCount: 0, duplicateCount: 0, windowSize: 0 })
 
     return {
       onInput({ signal }) {
@@ -1619,7 +1763,6 @@ const NEAR_DUP_DETECTOR = {
         const tokens = text.toLowerCase().match(/[a-z0-9]+/g) || []
         if (tokens.length === 0) return
 
-        // Trim by age and cap.
         const now = Date.now()
         const maxAge = config.windowMs ?? 60000
         if (window.length && now - window[0].timestamp > maxAge) {
@@ -1630,8 +1773,6 @@ const NEAR_DUP_DETECTOR = {
         const fp = simhash32(tokens)
         const threshold = config.hammingThreshold ?? 3
 
-        // Linear scan — fine up to cap=2000. For larger windows we'd want
-        // banded LSH; not worth it for this scale.
         let match = null
         for (const e of window) {
           const d = hamming32(fp, e.fingerprint)
@@ -1661,10 +1802,13 @@ const NEAR_DUP_DETECTOR = {
           })
           dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'duplicate' })
           bus.publish(eventsChannel(instanceId), stamped)
+          stateBox.update({
+            duplicateCount: stateBox.get().duplicateCount + 1,
+            windowSize: window.length,
+          })
           return
         }
 
-        // Unique: register in window, then pass-through the original.
         window.push({ fingerprint: fp, signalId: signal.id, timestamp: now, snippet })
         if (window.length > cap) window.splice(0, window.length - cap)
 
@@ -1674,9 +1818,15 @@ const NEAR_DUP_DETECTOR = {
         }
         dispatcher.emit(passthrough, { fromInstanceId: instanceId, fromPortId: 'unique' })
         bus.publish(eventsChannel(instanceId), passthrough)
+        stateBox.update({
+          uniqueCount: stateBox.get().uniqueCount + 1,
+          windowSize: window.length,
+        })
       },
       start() {},
-      stop() { window = [] },
+      stop() { window = []; stateBox.cleanup() },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
     }
   },
 }
@@ -1752,11 +1902,10 @@ const TOP_K_TRACKER = {
     const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
     let buffer = [] // {value, timestamp}
     let timer = null
+    const stateBox = createStateBox({ distinct: 0, total: 0, lastTop: '' })
 
     const trim = (now) => {
       const windowMs = config.windowMs ?? 30000
-      // Drop entries outside the window. Cheap because we always push to
-      // the end → buffer is age-sorted.
       let drop = 0
       while (drop < buffer.length && now - buffer[drop].timestamp > windowMs) drop++
       if (drop > 0) buffer = buffer.slice(drop)
@@ -1767,7 +1916,10 @@ const TOP_K_TRACKER = {
     const tick = () => {
       const now = Date.now()
       trim(now)
-      if (buffer.length === 0) return
+      if (buffer.length === 0) {
+        stateBox.update({ distinct: 0, total: 0, lastTop: '' })
+        return
+      }
 
       const counts = new Map()
       for (const { value } of buffer) counts.set(value, (counts.get(value) || 0) + 1)
@@ -1781,6 +1933,13 @@ const TOP_K_TRACKER = {
           value, count,
           share: Number((count / total).toFixed(3)),
         }))
+      // Always reflect the latest stats on the panel, even when topK is
+      // empty (everything filtered out by minCount).
+      stateBox.update({
+        distinct: counts.size,
+        total,
+        lastTop: topK.slice(0, 3).map(t => `${t.value}:${t.count}`).join(' '),
+      })
       if (topK.length === 0) return
 
       const out = createSignal(
@@ -1811,7 +1970,6 @@ const TOP_K_TRACKER = {
         if (values.length === 0) return
         const now = Date.now()
         for (const v of values) buffer.push({ value: v, timestamp: now })
-        // Light incremental trim so the buffer doesn't spike between ticks.
         if (buffer.length > (config.maxBufferSize ?? 10000)) trim(now)
       },
       start() {
@@ -1821,7 +1979,10 @@ const TOP_K_TRACKER = {
       stop() {
         if (timer) { clearInterval(timer); timer = null }
         buffer = []
+        stateBox.cleanup()
       },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
     }
   },
 }
@@ -1876,15 +2037,12 @@ const STEP_DETECTOR = {
   },
   create(config, runtime) {
     const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    const stateBox = createStateBox({ lastFired: false, lastT: 0, lastDelta: 0 })
     const buffer = []     // {value, timestamp}
     let lastDetectionMs = 0
     let lastBoundaryStamp = 0  // timestamp of the last reported step boundary
     let timer = null
 
-    // Sweep all possible boundary positions in the buffer and return the
-    // one with the largest |t-stat| above threshold. This makes the
-    // detector robust to the step being anywhere in recent history rather
-    // than at the exact mid-point of the most recent 2N samples.
     const detect = () => {
       const n = config.windowSize ?? 16
       if (buffer.length < n * 2) return null
@@ -1942,6 +2100,11 @@ const STEP_DETECTOR = {
       })
       dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'detection' })
       bus.publish(eventsChannel(instanceId), stamped)
+      stateBox.update({
+        lastT: Number(r.t.toFixed(3)),
+        lastDelta: Number(r.magnitude.toFixed(3)),
+      })
+      stateBox.pulse('lastFired', 600)
     }
 
     return {
@@ -1950,7 +2113,6 @@ const STEP_DETECTOR = {
         const v = signal.content?.value
         if (typeof v !== 'number' || !Number.isFinite(v)) return
         buffer.push({ value: v, timestamp: signal.timestamp || Date.now() })
-        // Keep ~6 windows of history so the boundary sweep has room.
         const cap = (config.windowSize ?? 16) * 6
         while (buffer.length > cap) buffer.shift()
       },
@@ -1961,7 +2123,10 @@ const STEP_DETECTOR = {
       stop() {
         if (timer) { clearInterval(timer); timer = null }
         buffer.length = 0
+        stateBox.cleanup()
       },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
     }
   },
 }
@@ -2017,6 +2182,7 @@ const TREND_DETECTOR = {
   },
   create(config, runtime) {
     const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    const stateBox = createStateBox({ detected: false, slope: 0, tstat: 0 })
     const buffer = []     // {value, timestamp}
     let timer = null
 
@@ -2062,7 +2228,15 @@ const TREND_DETECTOR = {
 
     const check = () => {
       const r = detect()
-      if (!r) return
+      if (!r) {
+        stateBox.update({ detected: false })
+        return
+      }
+      stateBox.update({
+        detected: true,
+        slope: Number(r.slopePerSec.toFixed(4)),
+        tstat: Number(r.t.toFixed(3)),
+      })
       const sig = createSignal(
         'event',
         {
@@ -2097,7 +2271,10 @@ const TREND_DETECTOR = {
       stop() {
         if (timer) { clearInterval(timer); timer = null }
         buffer.length = 0
+        stateBox.cleanup()
       },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
     }
   },
 }
@@ -2147,15 +2324,26 @@ const ANOMALY_DETECTOR = {
   },
   create(config, runtime) {
     const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    const stateBox = createStateBox({ lastFired: false, mean: 0, stddev: 0 })
     let count = 0
     let mean = 0
     let M2 = 0   // running sum of squared deviations (Welford)
+
+    const publishStats = () => {
+      const variance = M2 / Math.max(1, count - 1)
+      const stddev = Math.sqrt(variance + 1e-9)
+      stateBox.update({
+        mean: Number(mean.toFixed(3)),
+        stddev: Number(stddev.toFixed(3)),
+      })
+    }
 
     const updateStats = (v) => {
       count += 1
       const delta = v - mean
       mean += delta / count
       M2 += delta * (v - mean)
+      publishStats()
     }
 
     return {
@@ -2180,6 +2368,7 @@ const ANOMALY_DETECTOR = {
           return
         }
         // Anomaly: fire detection but DON'T update the baseline.
+        stateBox.pulse('lastFired', 350)
         const sig = createSignal(
           'event',
           {
@@ -2200,7 +2389,12 @@ const ANOMALY_DETECTOR = {
         bus.publish(eventsChannel(instanceId), stamped)
       },
       start() {},
-      stop() { count = 0; mean = 0; M2 = 0 },
+      stop() {
+        count = 0; mean = 0; M2 = 0
+        stateBox.cleanup()
+      },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
     }
   },
 }
@@ -2250,6 +2444,7 @@ const PULSE_BATCHER = {
   },
   create(config, runtime) {
     const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    const stateBox = createStateBox({ bufferCount: 0, lastBurstSize: 0, pulseLed: false })
     let buffer = []
     let timer = null
 
@@ -2259,6 +2454,8 @@ const PULSE_BATCHER = {
       // the burst goes into the next window, not this one.
       const batch = buffer
       buffer = []
+      stateBox.update({ bufferCount: 0, lastBurstSize: batch.length })
+      stateBox.pulse('pulseLed', 250)
       for (const sig of batch) {
         dispatcher.emit(sig, { fromInstanceId: instanceId, fromPortId: 'out' })
       }
@@ -2277,6 +2474,7 @@ const PULSE_BATCHER = {
         buffer.push(signal)
         const cap = config.maxBuffer ?? 1000
         if (buffer.length > cap) buffer.shift() // drop oldest, prefer recent
+        stateBox.update({ bufferCount: buffer.length })
       },
       start() {
         if (timer) return
@@ -2285,7 +2483,10 @@ const PULSE_BATCHER = {
       stop() {
         if (timer) { clearInterval(timer); timer = null }
         buffer = []
+        stateBox.cleanup()
       },
+      getState: stateBox.get,
+      subscribeState: stateBox.subscribe,
     }
   },
 }

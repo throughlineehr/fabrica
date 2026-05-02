@@ -154,14 +154,23 @@ function App() {
   // call onAction without restarting the processor.
   const handlesRef = useRef(new Map())
 
+  // Live processor state for the rack panels. Each entry is { instanceId:
+  // {state-shape} } populated by the per-handle subscribeState callback in
+  // the runtime effect below. Drives the Panel fixtures' `state.X` bindings
+  // (LEDs, displays, …) so they stop being decorative and start showing
+  // actual runtime values.
+  const [processorStates, setProcessorStates] = useState({})
+
   // Start/stop running instances in sync with the processors state.
-  // Each processor.create() returns { start, stop, onInput?, onAction? }.
-  // We register onInput with the dispatcher so cable deliveries reach the
-  // processor; emits flow back through dispatcher.emit. Rebuilds all on
-  // every change — simple and correct for small counts.
+  // Each processor.create() returns { start, stop, onInput?, onAction?,
+  // subscribeState? }. We register onInput with the dispatcher so cable
+  // deliveries reach the processor; emits flow back through dispatcher.emit.
+  // We also subscribe to each handle's state so panel state-bindings render
+  // live. Rebuilds all on every change — simple and correct for small counts.
   useEffect(() => {
     if (!bus) return
     const running = []
+    const stateUnsubs = []
     handlesRef.current = new Map()
     for (const [key, instances] of Object.entries(processors)) {
       const [nodeId, systemKey] = key.split(':')
@@ -176,23 +185,32 @@ function App() {
           filters: inst.filters || defaultFilters(),
           llm,
         })
-        // Register every processor — source-only ones still need the
-        // dispatcher to know their roomKey so emit() can route from them.
         dispatcher.registerProcessor(inst.id, {
           roomKey: key,
           inputHandler: handle.onInput || (() => {}),
         })
+        if (typeof handle.subscribeState === 'function') {
+          // Capture each instance id by closure so the patch lands in the
+          // right slot even with many concurrent handles.
+          const id = inst.id
+          const unsub = handle.subscribeState((next) => {
+            setProcessorStates(prev => ({ ...prev, [id]: next }))
+          })
+          stateUnsubs.push(unsub)
+        }
         handle.start()
         handlesRef.current.set(inst.id, handle)
         running.push({ handle, instanceId: inst.id })
       }
     }
     return () => {
+      for (const u of stateUnsubs) u()
       for (const { handle, instanceId } of running) {
         handle.stop()
         dispatcher.unregisterProcessor(instanceId)
       }
       handlesRef.current = new Map()
+      setProcessorStates({})
     }
   }, [bus, dispatcher, processors, llm])
 
@@ -542,6 +560,7 @@ function App() {
             systemKey={systemView.systemKey}
             processors={processors[`${systemView.nodeId}:${systemView.systemKey}`] || []}
             cables={cables[`${systemView.nodeId}:${systemView.systemKey}`] || []}
+            processorStates={processorStates}
             onAddProcessor={(def) => agentAPI.addProcessor(systemView.nodeId, systemView.systemKey, def.id)}
             onRemoveProcessor={(instanceId) => agentAPI.removeProcessor(systemView.nodeId, systemView.systemKey, instanceId)}
             onUpdateProcessor={(instanceId, updates) => {

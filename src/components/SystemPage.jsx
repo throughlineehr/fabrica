@@ -22,6 +22,7 @@ export function SystemPage({
   nodeId, nodeName, node, tree, systemKey,
   processors,
   cables = [],
+  processorStates = {},
   onAddProcessor, onRemoveProcessor, onUpdateProcessor, onOpenProcessor, onProcessorAction,
   onAddCable, onRemoveCable,
   onSaveAsCompound,
@@ -172,7 +173,7 @@ export function SystemPage({
               ) : (
                 <Rack
                   processors={rackProcessors}
-                  processorState={{}}
+                  processorState={processorStates}
                   cables={cables}
                   onConfigChange={(instanceId, patch) =>
                     onUpdateProcessor?.(instanceId, { config: patch })
