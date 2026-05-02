@@ -1826,10 +1826,389 @@ const TOP_K_TRACKER = {
   },
 }
 
+// STEP DETECTOR -----------------------------------------------------------
+// Split-window step-change detector. Buffers 2N recent samples, splits into
+// older/newer halves, and fires a `detection`+`step` signal when the
+// difference of means exceeds `threshold` pooled standard deviations.
+// Cooldown suppresses re-firing on the same shift.
+
+const STEP_DETECTOR = {
+  id: 'step-detector',
+  name: 'Step Detector',
+  description: 'Split-window step-change detector. Compares the mean of the newer half of a 2N buffer against the older half; fires when |Δmean / pooled-stddev| exceeds `threshold` (default 3). Cooldown prevents repeated emission for the same step.',
+  category: 'analysis',
+  hasInputs: true,
+  hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'in', label: 'in', accepts: { types: ['metric'], tags: null } },
+    ],
+    outputs: [
+      { id: 'detection', label: 'detection', emits: { types: ['event'], tags: ['detection', 'step'] } },
+    ],
+  },
+  placement: 'any',
+  defaultConfig: {
+    windowSize: 16,        // each half — total buffer is 2 * windowSize
+    threshold: 3,
+    cooldownMs: 5000,
+    checkIntervalMs: 500,
+  },
+  panel: {
+    widthHP: 10,
+    bg: 'mid',
+    accent: 's3',
+    fixtures: [
+      { type: 'jack', id: 'jin', x: 0, y: 0, kind: 'input', port: 'in', color: 's3', label: 'in' },
+      { type: 'knob', id: 'windowSize',      x: 0, y: 2, size: 'md',
+        bind: 'config.windowSize',      range: [4, 128],   step: 1,    label: 'half-N' },
+      { type: 'knob', id: 'threshold',       x: 2, y: 2, size: 'md',
+        bind: 'config.threshold',       range: [1, 10],    step: 0.5,  label: 'thr (σ)' },
+      { type: 'knob', id: 'cooldownMs',      x: 4, y: 2, size: 'md',
+        bind: 'config.cooldownMs',      range: [0, 60000], step: 500,  unit: 'ms', label: 'cool' },
+      { type: 'knob', id: 'checkIntervalMs', x: 6, y: 2, size: 'md',
+        bind: 'config.checkIntervalMs', range: [100, 5000], step: 100, unit: 'ms', label: 'rate' },
+      { type: 'led',     id: 'fired',     x: 1, y: 5, bind: 'state.lastFired',  color: 's3', label: 'fired' },
+      { type: 'display', id: 'lastT',     x: 2, y: 5, w: 4, h: 1, bind: 'state.lastT',      label: 't-stat' },
+      { type: 'display', id: 'lastDelta', x: 0, y: 8, w: 8, h: 1, bind: 'state.lastDelta',  label: 'Δmean' },
+      { type: 'jack', id: 'jout', x: 4, y: 11, kind: 'output', port: 'detection', color: 's3', label: 'det' },
+    ],
+  },
+  create(config, runtime) {
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    const buffer = []     // {value, timestamp}
+    let lastDetectionMs = 0
+    let lastBoundaryStamp = 0  // timestamp of the last reported step boundary
+    let timer = null
+
+    // Sweep all possible boundary positions in the buffer and return the
+    // one with the largest |t-stat| above threshold. This makes the
+    // detector robust to the step being anywhere in recent history rather
+    // than at the exact mid-point of the most recent 2N samples.
+    const detect = () => {
+      const n = config.windowSize ?? 16
+      if (buffer.length < n * 2) return null
+      let best = null
+      const threshold = config.threshold ?? 3
+      for (let b = n; b <= buffer.length - n; b++) {
+        let sumO = 0, sumN = 0
+        for (let i = b - n; i < b; i++) sumO += buffer[i].value
+        for (let i = b; i < b + n; i++) sumN += buffer[i].value
+        const meanO = sumO / n
+        const meanN = sumN / n
+        let varO = 0, varN = 0
+        for (let i = b - n; i < b; i++) varO += (buffer[i].value - meanO) ** 2
+        for (let i = b; i < b + n; i++) varN += (buffer[i].value - meanN) ** 2
+        varO /= Math.max(1, n - 1)
+        varN /= Math.max(1, n - 1)
+        const pooledStd = Math.sqrt((varO + varN) / 2 + 1e-9)
+        const t = (meanN - meanO) / pooledStd
+        if (Math.abs(t) < threshold) continue
+        if (!best || Math.abs(t) > Math.abs(best.t)) {
+          best = {
+            magnitude: meanN - meanO,
+            t,
+            boundaryAt: buffer[b].timestamp,
+          }
+        }
+      }
+      return best
+    }
+
+    const check = () => {
+      const now = Date.now()
+      if (now - lastDetectionMs < (config.cooldownMs ?? 5000)) return
+      const r = detect()
+      if (!r) return
+      // Suppress re-firing on the same boundary — necessary because the
+      // sweep keeps finding the same step until it falls out of the buffer.
+      if (r.boundaryAt === lastBoundaryStamp) return
+      lastBoundaryStamp = r.boundaryAt
+      lastDetectionMs = now
+      const sig = createSignal(
+        'event',
+        {
+          subkind: 'step',
+          magnitude: Number(r.magnitude.toFixed(3)),
+          t: Number(r.t.toFixed(3)),
+          boundaryAt: r.boundaryAt,
+        },
+        { processorId: instanceId, processorType: 'step-detector', roomNodeId, roomSystemKey },
+      )
+      sig.tags = ['detection', 'step']
+      sig.timestamp = r.boundaryAt
+      const stamped = appendTrace(sig, {
+        roomNodeId, roomSystemKey, processorId: instanceId, processorType: 'step-detector',
+      })
+      dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'detection' })
+      bus.publish(eventsChannel(instanceId), stamped)
+    }
+
+    return {
+      onInput({ signal }) {
+        if (!signalMatches(signal, filters)) return
+        const v = signal.content?.value
+        if (typeof v !== 'number' || !Number.isFinite(v)) return
+        buffer.push({ value: v, timestamp: signal.timestamp || Date.now() })
+        // Keep ~6 windows of history so the boundary sweep has room.
+        const cap = (config.windowSize ?? 16) * 6
+        while (buffer.length > cap) buffer.shift()
+      },
+      start() {
+        if (timer) return
+        timer = setInterval(check, config.checkIntervalMs ?? 500)
+      },
+      stop() {
+        if (timer) { clearInterval(timer); timer = null }
+        buffer.length = 0
+      },
+    }
+  },
+}
+
+// TREND DETECTOR ----------------------------------------------------------
+// Rolling-window linear-regression slope estimator. Fits a line to the last
+// N samples (sample-index vs value), computes the slope's standard error
+// and t-statistic, and fires `detection`+`trend` when |t| exceeds
+// `threshold`. The slope is reported in units-per-second using the
+// buffer's average sample interval.
+
+const TREND_DETECTOR = {
+  id: 'trend-detector',
+  name: 'Trend Detector',
+  description: 'Rolling-window linear-regression trend detector. Fits a line over the last N samples; fires when the slope is significantly non-zero (|slope / SE| > threshold). Reports slope in units-per-second and direction.',
+  category: 'analysis',
+  hasInputs: true,
+  hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'in', label: 'in', accepts: { types: ['metric'], tags: null } },
+    ],
+    outputs: [
+      { id: 'detection', label: 'detection', emits: { types: ['event'], tags: ['detection', 'trend'] } },
+    ],
+  },
+  placement: 'any',
+  defaultConfig: {
+    windowSize: 32,
+    threshold: 3,
+    checkIntervalMs: 2000,
+    minSamples: 16,
+  },
+  panel: {
+    widthHP: 10,
+    bg: 'mid',
+    accent: 's3',
+    fixtures: [
+      { type: 'jack', id: 'jin', x: 0, y: 0, kind: 'input', port: 'in', color: 's3', label: 'in' },
+      { type: 'knob', id: 'windowSize',      x: 0, y: 2, size: 'md',
+        bind: 'config.windowSize',      range: [8, 256],    step: 1,    label: 'N' },
+      { type: 'knob', id: 'threshold',       x: 2, y: 2, size: 'md',
+        bind: 'config.threshold',       range: [1, 10],     step: 0.5,  label: 'thr (σ)' },
+      { type: 'knob', id: 'minSamples',      x: 4, y: 2, size: 'md',
+        bind: 'config.minSamples',      range: [4, 128],    step: 1,    label: 'minN' },
+      { type: 'knob', id: 'checkIntervalMs', x: 6, y: 2, size: 'md',
+        bind: 'config.checkIntervalMs', range: [500, 30000], step: 500, unit: 'ms', label: 'rate' },
+      { type: 'led',     id: 'detected', x: 1, y: 5, bind: 'state.detected',  color: 's3', label: 'trend' },
+      { type: 'display', id: 'slope',    x: 2, y: 5, w: 4, h: 1, bind: 'state.slope',    label: 'slope/s' },
+      { type: 'display', id: 'tstat',    x: 0, y: 8, w: 8, h: 1, bind: 'state.tstat',    label: 't-stat' },
+      { type: 'jack', id: 'jout', x: 4, y: 11, kind: 'output', port: 'detection', color: 's3', label: 'det' },
+    ],
+  },
+  create(config, runtime) {
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    const buffer = []     // {value, timestamp}
+    let timer = null
+
+    const detect = () => {
+      const N = buffer.length
+      const minN = config.minSamples ?? 16
+      if (N < minN) return null
+
+      const window = buffer.slice(-Math.min(N, config.windowSize ?? 32))
+      const W = window.length
+      let sx = 0, sy = 0, sxx = 0, sxy = 0
+      for (let i = 0; i < W; i++) {
+        sx += i; sy += window[i].value
+        sxx += i * i; sxy += i * window[i].value
+      }
+      const denom = W * sxx - sx * sx
+      if (denom === 0) return null
+      const slope = (W * sxy - sx * sy) / denom
+      const intercept = (sy - slope * sx) / W
+      let ssRes = 0
+      for (let i = 0; i < W; i++) {
+        const pred = intercept + slope * i
+        ssRes += (window[i].value - pred) ** 2
+      }
+      const xMean = sx / W
+      const ssXX = sxx - sx * xMean
+      if (ssXX <= 0) return null
+      // Standard error of slope: sqrt(ssRes / (W-2)) / sqrt(ssXX)
+      const se = Math.sqrt(ssRes / Math.max(1, W - 2)) / Math.sqrt(ssXX) || 1e-9
+      const t = slope / se
+      if (Math.abs(t) < (config.threshold ?? 3)) return null
+
+      const totalSpan = window[W - 1].timestamp - window[0].timestamp
+      if (totalSpan <= 0) return null
+      const avgIntervalSec = (totalSpan / (W - 1)) / 1000
+      const slopePerSec = slope / avgIntervalSec
+      return {
+        slopePerSec,
+        t,
+        direction: slope > 0 ? 'up' : 'down',
+      }
+    }
+
+    const check = () => {
+      const r = detect()
+      if (!r) return
+      const sig = createSignal(
+        'event',
+        {
+          subkind: 'trend',
+          slope: Number(r.slopePerSec.toFixed(4)),
+          t: Number(r.t.toFixed(3)),
+          direction: r.direction,
+        },
+        { processorId: instanceId, processorType: 'trend-detector', roomNodeId, roomSystemKey },
+      )
+      sig.tags = ['detection', 'trend']
+      const stamped = appendTrace(sig, {
+        roomNodeId, roomSystemKey, processorId: instanceId, processorType: 'trend-detector',
+      })
+      dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'detection' })
+      bus.publish(eventsChannel(instanceId), stamped)
+    }
+
+    return {
+      onInput({ signal }) {
+        if (!signalMatches(signal, filters)) return
+        const v = signal.content?.value
+        if (typeof v !== 'number' || !Number.isFinite(v)) return
+        buffer.push({ value: v, timestamp: signal.timestamp || Date.now() })
+        const cap = (config.windowSize ?? 32) * 2
+        while (buffer.length > cap) buffer.shift()
+      },
+      start() {
+        if (timer) return
+        timer = setInterval(check, config.checkIntervalMs ?? 2000)
+      },
+      stop() {
+        if (timer) { clearInterval(timer); timer = null }
+        buffer.length = 0
+      },
+    }
+  },
+}
+
+// ANOMALY DETECTOR --------------------------------------------------------
+// Online z-score outlier detector. Welford's algorithm maintains running
+// mean and variance; new samples whose |z| ≥ threshold fire `detection`+
+// `anomaly` and are *excluded* from the running statistics so the baseline
+// doesn't drift toward the anomaly. Warmup ignores the first
+// `warmupSamples` samples until the baseline stabilises.
+
+const ANOMALY_DETECTOR = {
+  id: 'anomaly-detector',
+  name: 'Anomaly Detector',
+  description: 'Online z-score outlier detector. Welford running mean + variance; fires when |z-score| ≥ threshold. Anomalous samples are excluded from the running statistics so the baseline doesn\'t drift toward the anomaly.',
+  category: 'analysis',
+  hasInputs: true,
+  hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'in', label: 'in', accepts: { types: ['metric'], tags: null } },
+    ],
+    outputs: [
+      { id: 'detection', label: 'detection', emits: { types: ['event'], tags: ['detection', 'anomaly'] } },
+    ],
+  },
+  placement: 'any',
+  defaultConfig: {
+    threshold: 3,
+    warmupSamples: 30,
+  },
+  panel: {
+    widthHP: 8,
+    bg: 'mid',
+    accent: 's3',
+    fixtures: [
+      { type: 'jack', id: 'jin', x: 0, y: 0, kind: 'input', port: 'in', color: 's3', label: 'in' },
+      { type: 'knob', id: 'threshold',     x: 1, y: 2, size: 'md',
+        bind: 'config.threshold',     range: [1, 10],   step: 0.5, label: 'thr (σ)' },
+      { type: 'knob', id: 'warmupSamples', x: 4, y: 2, size: 'md',
+        bind: 'config.warmupSamples', range: [5, 500], step: 1,   label: 'warmup' },
+      { type: 'led',     id: 'fired', x: 1, y: 5, bind: 'state.lastFired',  color: 's3', label: 'fired' },
+      { type: 'display', id: 'mean',  x: 0, y: 8, w: 4, h: 1, bind: 'state.mean',     label: 'mean' },
+      { type: 'display', id: 'std',   x: 4, y: 8, w: 4, h: 1, bind: 'state.stddev',   label: 'σ' },
+      { type: 'jack', id: 'jout', x: 3, y: 11, kind: 'output', port: 'detection', color: 's3', label: 'det' },
+    ],
+  },
+  create(config, runtime) {
+    const { bus, dispatcher, instanceId, roomNodeId, roomSystemKey, filters } = runtime
+    let count = 0
+    let mean = 0
+    let M2 = 0   // running sum of squared deviations (Welford)
+
+    const updateStats = (v) => {
+      count += 1
+      const delta = v - mean
+      mean += delta / count
+      M2 += delta * (v - mean)
+    }
+
+    return {
+      onInput({ signal }) {
+        if (!signalMatches(signal, filters)) return
+        const v = signal.content?.value
+        if (typeof v !== 'number' || !Number.isFinite(v)) return
+
+        const warmup = config.warmupSamples ?? 30
+        if (count < warmup) {
+          updateStats(v)
+          return
+        }
+        const variance = M2 / Math.max(1, count - 1)
+        const stddev = Math.sqrt(variance + 1e-9)
+        const z = (v - mean) / stddev
+        const threshold = config.threshold ?? 3
+
+        if (Math.abs(z) < threshold) {
+          // Within tolerance — update running stats
+          updateStats(v)
+          return
+        }
+        // Anomaly: fire detection but DON'T update the baseline.
+        const sig = createSignal(
+          'event',
+          {
+            subkind: 'anomaly',
+            value: v,
+            z: Number(z.toFixed(3)),
+            mean: Number(mean.toFixed(3)),
+            stddev: Number(stddev.toFixed(3)),
+          },
+          { processorId: instanceId, processorType: 'anomaly-detector', roomNodeId, roomSystemKey },
+        )
+        sig.tags = ['detection', 'anomaly']
+        sig.timestamp = signal.timestamp || Date.now()
+        const stamped = appendTrace(sig, {
+          roomNodeId, roomSystemKey, processorId: instanceId, processorType: 'anomaly-detector',
+        })
+        dispatcher.emit(stamped, { fromInstanceId: instanceId, fromPortId: 'detection' })
+        bus.publish(eventsChannel(instanceId), stamped)
+      },
+      start() {},
+      stop() { count = 0; mean = 0; M2 = 0 },
+    }
+  },
+}
+
 export const PROCESSOR_LIBRARY = [
   HEARTBEAT, TRACER, LOGGER, WEBSOCKET_TRANSDUCER, DIGEST,
   TEST_GENERATOR, TEST_EXPLAINER,
-  PERIOD_DETECTOR,
+  PERIOD_DETECTOR, STEP_DETECTOR, TREND_DETECTOR, ANOMALY_DETECTOR,
   SENTIMENT, KEYWORD_EXTRACTOR, ENTITY_EXTRACTOR,
   NEAR_DUP_DETECTOR, TOP_K_TRACKER,
 ]
