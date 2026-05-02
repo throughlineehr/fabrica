@@ -2205,6 +2205,177 @@ const ANOMALY_DETECTOR = {
   },
 }
 
+// SUB-PATCHING -----------------------------------------------------------
+// A compound processor is a def that ships a `subRack` instead of (or in
+// addition to) a primitive `create`. Its create() spawns inner instances,
+// wires them via an inner-only proxy dispatcher, and forwards signals
+// between the compound's declared outer ports and inner jacks.
+//
+// Inner-instance ids are namespaced as `${outerId}/${innerLocalId}` for
+// uniqueness within the room, but the inner cable graph uses the LOCAL
+// ids (the proxy dispatcher rewrites them on emit).
+//
+// Scope of v1 (matches the DEBT.md entry): runtime support only.
+//   - Ports: declared on the outer def like a primitive
+//   - Inner instances reference primitives by defId (no nested compounds yet)
+//   - Inner cables: jack→jack only
+//   - Bindings: inputBindings[outerPort] = {instanceId, portId};
+//                outputBindings[outerPort] = {instanceId, portId}
+//   - No drill-in, no editor, no save-as-library, no parameter exposure
+//
+// Future work tracked in DEBT.md → "Compound processors".
+
+function createCompoundInstance(def, config, runtime) {
+  const { dispatcher: outerDispatcher, instanceId: outerId, bus } = runtime
+  const sr = def.subRack
+  if (!sr) throw new Error(`createCompoundInstance: ${def.id} has no subRack`)
+
+  // Built once at instantiation: a fast lookup from an inner-jack source
+  // to its consumers — either another inner jack or the outer's output port.
+  const innerEdges = new Map() // key: `${localId}|${portId}` → [{kind, …}]
+  for (const cab of sr.cables || []) {
+    const key = `${cab.source.instanceId}|${cab.source.portId}`
+    const list = innerEdges.get(key) || []
+    list.push({ kind: 'inner-jack', toId: cab.target.instanceId, toPort: cab.target.portId })
+    innerEdges.set(key, list)
+  }
+  for (const [outerPortId, binding] of Object.entries(sr.outputBindings || {})) {
+    const key = `${binding.instanceId}|${binding.portId}`
+    const list = innerEdges.get(key) || []
+    list.push({ kind: 'outer-out', outerPortId })
+    innerEdges.set(key, list)
+  }
+
+  const innerById = {} // localId → { handle, instanceId, def }
+
+  // Proxy dispatcher: inner instances get this instead of the real
+  // dispatcher. Their emit() routes via innerEdges; everything else is a
+  // no-op (inners don't directly touch the outer cable graph).
+  const innerDispatcher = {
+    emit(signal, { fromInstanceId, fromPortId }) {
+      const localId = fromInstanceId.startsWith(outerId + '/')
+        ? fromInstanceId.slice(outerId.length + 1)
+        : fromInstanceId
+      const targets = innerEdges.get(`${localId}|${fromPortId}`) || []
+      for (const t of targets) {
+        if (t.kind === 'inner-jack') {
+          innerById[t.toId]?.handle.onInput?.({ signal, portId: t.toPort })
+        } else if (t.kind === 'outer-out') {
+          // Re-emit on the outer's port through the real dispatcher.
+          outerDispatcher.emit(signal, { fromInstanceId: outerId, fromPortId: t.outerPortId })
+        }
+      }
+    },
+    setCables() {}, setRoomTerminals() {}, setBroadcast() {},
+    registerProcessor() {}, unregisterProcessor() {},
+    deliverFromTerminal() {},
+  }
+
+  // Spawn inner instances. getProcessorDef is hoisted; at the time this
+  // function actually runs (compound.create() call) PROCESSOR_LIBRARY is
+  // fully initialised.
+  for (const inst of sr.instances || []) {
+    const innerDef = getProcessorDef(inst.defId)
+    if (!innerDef) {
+      console.error(`Compound ${def.id}: inner ${inst.id} has unknown defId ${inst.defId}`)
+      continue
+    }
+    if (innerDef.subRack) {
+      console.warn(`Compound ${def.id}: nested compound ${inst.defId} not supported in v1`)
+    }
+    const innerInstanceId = `${outerId}/${inst.id}`
+    const innerConfig = { ...(innerDef.defaultConfig || {}), ...(inst.config || {}) }
+    const handle = innerDef.create(innerConfig, {
+      ...runtime,
+      dispatcher: innerDispatcher,
+      instanceId: innerInstanceId,
+    })
+    innerById[inst.id] = { handle, instanceId: innerInstanceId, def: innerDef }
+    handle.start?.()
+  }
+
+  // Optional: a small marker event so the live feed shows the compound
+  // started. Lets the user verify the shell came up.
+  bus.publish(eventsChannel(outerId), createSignal(
+    'event',
+    { kind: 'compound-started', innerCount: Object.keys(innerById).length, defId: def.id },
+    { processorId: outerId, processorType: def.id },
+  ))
+
+  return {
+    onInput({ signal, portId }) {
+      const binding = (sr.inputBindings || {})[portId]
+      if (!binding) return
+      innerById[binding.instanceId]?.handle.onInput?.({
+        signal, portId: binding.portId,
+      })
+    },
+    onAction(action) {
+      // Fan actions to every inner — most won't have onAction; the rest
+      // can decide what to do with it. Useful for "reset" semantics.
+      for (const inner of Object.values(innerById)) inner.handle.onAction?.(action)
+    },
+    start() { /* inners already started above */ },
+    stop() {
+      for (const inner of Object.values(innerById)) inner.handle.stop?.()
+    },
+  }
+}
+
+// SENTIMENT TRACKER (compound) -------------------------------------------
+// Proof-of-concept sub-patch. Demonstrates: outer input → inner binding,
+// inner→inner cable, bound inner output → outer port. No new primitive
+// code — entirely composed of existing processors.
+
+const SENTIMENT_TRACKER = {
+  id: 'sentiment-tracker',
+  name: 'Sentiment Tracker',
+  description: 'Compound: text → sentiment → top-K of polarity tags over a rolling window. Demonstrates sub-patching: composed entirely from primitives (sentiment + top-k-tracker), no new logic.',
+  category: 'analysis',
+  hasInputs: true,
+  hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'in', label: 'in', accepts: { types: null, tags: null } },
+    ],
+    outputs: [
+      { id: 'top', label: 'top', emits: { types: ['narrative'], tags: ['top-k', 'sentiment-tracker'] } },
+    ],
+  },
+  placement: 'any',
+  defaultConfig: {},
+  panel: {
+    widthHP: 8,
+    bg: 'mid',
+    accent: 's2',
+    fixtures: [
+      { type: 'jack', id: 'jin', x: 0, y: 0, kind: 'input', port: 'in', color: 's2', label: 'in' },
+      { type: 'label', id: 'lbl', x: 1, y: 5, w: 6, text: 'SENTIMENT → TOP-K', size: 'sm', color: 's2' },
+      { type: 'jack', id: 'jout', x: 3, y: 11, kind: 'output', port: 'top', color: 's2', label: 'top' },
+    ],
+  },
+  subRack: {
+    instances: [
+      { id: 'snt', defId: 'sentiment' },
+      { id: 'tk',  defId: 'top-k-tracker', config: {
+        key: 'content.polarityTag',
+        topK: 3,
+        windowMs: 60000,
+        reportIntervalMs: 5000,
+      } },
+    ],
+    cables: [
+      { source: { kind: 'jack', instanceId: 'snt', portId: 'score' },
+        target: { kind: 'jack', instanceId: 'tk',  portId: 'in' } },
+    ],
+    inputBindings:  { in:  { instanceId: 'snt', portId: 'in'  } },
+    outputBindings: { top: { instanceId: 'tk',  portId: 'top' } },
+  },
+  create(config, runtime) {
+    return createCompoundInstance(SENTIMENT_TRACKER, config, runtime)
+  },
+}
+
 // SPLITTER ----------------------------------------------------------------
 // Eurorack-style "mult" — one input fans out to eight outputs unchanged.
 // Useful for getting a single source into multiple downstream branches
@@ -2270,6 +2441,8 @@ export const PROCESSOR_LIBRARY = [
   SENTIMENT, KEYWORD_EXTRACTOR, ENTITY_EXTRACTOR,
   NEAR_DUP_DETECTOR, TOP_K_TRACKER,
   SPLITTER,
+  // Compounds
+  SENTIMENT_TRACKER,
 ]
 
 export function getProcessorDef(defId) {
