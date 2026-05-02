@@ -23,6 +23,7 @@ export function SystemPage({
   cables = [],
   onAddProcessor, onRemoveProcessor, onUpdateProcessor, onOpenProcessor, onProcessorAction,
   onAddCable, onRemoveCable,
+  onSaveAsCompound,
   onBack, onNavigate,
 }) {
   const { t: tr } = useTranslation()
@@ -109,6 +110,9 @@ export function SystemPage({
       open={libraryOpen}
       systemKey={systemKey}
       onAdd={(def) => onAddProcessor?.(def)}
+      onSaveAsCompound={onSaveAsCompound
+        ? (form) => onSaveAsCompound(nodeId, systemKey, form)
+        : undefined}
       onClose={() => setLibraryOpen(false)}
     />
   )

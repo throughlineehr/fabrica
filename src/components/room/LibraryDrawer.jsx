@@ -19,13 +19,18 @@
 // are tracked in DEBT.md and will land in a follow-up.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { X, Search } from 'lucide-react'
+import { X, Search, Save } from 'lucide-react'
 import { color, type, panel as panelStyle } from '../../styles'
 import { useA11yType } from '../../hooks/useA11yType'
 import { getEffectiveLibrary, PROCESSOR_CATEGORIES, canPlaceProcessor, subscribeLibrary } from '../../signals/library'
 import { Z_INDEX } from '../../constants'
 
 const DRAWER_WIDTH = 400
+
+// Categories the save-form lets users pick from. Derived from the chip
+// row but excludes anything the user shouldn't pick by default
+// (transducer / effector are ports-of-reality, governance is its own thing).
+const SAVE_CATEGORY_OPTIONS = ['flow', 'analysis', 'connector']
 
 function categoryLabel(catId) {
   return PROCESSOR_CATEGORIES.find(c => c.id === catId)?.label || catId
@@ -91,7 +96,7 @@ function ProcessorCard({ def, focused, onAdd, onFocus, t }) {
   )
 }
 
-export function LibraryDrawer({ open, systemKey, onAdd, onClose }) {
+export function LibraryDrawer({ open, systemKey, onAdd, onSaveAsCompound, onClose }) {
   const t = useA11yType()
   const [search, setSearch] = useState('')
   const [activeCategory, setActiveCategory] = useState('all')
@@ -102,6 +107,9 @@ export function LibraryDrawer({ open, systemKey, onAdd, onClose }) {
   // pick up newly-registered (or removed) compounds.
   const [libraryVersion, setLibraryVersion] = useState(0)
   useEffect(() => subscribeLibrary(() => setLibraryVersion(v => v + 1)), [])
+  // Mode: 'browse' = normal library view, 'save' = compound-save form.
+  const [mode, setMode] = useState('browse')
+  const [saveError, setSaveError] = useState(null)
   const drawerRef = useRef(null)
   const searchRef = useRef(null)
 
@@ -214,19 +222,66 @@ export function LibraryDrawer({ open, systemKey, onAdd, onClose }) {
           padding: '14px 16px',
           borderBottom: `1px solid ${color.border}`,
         }}>
-          <h2 style={{ ...type.h3, margin: 0 }}>Library</h2>
-          <button
-            type="button"
-            aria-label="Close library"
-            onClick={onClose}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              color: color.muted, padding: 4, display: 'flex',
-            }}
-          >
-            <X size={18} strokeWidth={1.5} aria-hidden="true" />
-          </button>
+          <h2 style={{ ...type.h3, margin: 0 }}>{mode === 'save' ? 'Save patch' : 'Library'}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {mode === 'browse' && onSaveAsCompound && (
+              <button
+                type="button"
+                aria-label="Save current room as a compound processor"
+                onClick={() => { setSaveError(null); setMode('save') }}
+                title="Save the current room's patch as a compound processor"
+                style={{
+                  background: 'none', border: `1px solid ${color.border}`,
+                  cursor: 'pointer', color: color.primary,
+                  padding: '4px 8px', display: 'inline-flex',
+                  alignItems: 'center', gap: 4,
+                  ...t.mono, fontSize: 10,
+                  textTransform: 'uppercase', letterSpacing: '0.05em',
+                }}
+              >
+                <Save size={12} strokeWidth={1.5} aria-hidden="true" />
+                save patch
+              </button>
+            )}
+            <button
+              type="button"
+              aria-label="Close library"
+              onClick={onClose}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: color.muted, padding: 4, display: 'flex',
+              }}
+            >
+              <X size={18} strokeWidth={1.5} aria-hidden="true" />
+            </button>
+          </div>
         </div>
+
+        {/* Save form (replaces browse view while active) */}
+        {mode === 'save' && (
+          <SavePatchForm
+            t={t}
+            error={saveError}
+            onCancel={() => { setMode('browse'); setSaveError(null) }}
+            onSubmit={async (form) => {
+              setSaveError(null)
+              try {
+                const r = await Promise.resolve(onSaveAsCompound(form))
+                if (r && r.ok === false) {
+                  setSaveError(r.error || 'Save failed')
+                  return
+                }
+                setMode('browse')
+              } catch (err) {
+                setSaveError(String(err?.message || err))
+              }
+            }}
+          />
+        )}
+
+        {/* Browse view (search + chips + compat toggle + cards) — only
+            rendered while not in save mode. */}
+        {mode === 'browse' && <>
 
         {/* Search */}
         <div style={{
@@ -321,8 +376,126 @@ export function LibraryDrawer({ open, systemKey, onAdd, onClose }) {
             ))
           )}
         </div>
+
+        </>}
       </aside>
     </>
+  )
+}
+
+// Inline form for "save current room as a compound." Auto-port-derivation
+// runs server-side (compoundFromRoom on every unconnected jack), so this
+// form only collects the human-readable metadata. A future iteration adds
+// per-port pruning.
+function SavePatchForm({ t, error, onCancel, onSubmit }) {
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [category, setCategory] = useState('analysis')
+  const [busy, setBusy] = useState(false)
+  const nameRef = useRef(null)
+  useEffect(() => { requestAnimationFrame(() => nameRef.current?.focus()) }, [])
+
+  const submit = async () => {
+    if (!name.trim() || busy) return
+    setBusy(true)
+    await onSubmit({ name: name.trim(), description: description.trim(), category })
+    setBusy(false)
+  }
+
+  return (
+    <div style={{
+      padding: '12px 16px',
+      borderBottom: `1px solid ${color.borderLight}`,
+      display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      <p style={{ ...t.mono, fontSize: 11, color: color.muted, margin: 0 }}>
+        Snapshots the current room (every processor + cable) into a reusable compound.
+        Outer ports are auto-derived from any inner jack that isn't internally cabled.
+      </p>
+
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ ...t.label, fontSize: 9, color: color.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Name</span>
+        <input
+          ref={nameRef}
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') submit() }}
+          placeholder="e.g. Pulse Pipeline"
+          style={{
+            ...t.mono, fontSize: 12, padding: '6px 8px',
+            border: `1px solid ${color.border}`, background: color.white,
+            color: color.primary, outline: 'none',
+          }}
+        />
+      </label>
+
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ ...t.label, fontSize: 9, color: color.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</span>
+        <input
+          type="text"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Optional one-liner"
+          style={{
+            ...t.mono, fontSize: 12, padding: '6px 8px',
+            border: `1px solid ${color.border}`, background: color.white,
+            color: color.primary, outline: 'none',
+          }}
+        />
+      </label>
+
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ ...t.label, fontSize: 9, color: color.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Category</span>
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          style={{
+            ...t.mono, fontSize: 12, padding: '6px 8px',
+            border: `1px solid ${color.border}`, background: color.white,
+            color: color.primary,
+          }}
+        >
+          {SAVE_CATEGORY_OPTIONS.map(id => {
+            const meta = PROCESSOR_CATEGORIES.find(c => c.id === id)
+            return <option key={id} value={id}>{meta?.label || id}</option>
+          })}
+        </select>
+      </label>
+
+      {error && (
+        <p role="alert" style={{ ...t.mono, fontSize: 11, color: color.s2.stroke, margin: 0 }}>
+          {error}
+        </p>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          style={{
+            ...t.mono, fontSize: 11, padding: '6px 12px',
+            background: 'none', border: `1px solid ${color.border}`,
+            color: color.muted, cursor: busy ? 'wait' : 'pointer',
+            textTransform: 'uppercase', letterSpacing: '0.05em',
+          }}
+        >cancel</button>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!name.trim() || busy}
+          style={{
+            ...t.mono, fontSize: 11, padding: '6px 12px',
+            background: name.trim() ? color.primary : color.borderLight,
+            border: `1px solid ${color.primary}`,
+            color: color.white,
+            cursor: !name.trim() || busy ? 'not-allowed' : 'pointer',
+            textTransform: 'uppercase', letterSpacing: '0.05em',
+          }}
+        >{busy ? 'saving…' : 'save'}</button>
+      </div>
+    </div>
   )
 }
 

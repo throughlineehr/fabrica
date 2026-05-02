@@ -556,6 +556,8 @@ function App() {
             onProcessorAction={processorAction}
             onAddCable={(cab) => agentAPI.addCable(systemView.nodeId, systemView.systemKey, cab.source, cab.target, cab.color)}
             onRemoveCable={(cableId) => agentAPI.removeCable(systemView.nodeId, systemView.systemKey, cableId)}
+            onSaveAsCompound={(nodeId, systemKey, { name, description, category }) =>
+              agentAPI.saveAsCompound(nodeId, systemKey, name, { description, category })}
             onBack={handleSystemBack}
             onNavigate={(targetNodeId, targetSystemKey) => {
               handleSystemBack()

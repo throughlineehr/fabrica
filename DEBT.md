@@ -197,11 +197,18 @@ resolved, others remain.
   end-to-end usable. The LibraryDrawer reads `getEffectiveLibrary`
   and re-renders on subscribeLibrary fires, so saved compounds
   appear instantly in the chip+card list.
-- [ ] **Save-as-library UI.** Currently the only entry point is the
-  agent command. A button in the library drawer (or room header)
-  should open a small form: name, description, category, and a
-  multi-select for which inner jacks become outer ports. Defaults
-  to the auto-derivation, lets users prune.
+- [x] **Save-as-library UI (basic form).** "Save patch" button in
+  the LibraryDrawer header toggles an inline form (name /
+  description / category) that calls `agentAPI.saveAsCompound`
+  with the current room's nodeId + systemKey. New compound appears
+  immediately in the drawer's card list via `subscribeLibrary`.
+  Auto-port-derivation does the boundary; per-port pruning UI is
+  the next step.
+- [ ] **Save-as-library UI (per-port pruning).** Currently every
+  unconnected inner jack becomes an outer port. The save form
+  should let users uncheck boundary ports they don't want exposed,
+  and rename the auto-generated outerIds (currently of the form
+  `<localInstanceId>-<portId>`).
 - [ ] **Persistence for user compounds.** In-memory only today —
   saved compounds vanish on refresh. Requires the broader
   persistence story (DEBT.md → "No persistence — everything dies
