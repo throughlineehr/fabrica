@@ -2205,12 +2205,71 @@ const ANOMALY_DETECTOR = {
   },
 }
 
+// SPLITTER ----------------------------------------------------------------
+// Eurorack-style "mult" — one input fans out to eight outputs unchanged.
+// Useful for getting a single source into multiple downstream branches
+// without re-cabling the source itself. Each output emits the same signal
+// id, so any receiver reached via two paths dedupes naturally.
+
+const SPLITTER = {
+  id: 'splitter',
+  name: 'Splitter',
+  description: 'Forwards a single input to eight outputs unchanged. Use to fan one source into multiple downstream pipelines without altering the signal.',
+  category: 'flow',
+  hasInputs: true,
+  hasOutputs: true,
+  ports: {
+    inputs: [
+      { id: 'in', label: 'in', accepts: { types: null, tags: null } },
+    ],
+    outputs: Array.from({ length: 8 }, (_, i) => ({
+      id: `out${i + 1}`,
+      label: String(i + 1),
+      emits: { types: null, tags: null },
+    })),
+  },
+  placement: 'any',
+  defaultConfig: {},
+  panel: {
+    widthHP: 8,
+    bg: 'mid',
+    accent: 's3',
+    fixtures: [
+      { type: 'jack', id: 'jin', x: 3, y: 0, kind: 'input', port: 'in', color: 's3', label: 'in' },
+      // 8 outputs in a 4×2 grid at the bottom (matches heartbeat layout).
+      { type: 'jack', id: 'jout1', x: 0, y: 9,  kind: 'output', port: 'out1', color: 's3', label: '1' },
+      { type: 'jack', id: 'jout2', x: 2, y: 9,  kind: 'output', port: 'out2', color: 's3', label: '2' },
+      { type: 'jack', id: 'jout3', x: 4, y: 9,  kind: 'output', port: 'out3', color: 's3', label: '3' },
+      { type: 'jack', id: 'jout4', x: 6, y: 9,  kind: 'output', port: 'out4', color: 's3', label: '4' },
+      { type: 'jack', id: 'jout5', x: 0, y: 11, kind: 'output', port: 'out5', color: 's3', label: '5' },
+      { type: 'jack', id: 'jout6', x: 2, y: 11, kind: 'output', port: 'out6', color: 's3', label: '6' },
+      { type: 'jack', id: 'jout7', x: 4, y: 11, kind: 'output', port: 'out7', color: 's3', label: '7' },
+      { type: 'jack', id: 'jout8', x: 6, y: 11, kind: 'output', port: 'out8', color: 's3', label: '8' },
+    ],
+  },
+  create(_config, runtime) {
+    const { dispatcher, instanceId } = runtime
+    return {
+      onInput({ signal }) {
+        // Forward unchanged on every output. The dispatcher takes care of
+        // routing to whichever ports actually have cables; unused ones
+        // are no-ops. Same signal id everywhere → receivers dedupe if
+        // they're reached by two paths.
+        emitOnAllOutputs(SPLITTER, dispatcher, instanceId, signal)
+      },
+      start() {},
+      stop() {},
+    }
+  },
+}
+
 export const PROCESSOR_LIBRARY = [
   HEARTBEAT, TRACER, LOGGER, WEBSOCKET_TRANSDUCER, DIGEST,
   TEST_GENERATOR, TEST_EXPLAINER,
   PERIOD_DETECTOR, STEP_DETECTOR, TREND_DETECTOR, ANOMALY_DETECTOR,
   SENTIMENT, KEYWORD_EXTRACTOR, ENTITY_EXTRACTOR,
   NEAR_DUP_DETECTOR, TOP_K_TRACKER,
+  SPLITTER,
 ]
 
 export function getProcessorDef(defId) {

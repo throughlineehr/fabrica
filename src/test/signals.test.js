@@ -84,9 +84,9 @@ describe('library metadata', () => {
     expect(PROCESSOR_LIBRARY.map(p => p.id).sort()).toEqual([
       'anomaly-detector', 'digest', 'entity-extractor', 'heartbeat',
       'keyword-extractor', 'logger', 'near-duplicate-detector',
-      'period-detector', 'sentiment', 'step-detector', 'test-explainer',
-      'test-generator', 'top-k-tracker', 'tracer', 'trend-detector',
-      'websocket-transducer',
+      'period-detector', 'sentiment', 'splitter', 'step-detector',
+      'test-explainer', 'test-generator', 'top-k-tracker', 'tracer',
+      'trend-detector', 'websocket-transducer',
     ])
   })
 
