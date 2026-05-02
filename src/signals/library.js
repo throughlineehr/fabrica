@@ -2225,10 +2225,12 @@ const ANOMALY_DETECTOR = {
 //
 // Future work tracked in DEBT.md → "Compound processors".
 
-function createCompoundInstance(def, config, runtime) {
+export function createCompoundInstance(def, config, runtime) {
   const { dispatcher: outerDispatcher, instanceId: outerId, bus } = runtime
   const sr = def.subRack
   if (!sr) throw new Error(`createCompoundInstance: ${def.id} has no subRack`)
+  // Outer config: defaults < user override.
+  const outerConfig = { ...(def.defaultConfig || {}), ...(config || {}) }
 
   // Built once at instantiation: a fast lookup from an inner-jack source
   // to its consumers — either another inner jack or the outer's output port.
@@ -2271,20 +2273,35 @@ function createCompoundInstance(def, config, runtime) {
     deliverFromTerminal() {},
   }
 
+  // Index of param bindings by inner-instance id, so each inner can absorb
+  // its share of the outer config in one pass:
+  //   paramBindings: { outerKey: { instanceId, configKey } }
+  const paramByInstance = {}
+  for (const [outerKey, b] of Object.entries(sr.paramBindings || {})) {
+    if (outerConfig[outerKey] === undefined) continue
+    if (!paramByInstance[b.instanceId]) paramByInstance[b.instanceId] = {}
+    paramByInstance[b.instanceId][b.configKey] = outerConfig[outerKey]
+  }
+
   // Spawn inner instances. getProcessorDef is hoisted; at the time this
   // function actually runs (compound.create() call) PROCESSOR_LIBRARY is
-  // fully initialised.
+  // fully initialised. Nested compounds work too: when an inner is itself a
+  // compound, its create() recursively calls createCompoundInstance and
+  // builds another proxy dispatcher around our innerDispatcher.
   for (const inst of sr.instances || []) {
     const innerDef = getProcessorDef(inst.defId)
     if (!innerDef) {
       console.error(`Compound ${def.id}: inner ${inst.id} has unknown defId ${inst.defId}`)
       continue
     }
-    if (innerDef.subRack) {
-      console.warn(`Compound ${def.id}: nested compound ${inst.defId} not supported in v1`)
-    }
     const innerInstanceId = `${outerId}/${inst.id}`
-    const innerConfig = { ...(innerDef.defaultConfig || {}), ...(inst.config || {}) }
+    // Config layering for this inner: primitive defaults < subRack-declared
+    // <  paramBindings from outer config.
+    const innerConfig = {
+      ...(innerDef.defaultConfig || {}),
+      ...(inst.config || {}),
+      ...(paramByInstance[inst.id] || {}),
+    }
     const handle = innerDef.create(innerConfig, {
       ...runtime,
       dispatcher: innerDispatcher,
@@ -2343,25 +2360,39 @@ const SENTIMENT_TRACKER = {
     ],
   },
   placement: 'any',
-  defaultConfig: {},
+  // Outer-tunable knobs: paramBindings below route them to inner inst configs.
+  defaultConfig: {
+    windowMs: 60000,
+    topK: 3,
+    reportIntervalMs: 5000,
+    threshold: 0.05,
+  },
   panel: {
-    widthHP: 8,
+    widthHP: 10,
     bg: 'mid',
     accent: 's2',
     fixtures: [
       { type: 'jack', id: 'jin', x: 0, y: 0, kind: 'input', port: 'in', color: 's2', label: 'in' },
-      { type: 'label', id: 'lbl', x: 1, y: 5, w: 6, text: 'SENTIMENT → TOP-K', size: 'sm', color: 's2' },
-      { type: 'jack', id: 'jout', x: 3, y: 11, kind: 'output', port: 'top', color: 's2', label: 'top' },
+      { type: 'knob', id: 'windowMs', x: 0, y: 2, size: 'md',
+        bind: 'config.windowMs', range: [1000, 600000], step: 1000, unit: 'ms', label: 'window' },
+      { type: 'knob', id: 'topK', x: 2, y: 2, size: 'md',
+        bind: 'config.topK', range: [1, 10], step: 1, label: 'top-k' },
+      { type: 'knob', id: 'reportIntervalMs', x: 4, y: 2, size: 'md',
+        bind: 'config.reportIntervalMs', range: [500, 60000], step: 500, unit: 'ms', label: 'rate' },
+      { type: 'knob', id: 'threshold', x: 6, y: 2, size: 'md',
+        bind: 'config.threshold', range: [0, 0.5], step: 0.01, label: 'thr' },
+      { type: 'label', id: 'lbl', x: 1, y: 5, w: 8, text: 'SENTIMENT → TOP-K', size: 'sm', color: 's2' },
+      { type: 'jack', id: 'jout', x: 4, y: 11, kind: 'output', port: 'top', color: 's2', label: 'top' },
     ],
   },
   subRack: {
     instances: [
       { id: 'snt', defId: 'sentiment' },
       { id: 'tk',  defId: 'top-k-tracker', config: {
+        // The inner key is fixed at the def level — it's *what* this
+        // compound aggregates, not a tuning concern. Outer knobs only
+        // control how (window / topK / cadence / sensitivity).
         key: 'content.polarityTag',
-        topK: 3,
-        windowMs: 60000,
-        reportIntervalMs: 5000,
       } },
     ],
     cables: [
@@ -2370,6 +2401,13 @@ const SENTIMENT_TRACKER = {
     ],
     inputBindings:  { in:  { instanceId: 'snt', portId: 'in'  } },
     outputBindings: { top: { instanceId: 'tk',  portId: 'top' } },
+    // Outer-config keys → inner instance config slots.
+    paramBindings: {
+      windowMs:         { instanceId: 'tk',  configKey: 'windowMs' },
+      topK:             { instanceId: 'tk',  configKey: 'topK' },
+      reportIntervalMs: { instanceId: 'tk',  configKey: 'reportIntervalMs' },
+      threshold:        { instanceId: 'snt', configKey: 'threshold' },
+    },
   },
   create(config, runtime) {
     return createCompoundInstance(SENTIMENT_TRACKER, config, runtime)

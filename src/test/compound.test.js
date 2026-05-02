@@ -7,11 +7,14 @@
 //      dispatcher (so external cables off the compound's outer port get
 //      the signal)
 //   5. The proof composition (sentiment-tracker) works end-to-end
+//   6. paramBindings: outer config flows into inner instance configs
+//   7. Nested compounds: a compound containing another compound routes
+//      cleanly via two stacked proxy dispatchers
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createBus } from '../signals/bus'
 import { createSignal } from '../signals/signal'
-import { getProcessorDef } from '../signals/library'
+import { getProcessorDef, createCompoundInstance } from '../signals/library'
 import { createDispatcher } from '../signals/dispatcher'
 
 const ROOM = 'r:s3'
@@ -105,11 +108,114 @@ describe('compound runtime — sentiment-tracker (proof composition)', () => {
 })
 
 describe('compound runtime — generic invariants', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
   it('a port not declared in inputBindings is silently dropped', () => {
     const { inst, out } = spawn('sentiment-tracker')
     // 'nope' isn't a declared port — onInput resolves to no binding.
     inst.onInput({ signal: createSignal('narrative', { text: 'great work' }, {}), portId: 'nope' })
     expect(out).toHaveLength(0)
+    inst.stop()
+  })
+
+  it('paramBindings flow outer config into inner instance configs', () => {
+    // sentiment-tracker exposes windowMs and topK; both bind to inner
+    // top-k-tracker. Override windowMs and prove the inner top-k uses
+    // the new value.
+    const bus = createBus()
+    const dispatcher = createDispatcher({ onTerminal: () => {} })
+    const out = []
+    dispatcher.registerProcessor('spy',     { roomKey: ROOM, inputHandler: ({ signal }) => out.push(signal) })
+    dispatcher.registerProcessor('emitter', { roomKey: ROOM, inputHandler: () => {} })
+    const def = getProcessorDef('sentiment-tracker')
+    // Tighter window + faster reporting so the test runs quickly
+    const inst = def.create(
+      { windowMs: 2000, topK: 1, reportIntervalMs: 500 },
+      { bus, dispatcher, instanceId: 'cmp', roomNodeId: 'r', roomSystemKey: 's3', filters: {} },
+    )
+    dispatcher.registerProcessor('cmp', { roomKey: ROOM, inputHandler: inst.onInput })
+    dispatcher.setCables({
+      [ROOM]: [
+        { id: 'ci', source: { kind: 'jack', instanceId: 'emitter', portId: 'in' },
+                    target: { kind: 'jack', instanceId: 'cmp',     portId: 'in' } },
+        { id: 'co', source: { kind: 'jack', instanceId: 'cmp', portId: 'top' },
+                    target: { kind: 'jack', instanceId: 'spy', portId: 'in' } },
+      ],
+    })
+    dispatcher.emit(createSignal('narrative', { text: 'great deploy' }, {}),
+      { fromInstanceId: 'emitter', fromPortId: 'in' })
+    dispatcher.emit(createSignal('narrative', { text: 'fantastic release' }, {}),
+      { fromInstanceId: 'emitter', fromPortId: 'in' })
+    dispatcher.emit(createSignal('narrative', { text: 'critical outage' }, {}),
+      { fromInstanceId: 'emitter', fromPortId: 'in' })
+    vi.advanceTimersByTime(600)
+    expect(out.length).toBeGreaterThan(0)
+    // topK=1 means the report has at most one entry
+    expect(out[0].content.topK).toHaveLength(1)
+    // windowMs=2000 means after 3000ms of no input, all samples expire
+    vi.advanceTimersByTime(3000)
+    const before = out.length
+    vi.advanceTimersByTime(1000)
+    // No new input arrived; old samples expired → no new reports
+    expect(out.length).toBe(before)
+    inst.stop()
+  })
+
+  it('nested compounds: outer compound contains a sentiment-tracker (also a compound)', () => {
+    // Build a synthetic outer compound on the fly that wraps a
+    // sentiment-tracker with a 1:1 pass-through. Tests that
+    // createCompoundInstance correctly chains proxy dispatchers.
+    const SYNTH = {
+      id: 'synth-wrapper',
+      ports: {
+        inputs:  [{ id: 'in',  label: 'in'  }],
+        outputs: [{ id: 'top', label: 'top' }],
+      },
+      defaultConfig: { windowMs: 2000, reportIntervalMs: 500 },
+      subRack: {
+        instances: [{ id: 'st', defId: 'sentiment-tracker' }],
+        cables: [],
+        inputBindings:  { in:  { instanceId: 'st', portId: 'in'  } },
+        outputBindings: { top: { instanceId: 'st', portId: 'top' } },
+        paramBindings: {
+          windowMs:         { instanceId: 'st', configKey: 'windowMs' },
+          reportIntervalMs: { instanceId: 'st', configKey: 'reportIntervalMs' },
+        },
+      },
+      create(config, runtime) { return createCompoundInstance(SYNTH, config, runtime) },
+    }
+
+    const bus = createBus()
+    const dispatcher = createDispatcher({ onTerminal: () => {} })
+    const out = []
+    dispatcher.registerProcessor('spy',     { roomKey: ROOM, inputHandler: ({ signal }) => out.push(signal) })
+    dispatcher.registerProcessor('emitter', { roomKey: ROOM, inputHandler: () => {} })
+    const inst = SYNTH.create(
+      { windowMs: 2000, reportIntervalMs: 500 },
+      { bus, dispatcher, instanceId: 'wrapper', roomNodeId: 'r', roomSystemKey: 's3', filters: {} },
+    )
+    dispatcher.registerProcessor('wrapper', { roomKey: ROOM, inputHandler: inst.onInput })
+    dispatcher.setCables({
+      [ROOM]: [
+        { id: 'ci', source: { kind: 'jack', instanceId: 'emitter', portId: 'in' },
+                    target: { kind: 'jack', instanceId: 'wrapper', portId: 'in' } },
+        { id: 'co', source: { kind: 'jack', instanceId: 'wrapper', portId: 'top' },
+                    target: { kind: 'jack', instanceId: 'spy',     portId: 'in' } },
+      ],
+    })
+    dispatcher.emit(createSignal('narrative', { text: 'great deploy' }, {}),
+      { fromInstanceId: 'emitter', fromPortId: 'in' })
+    dispatcher.emit(createSignal('narrative', { text: 'fantastic release' }, {}),
+      { fromInstanceId: 'emitter', fromPortId: 'in' })
+    vi.advanceTimersByTime(600)
+    // The signal walked: emitter → wrapper (L0 dispatcher) → wrapper.in
+    // → sentiment-tracker.in (proxy 1) → snt → tk (proxy 2) → tk.top →
+    // sentiment-tracker.top (re-emit on proxy 1 with outer port) →
+    // wrapper.top (re-emit on real dispatcher) → spy.
+    expect(out.length).toBeGreaterThan(0)
+    expect(out[0].content.kind).toBe('top-k')
+    expect(out[0].tags).toContain('top-k')
     inst.stop()
   })
 

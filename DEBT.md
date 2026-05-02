@@ -158,17 +158,24 @@ declared external ports.
    (`subRack: { processors, cables, exposedInputs, exposedOutputs,
    exposedParams }`). New territory.
 
-**Open design questions:**
+**Status (2026-05-02):** runtime support shipped; some questions
+resolved, others remain.
 
-- [ ] **Compound processor data shape.** Extend the def schema with a
-  `subRack` alternative to `create`. Inner cables reference inner
-  instance ids. External ports declare which inner jacks they bind.
-- [ ] **Runtime topology.** Each outer instance gets its own private
-  bag of inner instances; dispatcher can stay flat if instance ids
-  namespace through scoping (e.g., prefix with outer id).
-- [ ] **Parameter exposure.** Inner knobs surface as outer config
-  fields. Need a binding declaration on the def
-  (`exposedParams: [{ outer: 'rate', inner: 'inst-X.config.intervalMs' }]`).
+- [x] **Compound processor data shape.** `subRack: { instances, cables,
+  inputBindings, outputBindings, paramBindings }` lives on the def.
+  Inner cables reference local inner ids; outer port bindings name a
+  specific inner jack.
+- [x] **Runtime topology.** Each compound's `create()` spawns inner
+  instances with namespaced ids (`${outerId}/${innerLocalId}`) and a
+  proxy dispatcher that routes inner→inner via an edge index and re-
+  emits bound inner outputs through the outer dispatcher with the
+  outer port id. Nested compounds stack proxies cleanly (proven by
+  `compound.test.js`).
+- [x] **Parameter exposure.** `paramBindings: { outerKey:
+  { instanceId, configKey } }` on the subRack flows the outer config
+  (set via panel knobs / `updateProcessorConfig`) into inner instance
+  configs at instantiation. Sentiment Tracker exposes windowMs / topK
+  / reportIntervalMs / threshold via this mechanism.
 - [ ] **Drill-in UX.** Existing `openProcessor` → `ProcessorPage` is
   the natural place: that page becomes the rack-inside view when the
   processor is composed. Breadcrumb back is mandatory.
