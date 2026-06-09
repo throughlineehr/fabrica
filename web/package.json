@@ -10,10 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "repl": "vite-node scripts/repl.js",
-    "relay": "node server/relay.js",
-    "connector:slack": "node --env-file-if-exists=connectors/slack/.env connectors/slack/index.js",
-    "connector:slack:stdin": "node connectors/slack/stdin.js"
+    "repl": "vite-node scripts/repl.js"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

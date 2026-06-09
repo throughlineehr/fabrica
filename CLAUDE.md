@@ -3,10 +3,39 @@
 ## What this is
 An isometric 3D visualization of a viable system model (VSM). Built with React + Vite + @react-three/fiber + @react-three/drei + lucide-react. Represents an organization as management units and operations with five subsystems (S1–S5).
 
-## Architecture
+## Repo Structure
 
 ```
-src/
+fabrica/
+  cmd/
+    cli/            -- fabrica CLI, downloaded by users (client-side)
+    mcp/            -- MCP server for Claude Code (client-side)
+  server/           -- THE Fabrica server (Go) - P1 migration in progress
+  web/              -- React frontend
+  homebrew/         -- brew formula for client binaries
+```
+
+**Client-side binaries** (cmd/cli, cmd/mcp):
+- Downloaded by users onto their machines
+- Connect TO the Fabrica server
+- Used by Claude Code to interact with a company's Fabrica instance
+
+**Server** (server/):
+- Hosted by the organization
+- Holds VSM state, users, processors, signals
+- Multiple clients connect to it
+
+**Web** (web/):
+- React frontend
+- Connects to server via websocket
+- Viewing and commanding only, no signal processing
+
+See `MIGRATION-P0-P1.md` for the server migration plan.
+
+## Web Architecture
+
+```
+web/src/
   styles.js              <- SINGLE SOURCE OF TRUTH: fonts, colors, type tokens, ui component styles
   constants.js           <- ALL numbers: grid, systems, camera, opacity, timing, geometry, z-index, a11y scaling
   accessibility.jsx      <- React context: epilepsy, fontVisibility, dyslexia modes
@@ -206,9 +235,25 @@ All magic numbers live here in named groups:
 - Camera presets: focusTarget(node), paneTarget(node), systemTarget(node, systemKey)
 
 ## Running
+
+**Web (frontend only, P0 mode):**
 ```
+cd web
 npm run dev          # localhost:5173
 ?styleguide          # style guide page
+```
+
+**Server (P1, when built):**
+```
+cd server
+go run .             # localhost:8080
+```
+
+**Client CLI:**
+```
+cd cmd/cli
+go build -o fabrica .
+./fabrica start https://fabrica.example.com
 ```
 
 ## Working with Caleb (letterrip mode)

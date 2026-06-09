@@ -7,6 +7,7 @@ import {
   focusTarget, paneTarget, systemTarget,
 } from './constants'
 import { createModel, canAddManagement, canAddOperation, canSplice, findNode, buildRenderTree, getTreeBounds, nodeHasS2 } from './tree/index'
+import { connect, commands as serverCommands } from './connection'
 import { CameraController } from './components/CameraController'
 import { MetaTree } from './components/MetaTree'
 import { ContextMenu } from './components/UI'
@@ -32,7 +33,36 @@ function App() {
   const { epilepsy, toggleEpilepsy, toggleDyslexia, toggleColorBlind, setFontVisibility } = useAccessibility()
   const { t: tr, setLang } = useTranslation()
   const { apiKey, provider, model: aiModel, endpoint: aiEndpoint, setApiKey, setProvider: setAIProvider, setModel: setAIModel, setEndpoint: setAIEndpoint } = useAIConfig()
-  const [model, setModel] = useState(() => createModel('management'))
+
+  // Server connection state
+  const [connected, setConnected] = useState(false)
+  const [serverState, setServerState] = useState(null)
+  const connectionRef = useRef(null)
+
+  // Connect to server on mount
+  useEffect(() => {
+    connectionRef.current = connect({
+      onState: (state) => {
+        setServerState(state)
+      },
+      onSignal: (signal) => {
+        // Step 4: handle signals
+        console.log('[signal]', signal)
+      },
+      onConnect: () => setConnected(true),
+      onDisconnect: () => setConnected(false),
+    })
+
+    return () => {
+      connectionRef.current?.close()
+    }
+  }, [])
+
+  // Use server state when connected, fallback to local state when offline
+  const [localModel, setLocalModel] = useState(() => createModel('management'))
+  const model = serverState?.model || localModel
+  const setModel = setLocalModel // Fallback setter for offline mode
+
   const [menu, setMenu] = useState(null)
   const [focusedId, setFocusedId] = useState(null)
   const [paneId, setPaneId] = useState(null)
@@ -58,7 +88,10 @@ function App() {
 
   // Processor instances keyed by "${nodeId}:${systemKey}".
   // Shape: { id, defId, config }
-  const [processors, setProcessors] = useState({})
+  // Use server state when connected, local state for offline
+  const [localProcessors, setLocalProcessors] = useState({})
+  const processors = serverState?.processors || localProcessors
+  const setProcessors = setLocalProcessors
 
   // LLM hook for processors. Ref pattern so config changes don't restart
   // running processors — they read the latest config at call time.
@@ -91,7 +124,10 @@ function App() {
   // Cables — keyed by `${nodeId}:${systemKey}`. Lifted to App so the
   // Switchboard and Rack tabs stay perma-synced (one model, two views).
   // Each cable: { id, source: <descriptor>, target: <descriptor>, color }.
-  const [cables, setCables] = useState({})
+  // Use server state when connected, local state for offline
+  const [localCables, setLocalCables] = useState({})
+  const cables = serverState?.cables || localCables
+  const setCables = setLocalCables
 
   // Single dispatcher for the whole app. onTerminal walks the topology
   // index to bridge across rooms via peer terminals. The ref reads happen
@@ -467,12 +503,15 @@ function App() {
   const processorsRef = useRef(processors)
   const navStateRef = useRef({ focusedId, paneId, systemView, processorView })
   const cablesRef = useRef(cables)
+  const connectedRef = useRef(connected)
   useEffect(() => { modelRef.current = model }, [model])
   useEffect(() => { processorsRef.current = processors }, [processors])
   useEffect(() => { cablesRef.current = cables }, [cables])
   useEffect(() => { navStateRef.current = { focusedId, paneId, systemView, processorView } }, [focusedId, paneId, systemView, processorView])
+  useEffect(() => { connectedRef.current = connected }, [connected])
 
-  const agentAPI = useMemo(() => createAgentAPI({
+  // Base agent API for local operations
+  const baseAgentAPI = useMemo(() => createAgentAPI({
     getModel: () => modelRef.current,
     setModel,
     getProcessors: () => processorsRef.current,
@@ -509,13 +548,125 @@ function App() {
     setLang, setApiKey, setAIProvider, setAIModel, setAIEndpoint,
   ])
 
+  // Server-aware agent API wrapper
+  // When connected, sends mutations to server; otherwise falls back to local
+  const agentAPI = useMemo(() => {
+    const roomKey = (nodeId, systemKey) => `${nodeId}:${systemKey}`
+
+    return {
+      ...baseAgentAPI,
+
+      // Tree mutations - route to server when connected
+      addManagement: async (parentId) => {
+        if (connectedRef.current) {
+          const result = await serverCommands.addNode(parentId, 'management')
+          if (result.ok) setAnnouncement('Management unit added')
+          return result
+        }
+        return baseAgentAPI.addManagement(parentId)
+      },
+
+      addOperation: async (parentId) => {
+        if (connectedRef.current) {
+          const result = await serverCommands.addNode(parentId, 'operation')
+          if (result.ok) setAnnouncement('Operation added')
+          return result
+        }
+        return baseAgentAPI.addOperation(parentId)
+      },
+
+      removeNode: async (nodeId) => {
+        if (connectedRef.current) {
+          const result = await serverCommands.removeNode(nodeId)
+          if (result.ok) setAnnouncement('Node removed')
+          return result
+        }
+        return baseAgentAPI.removeNode(nodeId)
+      },
+
+      renameNode: async (nodeId, name) => {
+        if (connectedRef.current) {
+          const result = await serverCommands.renameNode(nodeId, name)
+          if (result.ok) setAnnouncement(name ? `Renamed to ${name}` : 'Name cleared')
+          return result
+        }
+        return baseAgentAPI.renameNode(nodeId, name)
+      },
+
+      moveNode: async (nodeId, newParentId) => {
+        if (connectedRef.current) {
+          const result = await serverCommands.moveNode(nodeId, newParentId)
+          if (result.ok) setAnnouncement('Node moved')
+          return result
+        }
+        return baseAgentAPI.moveNode(nodeId, newParentId)
+      },
+
+      // Processor mutations - route to server when connected
+      addProcessor: async (nodeId, systemKey, defId, config) => {
+        if (connectedRef.current) {
+          const result = await serverCommands.addProcessor(roomKey(nodeId, systemKey), defId, config)
+          if (result.ok) setAnnouncement('Processor added')
+          return result
+        }
+        return baseAgentAPI.addProcessor(nodeId, systemKey, defId, config)
+      },
+
+      removeProcessor: async (nodeId, systemKey, instanceId) => {
+        if (connectedRef.current) {
+          const result = await serverCommands.removeProcessor(roomKey(nodeId, systemKey), instanceId)
+          if (result.ok) setAnnouncement('Processor removed')
+          return result
+        }
+        return baseAgentAPI.removeProcessor(nodeId, systemKey, instanceId)
+      },
+
+      // Cable mutations - route to server when connected
+      addCable: async (nodeId, systemKey, source, target, color) => {
+        if (connectedRef.current) {
+          const result = await serverCommands.addCable(roomKey(nodeId, systemKey), source, target)
+          if (result.ok) setAnnouncement('Cable created')
+          return result
+        }
+        return baseAgentAPI.addCable(nodeId, systemKey, source, target, color)
+      },
+
+      removeCable: async (nodeId, systemKey, cableId) => {
+        if (connectedRef.current) {
+          const result = await serverCommands.removeCable(roomKey(nodeId, systemKey), cableId)
+          if (result.ok) setAnnouncement('Cable removed')
+          return result
+        }
+        return baseAgentAPI.removeCable(nodeId, systemKey, cableId)
+      },
+    }
+  }, [baseAgentAPI])
+
   // Clear keyboard selection when mouse takes over
   const handleMouseMove = useCallback(() => {
     if (keySelectedId) setKeySelectedId(null)
   }, [keySelectedId])
 
+  // Show loading state while waiting for server
+  if (!serverState && connected) {
+    return (
+      <div style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: color.background }}>
+        <p style={{ fontFamily: 'monospace', color: color.textSecondary }}>Loading...</p>
+      </div>
+    )
+  }
+
   return (
     <div style={{ width: '100vw', height: '100vh' }} onContextMenu={(e) => e.preventDefault()} onMouseMove={handleMouseMove}>
+      {/* Connection status indicator */}
+      <div style={{
+        position: 'fixed', top: 8, right: 8, zIndex: 9999,
+        padding: '4px 8px', borderRadius: 4,
+        background: connected ? 'rgba(34, 197, 94, 0.9)' : 'rgba(239, 68, 68, 0.9)',
+        color: 'white', fontSize: 11, fontFamily: 'monospace',
+      }}>
+        {connected ? 'Connected' : 'Offline'}
+      </div>
       <a href="#main-content" className="sr-only" style={{ position: 'absolute', zIndex: 9999 }} onFocus={(e) => { e.target.style.position = 'fixed'; e.target.style.top = '8px'; e.target.style.left = '8px'; e.target.style.width = 'auto'; e.target.style.height = 'auto'; e.target.style.clip = 'auto'; e.target.style.padding = '8px 16px'; e.target.style.background = color.white; e.target.style.border = `2px solid ${color.focus}`; e.target.style.borderRadius = '4px'; }} onBlur={(e) => { e.target.style.position = 'absolute'; e.target.style.width = '1px'; e.target.style.height = '1px'; e.target.style.clip = 'rect(0,0,0,0)'; }}>Skip to main content</a>
       <div
         role="application"

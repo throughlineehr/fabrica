@@ -35,3 +35,7 @@ coverage
 .vitest-cache
 .cache
 *.tsbuildinfo
+server/fabrica-server
+server/server
+cmd/cli/fabrica
+cmd/mcp/fabrica-mcp
