@@ -388,17 +388,17 @@ export function Display({ id, label, value, format }) {
     return String(value)
   })()
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'center', gap: 2, width: '100%', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'center', gap: 1, width: '100%', height: '100%', padding: '2px 3px' }}>
       <output aria-label={label || id} style={{
         flex: 1,
         display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-        background: color.primary, color: color.s1.fill,
-        ...t.mono, fontSize: 11,
-        padding: '0 6px',
+        ...t.mono, fontSize: 18, lineHeight: 1, fontWeight: 500,
+        background: color.display.bg, color: color.display.text,
+        padding: '0 8px',
         overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
         fontVariantNumeric: 'tabular-nums',
       }}>{formatted}</output>
-      {label && <span style={{ ...t.mono, fontSize: 9, color: color.muted, textTransform: 'uppercase', whiteSpace: 'nowrap', textAlign: 'center' }}>{label}</span>}
+      {label && <span style={{ ...t.mono, fontSize: 8, color: color.muted, textTransform: 'uppercase', whiteSpace: 'nowrap', textAlign: 'center', lineHeight: 1 }}>{label}</span>}
     </div>
   )
 }

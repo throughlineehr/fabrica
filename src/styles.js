@@ -50,6 +50,13 @@ export const color = {
 
   metaUnit: '#000',        // 21.0:1 ✓ AAA
   focus: '#2563eb',        //  5.2:1 ✓ AA, ≥3:1 on all backgrounds
+
+  // Instrument-display chrome (rack panel readouts). Amber-on-near-black is
+  // the classic LCD/VFD look; ratio is measured TEXT-ON-BG, not on white.
+  display: {
+    bg: '#1a1a1a',         // matches color.primary
+    text: '#ffb000',       // amber — 9.7:1 on display.bg ✓ AAA
+  },
 }
 
 // --- Typography ---
