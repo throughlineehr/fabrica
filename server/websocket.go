@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -165,11 +166,55 @@ type Message struct {
 
 // ServeWs handles websocket upgrade requests
 func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	// For now, accept any connection (auth comes later)
-	token := r.URL.Query().Get("token")
 	userID := "anonymous"
-	if token != "" {
-		userID, _ = ValidateToken(token)
+	var clientCtx *ClientContext
+
+	// Try to authenticate from session cookie
+	user, err := GetUserFromSession(hub, r)
+	if err == nil && user != nil {
+		userID = user.Email
+
+		// Get user's rooms
+		var rooms []string
+		if hub.db != nil {
+			rooms, _ = hub.db.GetUserRooms(user.ID)
+		}
+
+		// Build client context
+		clientCtx = &ClientContext{
+			UserID:      user.ID,
+			Role:        user.Role,
+			ScopeNodeID: user.ScopeNodeID,
+			Rooms:       rooms,
+		}
+	} else if hub.db != nil {
+		// Try Authorization header (Bearer token) for CLI clients
+		authHeader := r.Header.Get("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			token := strings.TrimPrefix(authHeader, "Bearer ")
+			session, err := hub.db.GetSession(token)
+			if err == nil && session != nil {
+				user, err := hub.db.GetUserByID(session.UserID)
+				if err == nil && user != nil {
+					userID = user.Email
+					rooms, _ := hub.db.GetUserRooms(user.ID)
+					clientCtx = &ClientContext{
+						UserID:      user.ID,
+						Role:        user.Role,
+						ScopeNodeID: user.ScopeNodeID,
+						Rooms:       rooms,
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback to query param token for backwards compat
+	if clientCtx == nil {
+		token := r.URL.Query().Get("token")
+		if token != "" {
+			userID, _ = ValidateToken(token)
+		}
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -183,6 +228,7 @@ func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		conn:   conn,
 		send:   make(chan []byte, 256),
 		userID: userID,
+		ctx:    clientCtx,
 	}
 
 	hub.register <- client

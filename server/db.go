@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Default org ID for single-tenant mode
@@ -255,6 +256,77 @@ func (db *DB) CreateUser(orgID, email, role string, scopeNodeID *string) (*User,
 
 	if err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
+	}
+
+	return &user, nil
+}
+
+// CreateUserWithPassword creates a new user with a hashed password
+func (db *DB) CreateUserWithPassword(orgID, email, password, role string, scopeNodeID *string) (*User, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, fmt.Errorf("hash password: %w", err)
+	}
+
+	var user User
+	err = db.pool.QueryRow(context.Background(),
+		`INSERT INTO users (org_id, email, password_hash, role, scope_node_id, preferences)
+		 VALUES ($1, $2, $3, $4, $5, '{}')
+		 RETURNING id, org_id, email, role, scope_node_id, preferences, created_at`,
+		orgID, email, string(hash), role, scopeNodeID,
+	).Scan(&user.ID, &user.OrgID, &user.Email, &user.Role, &user.ScopeNodeID, &user.Preferences, &user.CreatedAt)
+
+	if err != nil {
+		return nil, fmt.Errorf("create user: %w", err)
+	}
+
+	return &user, nil
+}
+
+// SetUserPassword sets/updates a user's password
+func (db *DB) SetUserPassword(userID, password string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+
+	_, err = db.pool.Exec(context.Background(),
+		`UPDATE users SET password_hash = $1 WHERE id = $2`,
+		string(hash), userID,
+	)
+	if err != nil {
+		return fmt.Errorf("set password: %w", err)
+	}
+
+	return nil
+}
+
+// CheckUserPassword verifies a user's password
+func (db *DB) CheckUserPassword(email, password string) (*User, error) {
+	var user User
+	var passwordHash *string
+	var prefsJSON []byte
+
+	err := db.pool.QueryRow(context.Background(),
+		`SELECT id, org_id, email, password_hash, role, scope_node_id, preferences, created_at
+		 FROM users WHERE email = $1`,
+		email,
+	).Scan(&user.ID, &user.OrgID, &user.Email, &passwordHash, &user.Role, &user.ScopeNodeID, &prefsJSON, &user.CreatedAt)
+
+	if err != nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	if passwordHash == nil || *passwordHash == "" {
+		return nil, fmt.Errorf("no password set for this account")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(*passwordHash), []byte(password)); err != nil {
+		return nil, fmt.Errorf("invalid password")
+	}
+
+	if prefsJSON != nil {
+		json.Unmarshal(prefsJSON, &user.Preferences)
 	}
 
 	return &user, nil
@@ -813,6 +885,133 @@ func (db *DB) DeleteInvite(token string) error {
 	)
 	if err != nil {
 		return fmt.Errorf("delete invite: %w", err)
+	}
+	return nil
+}
+
+// ============================================================================
+// Google OAuth Support
+// ============================================================================
+
+// GetUserByGoogleID retrieves a user by their Google ID
+func (db *DB) GetUserByGoogleID(googleID string) (*User, error) {
+	var user User
+	var prefsJSON []byte
+	err := db.pool.QueryRow(context.Background(),
+		`SELECT id, org_id, email, role, scope_node_id, preferences, created_at
+		 FROM users WHERE google_id = $1`,
+		googleID,
+	).Scan(&user.ID, &user.OrgID, &user.Email, &user.Role, &user.ScopeNodeID, &prefsJSON, &user.CreatedAt)
+
+	if err != nil {
+		return nil, fmt.Errorf("get user by google id: %w", err)
+	}
+
+	if err := json.Unmarshal(prefsJSON, &user.Preferences); err != nil {
+		user.Preferences = make(map[string]any)
+	}
+
+	return &user, nil
+}
+
+// SetUserGoogleID links a Google ID to an existing user
+func (db *DB) SetUserGoogleID(userID, googleID string) error {
+	_, err := db.pool.Exec(context.Background(),
+		`UPDATE users SET google_id = $1 WHERE id = $2`,
+		googleID, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("set google id: %w", err)
+	}
+	return nil
+}
+
+// ============================================================================
+// Session Management
+// ============================================================================
+
+// Session represents an authenticated session
+type Session struct {
+	Token     string    `json:"token"`
+	UserID    string    `json:"userId"`
+	CreatedAt time.Time `json:"createdAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// CreateSession creates a new session for a user
+func (db *DB) CreateSession(userID string) (*Session, error) {
+	// Generate secure random token
+	tokenBytes := make([]byte, 32)
+	rand.Read(tokenBytes)
+	token := base64.RawURLEncoding.EncodeToString(tokenBytes)
+
+	expiresAt := time.Now().Add(7 * 24 * time.Hour) // 7 days
+
+	var session Session
+	err := db.pool.QueryRow(context.Background(),
+		`INSERT INTO sessions (token, user_id, expires_at)
+		 VALUES ($1, $2, $3)
+		 RETURNING token, user_id, created_at, expires_at`,
+		token, userID, expiresAt,
+	).Scan(&session.Token, &session.UserID, &session.CreatedAt, &session.ExpiresAt)
+
+	if err != nil {
+		return nil, fmt.Errorf("create session: %w", err)
+	}
+
+	return &session, nil
+}
+
+// GetSession retrieves a session by token (only if not expired)
+func (db *DB) GetSession(token string) (*Session, error) {
+	var session Session
+	err := db.pool.QueryRow(context.Background(),
+		`SELECT token, user_id, created_at, expires_at
+		 FROM sessions WHERE token = $1 AND expires_at > NOW()`,
+		token,
+	).Scan(&session.Token, &session.UserID, &session.CreatedAt, &session.ExpiresAt)
+
+	if err != nil {
+		return nil, fmt.Errorf("get session: %w", err)
+	}
+
+	return &session, nil
+}
+
+// DeleteSession removes a session
+func (db *DB) DeleteSession(token string) error {
+	_, err := db.pool.Exec(context.Background(),
+		`DELETE FROM sessions WHERE token = $1`,
+		token,
+	)
+	if err != nil {
+		return fmt.Errorf("delete session: %w", err)
+	}
+	return nil
+}
+
+// DeleteUserSessions removes all sessions for a user
+func (db *DB) DeleteUserSessions(userID string) error {
+	_, err := db.pool.Exec(context.Background(),
+		`DELETE FROM sessions WHERE user_id = $1`,
+		userID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete user sessions: %w", err)
+	}
+	return nil
+}
+
+// CleanupExpiredSessions removes all expired sessions
+func (db *DB) CleanupExpiredSessions() error {
+	result, err := db.pool.Exec(context.Background(),
+		`DELETE FROM sessions WHERE expires_at < NOW()`,
+	)
+	if err != nil {
+		return fmt.Errorf("cleanup sessions: %w", err)
+	}
+	if rows := result.RowsAffected(); rows > 0 {
+		log.Printf("Cleaned up %d expired sessions", rows)
 	}
 	return nil
 }

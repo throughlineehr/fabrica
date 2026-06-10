@@ -77,6 +77,10 @@ func main() {
 	hub.db = db       // May be nil if no database
 	go hub.Run()
 
+	// Initialize OAuth (uses environment variables)
+	// Base URL is determined dynamically from requests
+	InitOAuth("http://localhost:" + fmt.Sprintf("%d", *port))
+
 	// Create and start processor runtime
 	runtime := NewRuntime(state, hub)
 	hub.runtime = runtime
@@ -96,7 +100,27 @@ func main() {
 	// Status endpoint
 	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"clients":%d,"database":%t}`, hub.ClientCount(), db != nil)
+		fmt.Fprintf(w, `{"clients":%d,"database":%t,"oauth":%t}`, hub.ClientCount(), db != nil, IsOAuthEnabled())
+	})
+
+	// OAuth endpoints
+	http.HandleFunc("/oauth/google", HandleGoogleAuth)
+	http.HandleFunc("/oauth/google/callback", func(w http.ResponseWriter, r *http.Request) {
+		HandleGoogleCallback(hub, w, r)
+	})
+
+	// Auth endpoints
+	http.HandleFunc("/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		HandleLogin(hub, w, r)
+	})
+	http.HandleFunc("/auth/register", func(w http.ResponseWriter, r *http.Request) {
+		HandleRegister(hub, w, r)
+	})
+	http.HandleFunc("/auth/logout", func(w http.ResponseWriter, r *http.Request) {
+		HandleLogout(hub, w, r)
+	})
+	http.HandleFunc("/auth/me", func(w http.ResponseWriter, r *http.Request) {
+		HandleMe(hub, w, r)
 	})
 
 	// Invite info endpoint (GET /api/invite/{token})
@@ -190,8 +214,8 @@ func main() {
 			return
 		}
 
-		// Create user
-		user, err := db.CreateUser(invite.OrgID, req.Email, "user", nil)
+		// Create user with password
+		user, err := db.CreateUserWithPassword(invite.OrgID, req.Email, req.Password, "user", nil)
 		if err != nil {
 			log.Printf("Failed to create user: %v", err)
 			http.Error(w, `{"error":"failed to create account"}`, http.StatusInternalServerError)
@@ -210,11 +234,20 @@ func main() {
 			log.Printf("Failed to mark invite as redeemed: %v", err)
 		}
 
+		// Create session for immediate login
+		session, err := db.CreateSession(user.ID)
+		if err != nil {
+			log.Printf("Failed to create session: %v", err)
+			http.Error(w, `{"error":"session creation failed"}`, http.StatusInternalServerError)
+			return
+		}
+
 		log.Printf("User %s registered via invite %s", req.Email, token)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"success": true,
+			"token":   session.Token,
 			"userId":  user.ID,
 		})
 	})
@@ -224,7 +257,7 @@ func main() {
 		path := r.URL.Path
 
 		// Serve index.html for SPA routes
-		if strings.HasPrefix(path, "/invite/") || path == "/download" {
+		if strings.HasPrefix(path, "/invite/") || path == "/download" || path == "/login" {
 			http.ServeFile(w, r, filepath.Join(*webDir, "index.html"))
 			return
 		}

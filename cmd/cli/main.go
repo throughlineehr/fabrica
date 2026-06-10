@@ -39,10 +39,11 @@ const (
 )
 
 type Config struct {
-	Token    string `json:"token"`
-	Email    string `json:"email"`
-	UserID   string `json:"userId"`
-	RelayURL string `json:"relayUrl"`
+	Token     string `json:"token"`
+	Email     string `json:"email"`
+	UserID    string `json:"userId"`
+	ServerURL string `json:"serverUrl"`
+	RelayURL  string `json:"relayUrl"`
 }
 
 type Signal struct {
@@ -242,50 +243,50 @@ func cmdStart(args []string) {
 		if strings.Contains(serverURL, "/invite/") {
 			// Extract server base URL and invite token
 			parts := strings.SplitN(serverURL, "/invite/", 2)
-			config.RelayURL = parts[0]
+			config.ServerURL = parts[0]
 			inviteToken = parts[1]
-			fmt.Printf("Connecting to %s with invite...\n", config.RelayURL)
+			fmt.Printf("Connecting to %s with invite...\n", config.ServerURL)
 		} else {
-			config.RelayURL = serverURL
+			config.ServerURL = serverURL
 			fmt.Printf("Connecting to %s\n", serverURL)
 		}
 
 		if err := saveConfig(); err != nil {
 			fmt.Printf("Warning: couldn't save config: %v\n", err)
 		}
-	} else if config.RelayURL == "" {
-		// Default to local server (runs embedded relay)
-		config.RelayURL = defaultRelayURL
+	} else if config.ServerURL == "" {
+		fmt.Println("Usage: fabrica start <server-url>")
+		fmt.Println("       fabrica start https://fabrica.example.com")
+		fmt.Println("       fabrica start https://fabrica.example.com/invite/abc123")
+		os.Exit(1)
 	}
 
-	// Only run embedded relay for localhost
-	runLocalRelay := strings.Contains(config.RelayURL, "localhost") || strings.Contains(config.RelayURL, "127.0.0.1")
+	// Always run local relay that connects to remote server
+	runLocalRelay := true
 
 	needsLogin := config.Token == ""
 
-	// Remote server - just login, no local server needed
-	if !runLocalRelay {
-		fmt.Printf("Connected to %s\n", config.RelayURL)
-
-		// If we have an invite token, redeem it
-		if inviteToken != "" {
-			fmt.Println("")
-			fmt.Println("Redeeming invite...")
-			if err := redeemInvite(inviteToken); err != nil {
-				fmt.Printf("Error: %v\n", err)
-				os.Exit(1)
-			}
-			return
+	// If we have an invite token, redeem it first
+	if inviteToken != "" {
+		fmt.Println("")
+		fmt.Println("Redeeming invite...")
+		if err := redeemInvite(inviteToken); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
 		}
-
-		if needsLogin {
-			fmt.Println("")
-			fmt.Println("No account found. Let's set one up.")
-			fmt.Println("")
-			cmdLogin()
-		}
-		return
+		needsLogin = false // redeemInvite sets up the token
 	}
+
+	// If not logged in, prompt for login before starting relay
+	if needsLogin {
+		fmt.Println("")
+		fmt.Println("No account found. Let's set one up.")
+		fmt.Println("")
+		cmdLogin()
+	}
+
+	// Suppress the duplicate login prompt later
+	_ = runLocalRelay
 
 	// Local server - fork to background
 	if os.Getenv("FABRICA_FOREGROUND") != "1" {
@@ -327,17 +328,10 @@ func cmdStart(args []string) {
 			fmt.Printf("Warning: couldn't write PID file: %v\n", err)
 		}
 
-		fmt.Printf("Fabrica started (PID %d)\n", cmd.Process.Pid)
-		fmt.Println("Server running on http://localhost:8888")
+		fmt.Printf("Fabrica relay started (PID %d)\n", cmd.Process.Pid)
+		fmt.Printf("Connected to %s\n", config.ServerURL)
+		fmt.Println("Local API at http://localhost:8888")
 		fmt.Printf("Logs: %s\n", logPath)
-
-		// If no account, prompt for login now that server is running
-		if needsLogin {
-			fmt.Println("")
-			fmt.Println("No account found. Let's set one up.")
-			fmt.Println("")
-			cmdLogin()
-		}
 		return
 	}
 
@@ -394,7 +388,17 @@ func processExists(pid int) bool {
 
 // runServer starts the embedded relay server
 func runServer() {
-	relay := NewRelay()
+	relay, err := NewRelay()
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Connect to the main Fabrica server
+	if err := relay.Connect(); err != nil {
+		fmt.Printf("Connection error: %v\n", err)
+		os.Exit(1)
+	}
 
 	port := defaultPort
 	if p := os.Getenv("FABRICA_PORT"); p != "" {
@@ -410,7 +414,7 @@ func runServer() {
 		os.Exit(0)
 	}()
 
-	fmt.Printf("Fabrica server listening on http://localhost:%d\n", port)
+	fmt.Printf("Fabrica relay listening on http://localhost:%d\n", port)
 
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", port), relay); err != nil {
 		fmt.Printf("Server error: %v\n", err)
@@ -419,13 +423,24 @@ func runServer() {
 }
 
 func apiRequest(method, path string, body any) (map[string]any, error) {
+	return doRequest(relayURL(), method, path, body)
+}
+
+func serverRequest(method, path string, body any) (map[string]any, error) {
+	if config.ServerURL == "" {
+		return nil, fmt.Errorf("no server configured - run 'fabrica start <server-url>' first")
+	}
+	return doRequest(config.ServerURL, method, path, body)
+}
+
+func doRequest(baseURL, method, path string, body any) (map[string]any, error) {
 	var reqBody io.Reader
 	if body != nil {
 		data, _ := json.Marshal(body)
 		reqBody = bytes.NewReader(data)
 	}
 
-	req, err := http.NewRequest(method, relayURL()+path, reqBody)
+	req, err := http.NewRequest(method, baseURL+path, reqBody)
 	if err != nil {
 		return nil, err
 	}
@@ -454,6 +469,11 @@ func apiRequest(method, path string, body any) (map[string]any, error) {
 }
 
 func cmdLogin() {
+	if config.ServerURL == "" {
+		fmt.Println("No server configured. Run 'fabrica start <server-url>' first.")
+		os.Exit(1)
+	}
+
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Print("Email: ")
@@ -465,14 +485,14 @@ func cmdLogin() {
 	password = strings.TrimSpace(password)
 
 	// Try login first
-	result, err := apiRequest("POST", "/auth/login", map[string]string{
+	result, err := serverRequest("POST", "/auth/login", map[string]string{
 		"email":    email,
 		"password": password,
 	})
 
 	if err != nil {
 		// If login fails, try register
-		result, err = apiRequest("POST", "/auth/register", map[string]string{
+		result, err = serverRequest("POST", "/auth/register", map[string]string{
 			"email":    email,
 			"password": password,
 		})
@@ -498,7 +518,7 @@ func cmdLogin() {
 	fmt.Printf("Logged in as %s\n", email)
 }
 
-func redeemInvite(token string) error {
+func redeemInvite(inviteToken string) error {
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Print("Email: ")
@@ -509,7 +529,7 @@ func redeemInvite(token string) error {
 	password, _ := reader.ReadString('\n')
 	password = strings.TrimSpace(password)
 
-	result, err := apiRequest("POST", "/invite/"+token+"/redeem", map[string]string{
+	result, err := serverRequest("POST", "/api/redeem/"+inviteToken, map[string]string{
 		"email":    email,
 		"password": password,
 	})
@@ -518,9 +538,7 @@ func redeemInvite(token string) error {
 	}
 
 	authToken, _ := result["token"].(string)
-	user, _ := result["user"].(map[string]any)
-	userId, _ := user["id"].(string)
-	rooms, _ := user["rooms"].([]any)
+	userId, _ := result["userId"].(string)
 
 	config.Token = authToken
 	config.Email = email
@@ -530,8 +548,7 @@ func redeemInvite(token string) error {
 		fmt.Printf("Warning: couldn't save config: %v\n", err)
 	}
 
-	fmt.Printf("Welcome! Logged in as %s\n", email)
-	fmt.Printf("Rooms: %v\n", rooms)
+	fmt.Printf("Welcome! Account created as %s\n", email)
 	return nil
 }
 

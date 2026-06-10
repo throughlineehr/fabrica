@@ -117,15 +117,15 @@ var tools = []Tool{
 	},
 	{
 		Name:        "fabrica_send",
-		Description: "Send a signal to a Fabrica room. Use this to communicate with agents in specific rooms.",
+		Description: "Send a signal to Fabrica. If room is not specified, sends to all your assigned rooms.",
 		InputSchema: JSONSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"room":    {Type: "string", Description: "The room ID to send the signal to"},
 				"content": {Type: "string", Description: "The message content to send"},
+				"room":    {Type: "string", Description: "Optional: specific room ID to send to (omit to send to all your rooms)"},
 				"type":    {Type: "string", Description: "Signal type (default: 'message')"},
 			},
-			Required: []string{"room", "content"},
+			Required: []string{"content"},
 		},
 	},
 	{
@@ -241,26 +241,32 @@ func handleToolCall(name string, args map[string]any) ToolResult {
 		return textResult(sb.String())
 
 	case "fabrica_send":
-		room, _ := args["room"].(string)
 		content, _ := args["content"].(string)
+		room, _ := args["room"].(string) // optional
 		sigType, _ := args["type"].(string)
 		if sigType == "" {
 			sigType = "message"
 		}
 
-		result, err := serverRequest("POST", "/api/send", map[string]any{
-			"room":    room,
+		body := map[string]any{
 			"type":    sigType,
 			"content": content,
-		})
+		}
+		if room != "" {
+			body["room"] = room
+		}
+
+		result, err := serverRequest("POST", "/api/send", body)
 		if err != nil {
 			return errorResult(err.Error())
 		}
 
 		sent, _ := result["sent"].(bool)
-		memberCount, _ := result["memberCount"].(float64)
 		if sent {
-			return textResult(fmt.Sprintf("Signal sent to room '%s' (%d members)", room, int(memberCount)))
+			if room != "" {
+				return textResult(fmt.Sprintf("Signal sent to room '%s'", room))
+			}
+			return textResult("Signal sent to all your assigned rooms")
 		}
 		return errorResult("Failed to send signal")
 
