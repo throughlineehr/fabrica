@@ -69,6 +69,21 @@ func HandleGoogleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for CLI callback parameter
+	cliCallback := r.URL.Query().Get("cli_callback")
+	if cliCallback != "" {
+		// Store CLI callback in a cookie to retrieve after OAuth
+		http.SetCookie(w, &http.Cookie{
+			Name:     "cli_callback",
+			Value:    cliCallback,
+			Path:     "/",
+			MaxAge:   600, // 10 minutes
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   r.TLS != nil,
+		})
+	}
+
 	// Generate state token for CSRF protection
 	state := generateStateToken()
 	http.SetCookie(w, &http.Cookie{
@@ -181,6 +196,32 @@ func HandleGoogleCallback(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	})
 
 	log.Printf("User %s logged in via Google OAuth", user.Email)
+
+	// Check for CLI callback
+	cliCookie, err := r.Cookie("cli_callback")
+	if err == nil && cliCookie.Value != "" {
+		// Clear the CLI callback cookie
+		http.SetCookie(w, &http.Cookie{
+			Name:     "cli_callback",
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+		})
+
+		// Redirect to CLI callback with token
+		callbackURL := cliCookie.Value
+		if strings.Contains(callbackURL, "?") {
+			callbackURL += "&"
+		} else {
+			callbackURL += "?"
+		}
+		callbackURL += "token=" + url.QueryEscape(session.Token) + "&email=" + url.QueryEscape(user.Email)
+
+		log.Printf("Redirecting to CLI callback: %s", cliCookie.Value)
+		http.Redirect(w, r, callbackURL, http.StatusTemporaryRedirect)
+		return
+	}
 
 	// Redirect to app
 	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)

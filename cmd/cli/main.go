@@ -16,14 +16,18 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -474,48 +478,134 @@ func cmdLogin() {
 		os.Exit(1)
 	}
 
-	reader := bufio.NewReader(os.Stdin)
+	// Start local server to receive callback
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		fmt.Printf("Error starting callback server: %v\n", err)
+		os.Exit(1)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	callbackURL := fmt.Sprintf("http://127.0.0.1:%d/callback", port)
 
-	fmt.Print("Email: ")
-	email, _ := reader.ReadString('\n')
-	email = strings.TrimSpace(email)
+	// Channel to receive the token
+	tokenCh := make(chan string, 1)
+	errCh := make(chan error, 1)
 
-	fmt.Print("Password: ")
-	password, _ := reader.ReadString('\n')
-	password = strings.TrimSpace(password)
+	// HTTP handler for callback
+	server := &http.Server{}
+	http.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+		token := r.URL.Query().Get("token")
+		email := r.URL.Query().Get("email")
+		errorMsg := r.URL.Query().Get("error")
 
-	// Try login first
-	result, err := serverRequest("POST", "/auth/login", map[string]string{
-		"email":    email,
-		"password": password,
+		if errorMsg != "" {
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprintf(w, `<!DOCTYPE html>
+<html><head><title>Login Failed</title></head>
+<body style="font-family: system-ui; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0;">
+<div style="text-align: center;">
+<h1>Login Failed</h1>
+<p>%s</p>
+<p>You can close this tab.</p>
+</div></body></html>`, errorMsg)
+			errCh <- fmt.Errorf(errorMsg)
+			return
+		}
+
+		if token == "" {
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprint(w, `<!DOCTYPE html>
+<html><head><title>Login Failed</title></head>
+<body style="font-family: system-ui; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0;">
+<div style="text-align: center;">
+<h1>Login Failed</h1>
+<p>No token received.</p>
+<p>You can close this tab.</p>
+</div></body></html>`)
+			errCh <- fmt.Errorf("no token received")
+			return
+		}
+
+		// Success!
+		config.Token = token
+		if email != "" {
+			config.Email = email
+		}
+
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<!DOCTYPE html>
+<html><head><title>Login Successful</title></head>
+<body style="font-family: system-ui; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f0fdf4;">
+<div style="text-align: center;">
+<h1 style="color: #166534;">Login Successful</h1>
+<p>You can close this tab and return to your terminal.</p>
+</div></body></html>`)
+
+		tokenCh <- token
 	})
 
-	if err != nil {
-		// If login fails, try register
-		result, err = serverRequest("POST", "/auth/register", map[string]string{
-			"email":    email,
-			"password": password,
-		})
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+	// Start server in background
+	go func() {
+		server.Serve(listener)
+	}()
+
+	// Build login URL
+	loginURL := fmt.Sprintf("%s/login?cli_callback=%s", config.ServerURL, url.QueryEscape(callbackURL))
+
+	fmt.Println("Opening browser for login...")
+	fmt.Printf("If browser doesn't open, visit: %s\n", loginURL)
+	fmt.Println("")
+	fmt.Println("Waiting for login...")
+
+	// Open browser
+	openBrowser(loginURL)
+
+	// Wait for callback or timeout
+	select {
+	case token := <-tokenCh:
+		// Shutdown server
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		server.Shutdown(ctx)
+
+		if err := saveConfig(); err != nil {
+			fmt.Printf("Warning: couldn't save config: %v\n", err)
 		}
-		fmt.Println("Registered new account.")
+
+		fmt.Println("")
+		fmt.Printf("Logged in as %s\n", config.Email)
+		_ = token // already saved to config
+
+	case err := <-errCh:
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		server.Shutdown(ctx)
+		fmt.Printf("Login failed: %v\n", err)
+		os.Exit(1)
+
+	case <-time.After(5 * time.Minute):
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		server.Shutdown(ctx)
+		fmt.Println("Login timed out.")
+		os.Exit(1)
 	}
+}
 
-	token, _ := result["token"].(string)
-	user, _ := result["user"].(map[string]any)
-	userId, _ := user["id"].(string)
-
-	config.Token = token
-	config.Email = email
-	config.UserID = userId
-
-	if err := saveConfig(); err != nil {
-		fmt.Printf("Warning: couldn't save config: %v\n", err)
+// openBrowser opens the default browser to the given URL
+func openBrowser(url string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "linux":
+		cmd = exec.Command("xdg-open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default:
+		return
 	}
-
-	fmt.Printf("Logged in as %s\n", email)
+	cmd.Start()
 }
 
 func redeemInvite(inviteToken string) error {
