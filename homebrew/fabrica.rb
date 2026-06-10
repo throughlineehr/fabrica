@@ -10,17 +10,17 @@ class Fabrica < Formula
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/throughlineehr/fabrica/releases/download/v#{version}/fabrica-darwin-arm64.tar.gz"
-      sha256 "PLACEHOLDER_ARM64_SHA256"
+      sha256 "38fc30283612884db0b6b0a0dba249078e856866e0d4c0e2c068f354ebb977a4"
     else
       url "https://github.com/throughlineehr/fabrica/releases/download/v#{version}/fabrica-darwin-amd64.tar.gz"
-      sha256 "PLACEHOLDER_AMD64_SHA256"
+      sha256 "d46857d195479cbea9eb3ab5882888d806ad1785852341e1b0a0fc19912102e7"
     end
   end
 
   on_linux do
     if Hardware::CPU.intel?
       url "https://github.com/throughlineehr/fabrica/releases/download/v#{version}/fabrica-linux-amd64.tar.gz"
-      sha256 "PLACEHOLDER_LINUX_SHA256"
+      sha256 "85e1a510876989989f3095f825389aff3346ad9505b51883229dc612d98be9e7"
     end
   end
 
