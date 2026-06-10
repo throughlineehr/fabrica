@@ -1,12 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/google/uuid"
@@ -95,9 +99,146 @@ func main() {
 		fmt.Fprintf(w, `{"clients":%d,"database":%t}`, hub.ClientCount(), db != nil)
 	})
 
-	// Serve static files (the React app)
-	fs := http.FileServer(http.Dir(*webDir))
-	http.Handle("/", fs)
+	// Invite info endpoint (GET /api/invite/{token})
+	http.HandleFunc("/api/invite/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+
+		if db == nil {
+			http.Error(w, `{"error":"database required"}`, http.StatusServiceUnavailable)
+			return
+		}
+
+		// Extract token from path: /api/invite/{token}
+		token := strings.TrimPrefix(r.URL.Path, "/api/invite/")
+		if token == "" {
+			http.Error(w, `{"error":"token required"}`, http.StatusBadRequest)
+			return
+		}
+
+		invite, err := db.GetInviteByToken(token)
+		if err != nil {
+			http.Error(w, `{"error":"invite not found","valid":false}`, http.StatusNotFound)
+			return
+		}
+
+		// Check if already redeemed
+		if invite.RedeemedAt != nil {
+			http.Error(w, `{"error":"invite already used","valid":false}`, http.StatusGone)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"valid":   true,
+			"rooms":   invite.Rooms,
+			"orgName": "Fabrica", // TODO: Get from org table
+		})
+	})
+
+	// Invite redemption endpoint (POST /api/redeem/{token})
+	http.HandleFunc("/api/redeem/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+
+		if db == nil {
+			http.Error(w, `{"error":"database required"}`, http.StatusServiceUnavailable)
+			return
+		}
+
+		// Extract token from path: /api/redeem/{token}
+		token := strings.TrimPrefix(r.URL.Path, "/api/redeem/")
+		if token == "" {
+			http.Error(w, `{"error":"token required"}`, http.StatusBadRequest)
+			return
+		}
+
+		// Parse request body
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
+			return
+		}
+
+		var req struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+			return
+		}
+
+		if req.Email == "" || req.Password == "" {
+			http.Error(w, `{"error":"email and password required"}`, http.StatusBadRequest)
+			return
+		}
+
+		// Get and validate invite
+		invite, err := db.GetInviteByToken(token)
+		if err != nil {
+			http.Error(w, `{"error":"invite not found"}`, http.StatusNotFound)
+			return
+		}
+
+		if invite.RedeemedAt != nil {
+			http.Error(w, `{"error":"invite already used"}`, http.StatusGone)
+			return
+		}
+
+		// Create user
+		user, err := db.CreateUser(invite.OrgID, req.Email, "user", nil)
+		if err != nil {
+			log.Printf("Failed to create user: %v", err)
+			http.Error(w, `{"error":"failed to create account"}`, http.StatusInternalServerError)
+			return
+		}
+
+		// Assign rooms from invite
+		for _, roomKey := range invite.Rooms {
+			if err := db.AddUserToRoom(user.ID, roomKey); err != nil {
+				log.Printf("Failed to assign room %s to user %s: %v", roomKey, user.ID, err)
+			}
+		}
+
+		// Mark invite as redeemed
+		if err := db.RedeemInvite(token, user.ID); err != nil {
+			log.Printf("Failed to mark invite as redeemed: %v", err)
+		}
+
+		log.Printf("User %s registered via invite %s", req.Email, token)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"success": true,
+			"userId":  user.ID,
+		})
+	})
+
+	// SPA routing - serve index.html for client-side routes
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+
+		// Serve index.html for SPA routes
+		if strings.HasPrefix(path, "/invite/") || path == "/download" {
+			http.ServeFile(w, r, filepath.Join(*webDir, "index.html"))
+			return
+		}
+
+		// Try to serve static file
+		filePath := filepath.Join(*webDir, path)
+		if _, err := os.Stat(filePath); err == nil {
+			http.ServeFile(w, r, filePath)
+			return
+		}
+
+		// Fallback to index.html for unknown routes (SPA)
+		http.ServeFile(w, r, filepath.Join(*webDir, "index.html"))
+	})
 
 	// Graceful shutdown
 	go func() {

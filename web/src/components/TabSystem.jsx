@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Eye, EyeOff, Filter, FolderTree, Wrench, Settings, Bot, X } from 'lucide-react'
+import { Eye, EyeOff, Filter, FolderTree, Wrench, Settings, Bot, UserPlus, X } from 'lucide-react'
 import { color, sizes, panel } from '../styles'
 import { Z_INDEX } from '../constants'
 import { useA11yType } from '../hooks/useA11yType'
@@ -8,6 +8,7 @@ import { ExplorerTree } from './ExplorerTree'
 import { Keycap } from './Keycap'
 import { SettingsPanel } from './tabs/SettingsPanel'
 import { AgentPanel } from './tabs/AgentPanel'
+import { InvitePanel } from './tabs/InvitePanel'
 import { FilterBar, FILTER_HEIGHT } from './tabs/FilterBar'
 
 const PANEL_Z = Z_INDEX.panel
@@ -17,6 +18,7 @@ const SIDE_TABS = [
   { key: 'E', labelKey: 'tabs.explorer', icon: FolderTree },
   { key: 'T', labelKey: 'tabs.tools', icon: Wrench },
   { key: 'A', labelKey: 'tools.agent', icon: Bot },
+  { key: 'I', labelKey: 'tabs.invites', icon: UserPlus },
 ]
 
 function KeyLabel({ children, shortcut }) {
@@ -36,7 +38,7 @@ function StubContent({ sections, t, tr }) {
   )
 }
 
-function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onRenameNode, onDeleteNode, onMoveNode, onDuplicateNode, onSpliceNode, onBack, onAnnounce, agentAPI }) {
+function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onRenameNode, onDeleteNode, onMoveNode, onDuplicateNode, onSpliceNode, onBack, onAnnounce, agentAPI, rooms }) {
   if (tabKey === 'S') return <SettingsPanel t={t} tr={tr} agentAPI={agentAPI} />
   if (tabKey === 'E' && tree) return (
     <ExplorerTree tree={tree} selectedId={selectedId} paneId={paneId} focusedId={focusedId}
@@ -45,10 +47,11 @@ function PanelContent({ tabKey, t, tr, tree, selectedId, paneId, focusedId, onNo
       onBack={onBack} onAnnounce={onAnnounce} />
   )
   if (tabKey === 'A') return <AgentPanel agentAPI={agentAPI} />
+  if (tabKey === 'I') return <InvitePanel rooms={rooms} />
   return <StubContent sections={tabKey === 'T' ? ['Node', 'Listen', 'Users'] : []} t={t} tr={tr} />
 }
 
-export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onRenameNode, onDeleteNode, onMoveNode, onDuplicateNode, onSpliceNode, onBack, onAnnounce, onExplorerClose, visibleSystems, onToggleSystem, agentAPI, requestOpenExplorer = false }) {
+export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId, paneId, focusedId, onNodeSelect, onNodeActivate, onAddNode, onRenameNode, onDeleteNode, onMoveNode, onDuplicateNode, onSpliceNode, onBack, onAnnounce, onExplorerClose, visibleSystems, onToggleSystem, agentAPI, requestOpenExplorer = false, rooms = [] }) {
   const t = useA11yType()
   const { t: tr } = useTranslation()
   const [activeTab, setActiveTab] = useState(null)
@@ -251,7 +254,7 @@ export function TabSystem({ visible = true, onPanelWidthChange, tree, selectedId
               onNodeSelect={onNodeSelect} onNodeActivate={onNodeActivate}
               onAddNode={onAddNode} onRenameNode={onRenameNode}
               onDeleteNode={onDeleteNode} onMoveNode={onMoveNode} onDuplicateNode={onDuplicateNode} onSpliceNode={onSpliceNode}
-              onBack={onBack} onAnnounce={onAnnounce} agentAPI={agentAPI} />
+              onBack={onBack} onAnnounce={onAnnounce} agentAPI={agentAPI} rooms={rooms} />
           </div>
         </div>
       )}

@@ -89,6 +89,7 @@ export default {
     explorer: 'Explorer',
     tools: 'Tools',
     settings: 'Settings',
+    invites: 'Invites',
     hide: 'hide',
     show: 'show',
   },

@@ -132,4 +132,14 @@ export const commands = {
   // Cables
   addCable: (roomKey, source, target) => send('addCable', { roomKey, source, target }),
   removeCable: (roomKey, cableId) => send('removeCable', { roomKey, cableId }),
+
+  // Auth
+  login: (email) => send('login', { email }),
+  logout: () => send('logout', {}),
+  whoami: () => send('whoami', {}),
+
+  // Invites (cybernetician only)
+  createInvite: (rooms) => send('createInvite', { rooms }),
+  listInvites: () => send('listInvites', {}),
+  revokeInvite: (token) => send('revokeInvite', { token }),
 }

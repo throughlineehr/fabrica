@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -696,4 +698,121 @@ func (db *DB) ListAgentsInRoom(roomKey string) ([]*Agent, error) {
 	}
 
 	return agents, nil
+}
+
+// ============================================================================
+// Invite Management
+// ============================================================================
+
+// Invite represents an invitation to join the system
+type Invite struct {
+	Token      string     `json:"token"`
+	OrgID      string     `json:"orgId"`
+	Rooms      []string   `json:"rooms"`
+	CreatedBy  string     `json:"createdBy"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	RedeemedAt *time.Time `json:"redeemedAt,omitempty"`
+	RedeemedBy *string    `json:"redeemedBy,omitempty"`
+}
+
+// generateToken creates a cryptographically random URL-safe token
+func generateToken() string {
+	tokenBytes := make([]byte, 16)
+	rand.Read(tokenBytes)
+	return base64.RawURLEncoding.EncodeToString(tokenBytes)
+}
+
+// CreateInvite creates a new invite with specified rooms
+func (db *DB) CreateInvite(orgID, createdBy string, rooms []string) (*Invite, error) {
+	token := generateToken()
+
+	var invite Invite
+	var roomsArray []string
+	err := db.pool.QueryRow(context.Background(),
+		`INSERT INTO invites (token, org_id, rooms, created_by)
+		 VALUES ($1, $2, $3, $4)
+		 RETURNING token, org_id, rooms, created_by, created_at, redeemed_at, redeemed_by`,
+		token, orgID, rooms, createdBy,
+	).Scan(&invite.Token, &invite.OrgID, &roomsArray, &invite.CreatedBy, &invite.CreatedAt, &invite.RedeemedAt, &invite.RedeemedBy)
+
+	if err != nil {
+		return nil, fmt.Errorf("create invite: %w", err)
+	}
+
+	invite.Rooms = roomsArray
+	return &invite, nil
+}
+
+// GetInviteByToken retrieves an invite by its token
+func (db *DB) GetInviteByToken(token string) (*Invite, error) {
+	var invite Invite
+	var roomsArray []string
+	err := db.pool.QueryRow(context.Background(),
+		`SELECT token, org_id, rooms, created_by, created_at, redeemed_at, redeemed_by
+		 FROM invites WHERE token = $1`,
+		token,
+	).Scan(&invite.Token, &invite.OrgID, &roomsArray, &invite.CreatedBy, &invite.CreatedAt, &invite.RedeemedAt, &invite.RedeemedBy)
+
+	if err != nil {
+		return nil, fmt.Errorf("get invite: %w", err)
+	}
+
+	invite.Rooms = roomsArray
+	return &invite, nil
+}
+
+// RedeemInvite marks an invite as redeemed by a user
+func (db *DB) RedeemInvite(token, userID string) error {
+	result, err := db.pool.Exec(context.Background(),
+		`UPDATE invites SET redeemed_at = NOW(), redeemed_by = $1
+		 WHERE token = $2 AND redeemed_at IS NULL`,
+		userID, token,
+	)
+	if err != nil {
+		return fmt.Errorf("redeem invite: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("invite not found or already redeemed")
+	}
+
+	return nil
+}
+
+// ListInvites returns all invites for an organization
+func (db *DB) ListInvites(orgID string) ([]*Invite, error) {
+	rows, err := db.pool.Query(context.Background(),
+		`SELECT token, org_id, rooms, created_by, created_at, redeemed_at, redeemed_by
+		 FROM invites WHERE org_id = $1 ORDER BY created_at DESC`,
+		orgID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list invites: %w", err)
+	}
+	defer rows.Close()
+
+	var invites []*Invite
+	for rows.Next() {
+		var invite Invite
+		var roomsArray []string
+		if err := rows.Scan(&invite.Token, &invite.OrgID, &roomsArray, &invite.CreatedBy, &invite.CreatedAt, &invite.RedeemedAt, &invite.RedeemedBy); err != nil {
+			return nil, fmt.Errorf("scan invite: %w", err)
+		}
+		invite.Rooms = roomsArray
+		invites = append(invites, &invite)
+	}
+
+	return invites, nil
+}
+
+// DeleteInvite removes an invite
+func (db *DB) DeleteInvite(token string) error {
+	_, err := db.pool.Exec(context.Background(),
+		`DELETE FROM invites WHERE token = $1`,
+		token,
+	)
+	if err != nil {
+		return fmt.Errorf("delete invite: %w", err)
+	}
+	return nil
 }

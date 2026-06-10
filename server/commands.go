@@ -86,6 +86,14 @@ func (h *Hub) HandleCommand(client *Client, msg Message) {
 	case "listAgentsInRoom":
 		result, err = h.cmdListAgentsInRoom(msg.Args)
 
+	// Invite commands (cybernetician only)
+	case "createInvite":
+		result, err = h.cmdCreateInvite(client, msg.Args)
+	case "listInvites":
+		result, err = h.cmdListInvites(client, msg.Args)
+	case "revokeInvite":
+		result, err = h.cmdRevokeInvite(client, msg.Args)
+
 	default:
 		err = &CommandError{Code: "UNKNOWN_COMMAND", Message: fmt.Sprintf("Unknown command: %s", msg.Command)}
 	}
@@ -911,4 +919,102 @@ func agentToMap(a *Agent) map[string]any {
 		"config":    a.Config,
 		"createdAt": a.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
+}
+
+// Invite commands (cybernetician only)
+
+func (h *Hub) cmdCreateInvite(client *Client, args map[string]any) (map[string]any, error) {
+	if h.db == nil {
+		return nil, &CommandError{Code: "NO_DATABASE", Message: "Invite management requires database"}
+	}
+
+	// Check cybernetician role
+	if client.ctx == nil || client.ctx.Role != "cybernetician" {
+		return nil, &CommandError{Code: "FORBIDDEN", Message: "Only cyberneticians can create invites"}
+	}
+
+	// Parse rooms array
+	var rooms []string
+	if roomsRaw, ok := args["rooms"].([]any); ok {
+		for _, r := range roomsRaw {
+			if s, ok := r.(string); ok {
+				rooms = append(rooms, s)
+			}
+		}
+	}
+
+	invite, err := h.db.CreateInvite(DefaultOrgID, client.ctx.UserID, rooms)
+	if err != nil {
+		return nil, &CommandError{Code: "CREATE_FAILED", Message: err.Error()}
+	}
+
+	log.Printf("Created invite %s with rooms %v", invite.Token, rooms)
+	return map[string]any{
+		"token":     invite.Token,
+		"inviteUrl": "/invite/" + invite.Token,
+		"invite":    inviteToMap(invite),
+	}, nil
+}
+
+func (h *Hub) cmdListInvites(client *Client, args map[string]any) (map[string]any, error) {
+	if h.db == nil {
+		return nil, &CommandError{Code: "NO_DATABASE", Message: "Invite management requires database"}
+	}
+
+	// Check cybernetician role
+	if client.ctx == nil || client.ctx.Role != "cybernetician" {
+		return nil, &CommandError{Code: "FORBIDDEN", Message: "Only cyberneticians can list invites"}
+	}
+
+	invites, err := h.db.ListInvites(DefaultOrgID)
+	if err != nil {
+		return nil, &CommandError{Code: "LIST_FAILED", Message: err.Error()}
+	}
+
+	inviteMaps := make([]map[string]any, len(invites))
+	for i, inv := range invites {
+		inviteMaps[i] = inviteToMap(inv)
+	}
+
+	return map[string]any{"invites": inviteMaps}, nil
+}
+
+func (h *Hub) cmdRevokeInvite(client *Client, args map[string]any) (map[string]any, error) {
+	if h.db == nil {
+		return nil, &CommandError{Code: "NO_DATABASE", Message: "Invite management requires database"}
+	}
+
+	// Check cybernetician role
+	if client.ctx == nil || client.ctx.Role != "cybernetician" {
+		return nil, &CommandError{Code: "FORBIDDEN", Message: "Only cyberneticians can revoke invites"}
+	}
+
+	token, ok := args["token"].(string)
+	if !ok || token == "" {
+		return nil, &CommandError{Code: "INVALID_ARGS", Message: "token is required"}
+	}
+
+	if err := h.db.DeleteInvite(token); err != nil {
+		return nil, &CommandError{Code: "DELETE_FAILED", Message: err.Error()}
+	}
+
+	log.Printf("Revoked invite %s", token)
+	return nil, nil
+}
+
+// Helper to convert Invite to map for JSON response
+func inviteToMap(inv *Invite) map[string]any {
+	m := map[string]any{
+		"token":     inv.Token,
+		"rooms":     inv.Rooms,
+		"createdBy": inv.CreatedBy,
+		"createdAt": inv.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+	if inv.RedeemedAt != nil {
+		m["redeemedAt"] = inv.RedeemedAt.Format("2006-01-02T15:04:05Z07:00")
+	}
+	if inv.RedeemedBy != nil {
+		m["redeemedBy"] = *inv.RedeemedBy
+	}
+	return m
 }
