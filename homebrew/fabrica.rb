@@ -4,23 +4,23 @@
 class Fabrica < Formula
   desc "Terminal to agent signal system for Claude Code"
   homepage "https://github.com/throughlineehr/fabrica"
-  version "0.1.0"
+  version "0.2.0"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/throughlineehr/fabrica/releases/download/v#{version}/fabrica-darwin-arm64.tar.gz"
-      sha256 "38fc30283612884db0b6b0a0dba249078e856866e0d4c0e2c068f354ebb977a4"
+      sha256 "8a227b86ae16adb74e94df47d7994414a46f86f106fa652b1dc44bcadc8faffd"
     else
       url "https://github.com/throughlineehr/fabrica/releases/download/v#{version}/fabrica-darwin-amd64.tar.gz"
-      sha256 "d46857d195479cbea9eb3ab5882888d806ad1785852341e1b0a0fc19912102e7"
+      sha256 "3f9bae761bf2ae4a51bd7e46396f03a94130b2e48f409167241384f4ff357dca"
     end
   end
 
   on_linux do
     if Hardware::CPU.intel?
       url "https://github.com/throughlineehr/fabrica/releases/download/v#{version}/fabrica-linux-amd64.tar.gz"
-      sha256 "85e1a510876989989f3095f825389aff3346ad9505b51883229dc612d98be9e7"
+      sha256 "d464edd60f54d8a9e3ca22277e709d00a6ec57830e8caccacdc8c8dc3af13c46"
     end
   end
 
